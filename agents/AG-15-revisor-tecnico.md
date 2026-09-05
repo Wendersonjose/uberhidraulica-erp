@@ -2336,8 +2336,9 @@ AG-15 não substitui especialista de segurança.
 
 # 172. Revisão financeira
 
-Quando cálculo ou fluxo financeiro mudar, exigir participação do AG-06.
+Quando cálculo ou fluxo financeiro mudar, exigir participação do AG-06.Quando cálculo ou fluxo financeiro mudar, exigir participação do AG-06.
 
+Quando regra ou cálculo de comissão, rentabilidade ou precificação mudar, exigir participação do AG-06.
 AG-15 não inventa regra financeira.
 
 ---

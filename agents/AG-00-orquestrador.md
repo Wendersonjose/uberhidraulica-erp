@@ -149,7 +149,7 @@ O AG-00 deve selecionar apenas os agentes necessários.
 - `AG-03` — Domínio Oficina
 - `AG-04` — Catálogo & Estoque
 - `AG-05` — Compras & Fornecedores
-- `AG-06` — Financeiro
+- `AG-06` — Financeiro — responsável funcional também por Comissão, Rentabilidade e Precificação
 - `AG-07` — Conciliação & Integrações Financeiras
 - `AG-08` — Fiscal
 - `AG-09` — Segurança & Auditoria

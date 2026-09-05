@@ -578,7 +578,7 @@ Detalhes:
 - [ ] AG-03 — Domínio Oficina
 - [ ] AG-04 — Catálogo & Estoque
 - [ ] AG-05 — Compras & Fornecedores
-- [ ] AG-06 — Financeiro
+- [ ] AG-06 — Financeiro, Comissão & Rentabilidade
 - [ ] AG-07 — Conciliação & Integrações Financeiras
 - [ ] AG-08 — Fiscal
 - [ ] AG-09 — Segurança & Auditoria
