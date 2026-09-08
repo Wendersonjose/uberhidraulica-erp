@@ -5,6 +5,7 @@
 ```text
 Responsáveis: AG-02 / AG-11 / AG-09
 Status: APPROVED FOR IMPLEMENTATION DESIGN
+Decisões: DR-0002 e DR-0003 — DECIDED
 Natureza: contrato conceitual; DTOs e códigos HTTP finais serão fechados tecnicamente na implementação
 ```
 
@@ -72,21 +73,23 @@ GET    /api/iam/users/{userId}
 PATCH  /api/iam/users/{userId}
 ```
 
-Contratos conceituais cobrem identidade, e-mail, perfil, estado e troca obrigatória sem segredo. Listagem deve ser paginável. A semântica completa de desativação não é definida nesta Task; o `PATCH` somente poderá implementar campos e transições aprovados no requisito/implementação detalhada.
+`POST` cria usuário `ACTIVE`, gera senha temporária por fonte criptograficamente segura, persiste somente o hash com `mustChangePassword = true` e retorna o valor em claro somente no resultado imediato. Consultas posteriores nunca retornam a temporária.
+
+Contratos conceituais cobrem identidade, e-mail, perfil fixo e estado. `PATCH` pode alterar `ACTIVE|INACTIVE` quando autorizado. Inativação invalida a sessão; reativação não restaura sessão. Não existe endpoint de exclusão física. Listagem deve ser paginável.
 
 ## Administração de perfis e permissões
 
 ```http
 GET    /api/iam/profiles
-POST   /api/iam/profiles
 GET    /api/iam/profiles/{profileId}
-PATCH  /api/iam/profiles/{profileId}
 PUT    /api/iam/profiles/{profileId}/permissions/{permissionCode}
 DELETE /api/iam/profiles/{profileId}/permissions/{permissionCode}
 GET    /api/iam/permissions
 ```
 
-Permissões são identificadas por código estável. Operações exigem permissão administrativa efetiva; esta especificação não cria matriz dos gerentes.
+O `DELETE` acima remove somente uma associação configurável perfil-permissão; não exclui perfil nem permissão do catálogo.
+
+Os únicos perfis são `DONO`, `GERENTE_ADMINISTRATIVO` e `GERENTE_FINANCEIRO`. A API não cria/exclui tipos, não renomeia códigos e não transforma um perfil em outro. Permissões são identificadas por código estável. Operações de associação exigem permissão administrativa efetiva; os gerentes não recebem essa capacidade automaticamente.
 
 ## Exceções individuais
 
@@ -109,13 +112,17 @@ USER_NOT_FOUND (somente em contexto administrativo autorizado)
 DUPLICATE_USER_EMAIL
 INVALID_PERMISSION_RESOLUTION
 BOOTSTRAP_NOT_APPLICABLE
+INVALID_USER_STATE
+LAST_ACTIVE_OWNER_REQUIRED
 ```
 
 Lista e nomes são proposta técnica rastreável. Mensagens não expõem segredos nem permitem enumeração no login.
 
 ## Permissões administrativas
 
-Códigos específicos de administração IAM serão definidos como contrato técnico durante a implementação e catalogados no módulo. Não se presume que Gerente Administrativo ou Gerente Financeiro os possuam. A capacidade de reset exige simultaneamente identidade Dono e autorização efetiva, conforme decisão aprovada.
+Códigos específicos de administração IAM serão definidos como contrato técnico estável durante a implementação e catalogados no módulo. O bootstrap os associa ao perfil `DONO`. Não se presume que Gerente Administrativo ou Gerente Financeiro os possuam. A capacidade de reset exige simultaneamente identidade Dono e autorização efetiva.
+
+`LAST_ACTIVE_OWNER_REQUIRED` é o erro conceitual da tentativa de inativar o último Dono `ACTIVE`; nome e código HTTP finais podem ser ajustados tecnicamente sem alterar a regra.
 
 ## Pendências não bloqueadoras de desenho
 

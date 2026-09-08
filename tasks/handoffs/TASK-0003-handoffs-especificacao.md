@@ -6,7 +6,7 @@
 Task: TASK-0003 — Fundação IAM
 Data: 2026-09-08
 Status dos handoffs: COMPLETED
-Decisão: DR-0002 — DECIDED
+Decisões: DR-0002 e DR-0003 — DECIDED
 Requisito: REQ-SEG-001 — APPROVED
 Frontend: fora do escopo; AG-12 não participa
 Oficina: única no MVP; multi-tenancy fora do escopo
@@ -137,3 +137,34 @@ Resultado: COMPLETED
 ```
 
 AG-00 valida que a fase documental terminou e mantém a Task em `READY`. `IN_PROGRESS` somente será usado após autorização explícita e início da implementação; `DONE` depende de backend, migration, testes e revisão da implementação.
+
+## Ciclo complementar após DR-0003
+
+```text
+AG-00 → AG-01
+Registro: quatro decisões adicionais do proprietário e manutenção do status READY.
+
+AG-01 → AG-09
+Resultado: REQ-SEG-001 preservou CA-IAM-001..025 e adicionou CA-IAM-026..039.
+
+AG-09 → AG-02
+Resultado: credencial inicial, perfis fixos, ACTIVE/INACTIVE, sessão e último Dono convertidos em invariantes.
+
+AG-02 → AG-10
+Resultado: catálogo/seed idempotente, bootstrap consistente e concorrência do último Dono especificados.
+
+AG-10 → AG-11
+Resultado: contrato REST removeu criação/mutação de tipo de perfil e definiu criação/estado de usuário.
+
+AG-11 → AG-13
+Resultado: plano ampliado para temporária, perfis fixos, inativação, sessão e concorrência.
+
+AG-13 → AG-14
+Resultado: ausência de segredo em configuração e observabilidade confirmada.
+
+AG-14 → AG-15
+Resultado: especificação completa encaminhada para nova revisão independente.
+
+AG-15 → AG-00
+Resultado: APPROVED; findings impeditivos 0; DRs abertas 0; TASK READY.
+```

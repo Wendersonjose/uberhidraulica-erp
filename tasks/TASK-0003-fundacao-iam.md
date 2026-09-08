@@ -38,7 +38,7 @@ AG-00, AG-01, AG-02, AG-09, AG-10, AG-11, AG-13, AG-14 e AG-15. AG-12 não parti
 
 ## 8. Decisões relacionadas
 
-`DR-0002 — Definições iniciais do IAM MVP — DECIDED`, por decisão explícita do proprietário.
+`DR-0002 — Definições iniciais do IAM MVP — DECIDED` e `DR-0003 — Complementos operacionais do IAM MVP — DECIDED`, por decisões explícitas do proprietário.
 
 ## 9. Regras de negócio
 
@@ -49,6 +49,11 @@ AG-00, AG-01, AG-02, AG-09, AG-10, AG-11, AG-13, AG-14 e AG-15. AG-12 não parti
 5. Senha nunca é persistida em texto puro; recuperação por e-mail está fora do MVP.
 6. Spring Security Session, cookie `HttpOnly`, `Secure` em produção, uma sessão por usuário e oito horas de inatividade.
 7. Autorização é aplicada no backend.
+8. Novo usuário recebe credencial temporária exibida uma vez, somente hash persistido e troca obrigatória.
+9. Bootstrap garante perfil `DONO`, permissões administrativas IAM, associações e primeiro Dono de forma consistente.
+10. Existem somente os perfis fixos `DONO`, `GERENTE_ADMINISTRATIVO` e `GERENTE_FINANCEIRO`; códigos não são criados, excluídos, renomeados ou transformados.
+11. Usuários possuem estado `ACTIVE|INACTIVE`; inativação encerra sessão e não apaga histórico.
+12. O último Dono `ACTIVE` não pode ser inativado, inclusive sob concorrência.
 
 ## 10. Pré-condições
 
@@ -70,11 +75,11 @@ Credencial inválida não cria sessão; bootstrap inválido não cria registro p
 
 ## 14. Critérios de aceite
 
-`CA-IAM-001` a `CA-IAM-025`, em `docs/requirements/security/REQ-SEG-001-fundacao-iam.md`.
+`CA-IAM-001` a `CA-IAM-039`, em `docs/requirements/security/REQ-SEG-001-fundacao-iam.md`.
 
 ## 15. Dependências
 
-`TASK-0002 — DONE` e `DR-0002 — DECIDED`.
+`TASK-0002 — DONE`, `DR-0002 — DECIDED` e `DR-0003 — DECIDED`.
 
 ## 16. Impacto em outros módulos
 
@@ -108,7 +113,7 @@ Usuários, perfis, permissões, associações, exceções, credenciais, sessão 
 
 ## 23. Concorrência
 
-Bootstrap e logins simultâneos preservam um primeiro Dono e uma sessão efetiva por usuário.
+Bootstrap e logins simultâneos preservam um primeiro Dono e uma sessão efetiva por usuário. Inativações concorrentes preservam ao menos um Dono `ACTIVE`.
 
 ## 24. Eventos de domínio
 
@@ -132,7 +137,7 @@ Domínio, aplicação, API, segurança, sessão, concorrência, PostgreSQL/Testc
 
 ## 29. Casos de teste mínimos
 
-Login válido/inválido; `INHERIT/ALLOW/DENY`; sessão única/expiração; bootstrap; troca obrigatória; troca própria; reset pelo Dono; acesso negado; CSRF; cookies e auditoria.
+Login válido/inválido; `INHERIT/ALLOW/DENY`; sessão única/expiração; bootstrap administrativo; criação com temporária; perfis fixos; `ACTIVE/INACTIVE`; último Dono; troca própria; reset; acesso negado; CSRF; cookies e auditoria.
 
 ## 30. Riscos
 
@@ -156,7 +161,7 @@ AG-00 → AG-01 → AG-09 → AG-02 → AG-10 → AG-11 → AG-13 → AG-14 → 
 
 ## 34. Decision Requests
 
-`DR-0002 — DECIDED`. Abertas: `0`.
+`DR-0002 — DECIDED`; `DR-0003 — DECIDED`. Abertas: `0`.
 
 ## 35. Checklist Definition of Ready
 
@@ -197,7 +202,10 @@ Pronto para implementação: SIM
 
 ## 40. Histórico da Task
 
-`Versão 1 — 2026-09-08 — especificação inicial baseada na DR-0002`.
+```text
+Versão 1 — 2026-09-08 — especificação inicial baseada na DR-0002
+Versão 2 — 2026-09-08 — complementos aprovados na DR-0003
+```
 
 ## 41. Encerramento
 

@@ -4,6 +4,7 @@
 
 ```text
 STATUS: DATA_APPROVED FOR SPECIFICATION
+DECISÕES: DR-0002 e DR-0003 — DECIDED
 BANCO: PostgreSQL
 MIGRATION NESTA FASE: NÃO
 MIGRATION NA IMPLEMENTAÇÃO: SIM
@@ -31,7 +32,7 @@ User 1 ── 0..1 sessão ativa efetiva no MVP
 
 ### `iam_profile`
 
-Identificador técnico, nome/código estável, descrição, estado e timestamps de criação/alteração.
+Identificador técnico, código estável restrito a `DONO|GERENTE_ADMINISTRATIVO|GERENTE_FINANCEIRO`, metadado descritivo sem semântica adicional e timestamps. Catálogo é fixo e idempotente; perfil não é excluído, renomeado ou transformado.
 
 ### `iam_permission`
 
@@ -43,7 +44,7 @@ Perfil, permissão e metadados de concessão. Par perfil/permissão é único.
 
 ### `iam_user`
 
-Identificador técnico, e-mail original, chave normalizada única para autenticação, perfil, estado e timestamps. A modelagem física da normalização deve ser única entre aplicação e banco.
+Identificador técnico, e-mail original, chave normalizada única para autenticação, perfil, estado `ACTIVE|INACTIVE` e timestamps. A modelagem física da normalização deve ser única entre aplicação e banco. Não existe exclusão física.
 
 ### `iam_user_permission_exception`
 
@@ -52,6 +53,8 @@ Usuário, permissão, resolução `INHERIT|ALLOW|DENY` e timestamps/ator quando 
 ### `iam_credential`
 
 Usuário único, hash codificado completo pelo encoder, flag `must_change_password`, timestamps de criação/alteração e informação técnica de versão do mecanismo quando necessária. Não contém senha em claro ou credencial temporária.
+
+Na criação de usuário ou reset, o valor temporário existe somente em memória até o resultado imediato; apenas o hash entra na transação e na persistência.
 
 ### sessão
 
@@ -67,6 +70,8 @@ Identificador, instante com timezone, tipo de ação, ator opcional, alvo/recurs
 - e-mail normalizado único e não nulo;
 - perfil do usuário referenciado e não nulo no recorte aprovado;
 - código de perfil e de permissão únicos e não nulos;
+- `CHECK` ou proteção equivalente para somente os três códigos fixos de perfil;
+- `CHECK` de estado do usuário em `ACTIVE`, `INACTIVE` ou enum PostgreSQL avaliado tecnicamente;
 - unicidade perfil/permissão;
 - unicidade usuário/permissão para exceção;
 - `CHECK` da resolução em `INHERIT`, `ALLOW`, `DENY` ou enum PostgreSQL avaliado tecnicamente;
@@ -75,6 +80,7 @@ Identificador, instante com timezone, tipo de ação, ator opcional, alvo/recurs
 - FKs sem cascade destrutivo que apague histórico indevidamente;
 - timestamps técnicos com `TIMESTAMPTZ`;
 - proteção transacional/constraint que impeça dois primeiros Donos no bootstrap.
+- proteção que impeça inativar o último Dono `ACTIVE`, inclusive em transações concorrentes.
 
 A forma física exata da proteção do bootstrap deve ser demonstrada sob concorrência; não se aceita somente “contar e inserir” sem proteção.
 
@@ -91,9 +97,20 @@ A forma física exata da proteção do bootstrap deve ser demonstrada sob concor
 
 Não apagar auditoria. Usuários, perfis e permissões com relevância histórica devem usar estado, não exclusão física arbitrária. A semântica completa de desativação não está no escopo funcional desta Task; a implementação não deve inventar efeitos além do necessário para os casos aprovados.
 
+## Seeds conceituais e bootstrap
+
+- seed idempotente dos três perfis fixos;
+- seed idempotente dos códigos estáveis de permissões administrativas IAM;
+- associação idempotente dessas permissões ao perfil `DONO`;
+- ausência de associação administrativa automática aos dois perfis de gerente;
+- bootstrap consistente cria o primeiro Dono vinculado ao `DONO`, com hash e `must_change_password = true`;
+- senha inicial não integra seed ou migration.
+
+SQL definitivo, técnica de upsert e numeração Flyway pertencem à implementação futura.
+
 ## Concorrência
 
-Testar bootstrap simultâneo, unicidade de e-mail, alteração concorrente de exceção e substituição de sessão. Estratégia exata de locking/constraint pertence ao desenho físico, com evidência PostgreSQL/Testcontainers.
+Testar bootstrap simultâneo, unicidade de e-mail, alteração concorrente de exceção, substituição de sessão e inativação concorrente de Donos. A estratégia física deve serializar ou bloquear adequadamente a decisão de inativação para que commits concorrentes nunca deixem zero Donos `ACTIVE`. Locking/constraint final será definido na implementação e provado com PostgreSQL/Testcontainers.
 
 ## Migration futura
 

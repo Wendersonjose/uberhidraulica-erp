@@ -16,6 +16,7 @@ ALTERAÇÃO DE INFRAESTRUTURA NESTA FASE: NÃO
 - logs de startup não exibem valores de bootstrap;
 - configuração ausente/inválida falha de modo explícito e sem persistência parcial;
 - após existência de usuário, configuração de bootstrap não pode recriar ou sobrescrever o Dono.
+- senha temporária criada para usuário ou reset existe somente em memória até a resposta imediata; não possui default de configuração e não aparece em log, métrica, trace ou auditoria.
 
 Nomes exatos das variáveis são contrato operacional técnico da implementação e deverão ser documentados em exemplo sem valores reais.
 
@@ -46,6 +47,7 @@ DEV pode operar sem `Secure` apenas para desenvolvimento local sem TLS. HOMOLOG/
 - timeout de oito horas verificado;
 - sessão única verificada;
 - redaction de logs verificada;
+- ausência de senha inicial/temporária em observabilidade verificada;
 - estratégia de backup/restauração inclui dados IAM e auditoria;
 - rollback operacional da migration futura revisado.
 

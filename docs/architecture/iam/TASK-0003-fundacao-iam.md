@@ -5,7 +5,7 @@
 ```text
 STATUS: APPROVED
 MÓDULO: IAM
-DR: DR-0002 — DECIDED
+DR: DR-0002 e DR-0003 — DECIDED
 PRONTO PARA AG-10/AG-11: SIM, após especificação de dados
 ```
 
@@ -53,11 +53,21 @@ O formato Java final pertence à implementação, desde que preserve o contrato 
 
 Spring Security autentica e Spring Security Session mantém estado server-side. IAM configura autenticação, limite de uma sessão, expiração por inatividade, invalidação no logout e restrição durante troca obrigatória. O repositório de sessões não é repository de domínio acessível por outros módulos.
 
+Inativação de usuário invalida a sessão na mesma coordenação do caso de uso; reativação não recria sessão.
+
+## Catálogo fixo e bootstrap
+
+Os perfis `DONO`, `GERENTE_ADMINISTRATIVO` e `GERENTE_FINANCEIRO` formam catálogo fixo controlado por aplicação/migration idempotente. Não existe caso de uso de criação, exclusão, rename de código ou transformação de perfil.
+
+Permissões administrativas IAM usam códigos técnicos estáveis. O bootstrap garante perfil `DONO`, permissões IAM, associações e primeiro Dono em operação consistente. Não associa automaticamente essas permissões aos perfis de gerente.
+
 ## Transações
 
 - bootstrap: verificação/criação/credencial/auditoria em unidade consistente, protegida contra concorrência;
 - alteração de senha e reset: atualização de credencial, flag e auditoria na mesma transação;
 - alteração de perfil/permissão/exceção: mudança e auditoria atômicas;
+- criação de usuário: identidade `ACTIVE`, hash da temporária, troca obrigatória e auditoria na mesma transação, mantendo o valor em claro somente no resultado imediato;
+- inativação: estado, proteção do último Dono, invalidação de sessão e auditoria coordenados sem alteração parcial;
 - login/logout: integram ciclo de sessão e evidência sem ampliar transações com chamadas externas.
 
 ## Eventos e integração
@@ -89,6 +99,8 @@ Essas escolhas implementam controles técnicos e não ampliam o escopo funcional
 - permissão aplicada apenas por frontend;
 - criação do primeiro Dono por migration.
 - `tenant_id` ou qualquer dependência de tenant em entidades, tabelas, sessão, autenticação, autorização ou contratos IAM.
+- endpoint/caso de uso para criar, excluir, renomear código ou transformar os três perfis fixos.
+- exclusão física de usuário.
 
 ## Riscos residuais
 

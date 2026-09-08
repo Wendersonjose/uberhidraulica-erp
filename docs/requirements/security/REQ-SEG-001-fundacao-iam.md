@@ -7,7 +7,7 @@ ID: REQ-SEG-001
 Versão: 1
 Status: APPROVED
 Task: TASK-0003
-Decisão: DR-0002 — DECIDED
+Decisões: DR-0002 — DECIDED; DR-0003 — DECIDED
 Módulo proprietário: IAM
 Responsável funcional: AG-09
 Data: 2026-09-08
@@ -96,6 +96,26 @@ Registrar de forma persistente, sem segredos: bootstrap concluído, login bem-su
 
 Auditoria não é substituída por `logger`. Registros relevantes de IAM não são apagados para ocultar histórico.
 
+### RN-IAM-015 — Credencial inicial de usuário
+
+Criação autorizada de usuário gera senha temporária por fonte criptograficamente segura, mostra o valor em claro uma única vez no resultado imediato, persiste somente o hash e ativa `mustChangePassword`. O segredo não aparece em persistência, log ou auditoria.
+
+### RN-IAM-016 — Bootstrap administrável
+
+O bootstrap garante de forma consistente o perfil fixo `DONO`, as permissões administrativas IAM necessárias, suas associações ao perfil e o primeiro Dono vinculado ao perfil com troca obrigatória. Os dois perfis de gerente não recebem privilégios IAM automaticamente.
+
+### RN-IAM-017 — Catálogo fixo de perfis
+
+Existem somente `DONO`, `GERENTE_ADMINISTRATIVO` e `GERENTE_FINANCEIRO`. Códigos são estáveis; tipos não podem ser criados, excluídos, renomeados ou transformados. Associações perfil-permissão e exceções individuais permanecem configuráveis.
+
+### RN-IAM-018 — Estado do usuário
+
+`UserState = ACTIVE|INACTIVE`. Apenas usuário `ACTIVE` pode autenticar. Inativação autorizada invalida imediatamente sua sessão e preserva usuário, histórico relevante de credencial e auditoria. Reativação não restaura sessão anterior.
+
+### RN-IAM-019 — Continuidade administrativa
+
+Não existe exclusão física de usuário. O último Dono `ACTIVE` não pode ser inativado. A tentativa falha sem alteração parcial, e a invariante deve permanecer sob concorrência.
+
 ## Fora do escopo
 
 React e qualquer frontend; recuperação por e-mail; MFA; SSO/OAuth; matriz de permissões dos módulos ainda não implementados; ações críticas genéricas de outros domínios; links públicos de orçamento; `Tenant`, `tenant_id`, resolução/contexto de tenant e multi-tenancy.
@@ -129,11 +149,26 @@ Nenhuma decisão de interface pertence a esta Task. Uma futura Task de frontend 
 - **CA-IAM-023:** DADO PostgreSQL real, QUANDO constraints de usuários/perfis/permissões/exceções forem exercitadas, ENTÃO duplicidades e estados inválidos são rejeitados.
 - **CA-IAM-024:** DADO usuário autenticado, QUANDO consultar a sessão atual, ENTÃO recebe sua identidade e permissões efetivas, nunca hash ou segredo.
 - **CA-IAM-025:** DADA rota administrativa, QUANDO chamada por usuário sem permissão efetiva, ENTÃO é negada mesmo que o cliente monte a requisição manualmente.
+- **CA-IAM-026:** DADA criação autorizada de usuário, QUANDO concluída, ENTÃO gera senha temporária criptograficamente segura e a retorna em claro somente no resultado imediato.
+- **CA-IAM-027:** DADO usuário recém-criado, QUANDO persistido, ENTÃO possui `mustChangePassword = true` e primeiro login segue o fluxo restrito de troca obrigatória.
+- **CA-IAM-028:** DADA senha temporária de criação, QUANDO a operação terminar, ENTÃO somente seu hash existe na persistência e o valor em claro não aparece em log ou auditoria.
+- **CA-IAM-029:** DADO banco sem usuários, QUANDO bootstrap concluir, ENTÃO o primeiro Dono possui, pelo perfil `DONO`, as permissões administrativas IAM necessárias para administrar o módulo.
+- **CA-IAM-030:** DADO perfil `GERENTE_ADMINISTRATIVO`, QUANDO catálogo inicial for criado, ENTÃO ele não recebe automaticamente permissão administrativa IAM.
+- **CA-IAM-031:** DADO perfil `GERENTE_FINANCEIRO`, QUANDO catálogo inicial for criado, ENTÃO ele não recebe automaticamente permissão administrativa IAM.
+- **CA-IAM-032:** DADO catálogo do MVP, QUANDO consultado, ENTÃO contém somente `DONO`, `GERENTE_ADMINISTRATIVO` e `GERENTE_FINANCEIRO`, com códigos estáveis.
+- **CA-IAM-033:** DADA API IAM, QUANDO inspecionada ou chamada, ENTÃO não oferece criação/exclusão de tipo de perfil nem alteração de seu código ou transformação entre tipos.
+- **CA-IAM-034:** DADO usuário `INACTIVE`, QUANDO apresentar credenciais corretas, ENTÃO nenhuma sessão autenticada é criada.
+- **CA-IAM-035:** DADO usuário com sessão ativa, QUANDO for inativado por operação autorizada, ENTÃO sua sessão é invalidada imediatamente.
+- **CA-IAM-036:** DADO usuário inativo posteriormente reativado, QUANDO a reativação concluir, ENTÃO nenhuma sessão anterior é restaurada e novo login é necessário.
+- **CA-IAM-037:** DADA inativação de usuário, QUANDO concluída, ENTÃO usuário, histórico relevante de credencial e auditoria permanecem preservados e não existe exclusão física.
+- **CA-IAM-038:** DADO apenas um Dono `ACTIVE`, QUANDO sua inativação for solicitada, ENTÃO a operação falha sem mudança parcial.
+- **CA-IAM-039:** DADOS dois ou mais Donos `ACTIVE`, QUANDO inativações concorrentes forem executadas, ENTÃO o resultado preserva pelo menos um Dono `ACTIVE`.
 
 ## Dependências e decisões
 
 ```text
 TASK-0002 — DONE
 DR-0002 — DECIDED
+DR-0003 — DECIDED
 Decision Requests impeditivas — nenhuma
 ```

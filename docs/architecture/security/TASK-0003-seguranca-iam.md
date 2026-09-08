@@ -6,6 +6,7 @@
 STATUS: SECURITY_APPROVED
 AUTENTICAÇÃO: e-mail + senha; Spring Security Session
 AUTORIZAÇÃO: perfil com exceção individual prevalente
+DECISÕES: DR-0002 e DR-0003 — DECIDED
 DECISION REQUESTS ABERTAS: 0
 PRONTO: SIM
 ```
@@ -15,7 +16,7 @@ PRONTO: SIM
 - hash de senha adaptativo provido por biblioteca aprovada; parâmetros escolhidos por benchmark/recomendação vigente na implementação;
 - comparação de credenciais pelo componente aprovado, sem código criptográfico próprio;
 - senha inicial e temporária recebidas/geradas somente em memória pelo tempo indispensável;
-- uma única exposição da credencial temporária ao Dono que executou reset autorizado;
+- uma única exposição da credencial temporária no resultado imediato da criação de usuário ou ao Dono que executou reset autorizado;
 - exclusão de senha, hash, cookie e token CSRF de logs, auditoria e respostas de leitura;
 - proteção contra enumeração de contas;
 - proteção CSRF habilitada em operações mutáveis autenticadas;
@@ -24,6 +25,10 @@ PRONTO: SIM
 - `HttpOnly` sempre e `Secure` em produção;
 - autorização por permissão efetiva aplicada no backend;
 - acesso restrito durante troca obrigatória.
+- usuário `INACTIVE` não autentica e sua inativação invalida imediatamente a sessão;
+- não registrar senha temporária de criação/reset em auditoria ou observabilidade.
+- bootstrap concede ao `DONO` as capacidades administrativas IAM necessárias sem concedê-las automaticamente aos perfis de gerente;
+- proteção do último Dono `ACTIVE` impede perda de continuidade administrativa, inclusive sob concorrência.
 
 ## SameSite e HTTPS
 

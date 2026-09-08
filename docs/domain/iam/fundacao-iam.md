@@ -5,7 +5,7 @@
 ```text
 Task: TASK-0003
 Requisito: REQ-SEG-001 — APPROVED
-Decisão: DR-0002 — DECIDED pelo proprietário do produto
+Decisões: DR-0002 e DR-0003 — DECIDED pelo proprietário do produto
 Responsável: AG-09 — Segurança & Auditoria
 Status: SECURITY_APPROVED
 Pronto para arquitetura: SIM
@@ -19,8 +19,10 @@ O contexto é uma única oficina. `Tenant` não é conceito do domínio IAM nest
 
 ## Conceitos e invariantes
 
-- **User:** identidade interna com e-mail, estado, perfil e metadados auditáveis.
-- **Profile:** agrupamento configurável de permissões; perfis iniciais previstos: Dono, Gerente Administrativo e Gerente Financeiro.
+- **User:** identidade interna com e-mail, `UserState`, perfil e metadados auditáveis.
+- **UserState:** estado fixo `ACTIVE|INACTIVE`.
+- **Profile:** tipo fixo identificado por `ProfileCode`; permissões associadas são configuráveis.
+- **ProfileCode:** catálogo estável `DONO|GERENTE_ADMINISTRATIVO|GERENTE_FINANCEIRO`.
 - **Permission:** capacidade estável identificada por código técnico.
 - **ProfilePermission:** concessão de uma permissão por um perfil.
 - **UserPermissionException:** resolução individual `INHERIT`, `ALLOW` ou `DENY` para um par usuário/permissão.
@@ -40,6 +42,14 @@ Invariantes:
 8. durante troca obrigatória, acesso fica restrito à sessão atual, troca própria e logout;
 9. novo login válido invalida sessão anterior;
 10. somente Dono autenticado e autorizado redefine senha alheia.
+11. novo usuário nasce `ACTIVE`, com senha temporária gerada de modo seguro e `mustChangePassword = true`;
+12. senha temporária é exibida uma vez e somente o hash é persistido;
+13. existem somente os três `ProfileCode` fixos e nenhum tipo de perfil é criado, excluído, renomeado ou transformado;
+14. usuário `INACTIVE` não autentica;
+15. inativação invalida imediatamente sessão ativa e não apaga usuário ou histórico;
+16. reativação não restaura sessão anterior;
+17. existe sempre ao menos um Dono `ACTIVE`, inclusive sob concorrência relevante;
+18. usuário não possui exclusão física.
 
 ## Casos de uso
 
@@ -52,8 +62,8 @@ ChangeOwnPassword
 ResetUserPasswordAsOwner
 CreateUser
 UpdateUser
-CreateProfile
-UpdateProfile
+ChangeUserState
+ListFixedProfiles
 AssignPermissionToProfile
 SetUserPermissionException
 ResolveEffectivePermission
@@ -75,7 +85,15 @@ resultado efetivo
 
 ## Credencial temporária
 
-A geração usa fonte criptograficamente segura e formato técnico capaz de atender a política de senha. O valor em claro é apresentado uma única vez no resultado imediato da redefinição autorizada, nunca persistido ou logado. A persistência recebe somente a representação derivada e marca troca obrigatória.
+A criação de usuário e a redefinição administrativa usam fonte criptograficamente segura. O valor em claro é apresentado uma única vez no resultado imediato da operação autorizada, nunca persistido, logado ou auditado. A persistência recebe somente o hash e marca troca obrigatória.
+
+## Bootstrap administrativo
+
+Em banco sem usuários, o bootstrap garante catálogo dos três perfis, permissões administrativas IAM, associações iniciais dessas permissões ao `DONO` e primeiro Dono vinculado. Os perfis de gerente não recebem essas permissões automaticamente. A operação é consistente e idempotente quanto ao catálogo.
+
+## Estado e continuidade do Dono
+
+Inativar usuário é transição de `ACTIVE` para `INACTIVE`, seguida de invalidação imediata da sessão. Reativar não autentica nem restaura sessão. Antes de inativar um Dono, o domínio protege a existência de outro Dono `ACTIVE`; persistência/transação deve conservar essa invariante em concorrência.
 
 ## Sessão e segurança web
 
