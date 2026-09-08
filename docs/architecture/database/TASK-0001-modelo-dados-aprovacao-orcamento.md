@@ -39,7 +39,7 @@ docs/architecture/security/TASK-0001-seguranca-aprovacao-publica.md
 
 docs/api/TASK-0001-aprovacao-publica-orcamento.md
 
-docs/architecture/review/TASK-0001-revisao-tecnica.md
+docs/review/TASK-0001-revisao-tecnica.md
 
 decision-requests/DR-0001-obsolescencia-versao-comercial.md
 ```

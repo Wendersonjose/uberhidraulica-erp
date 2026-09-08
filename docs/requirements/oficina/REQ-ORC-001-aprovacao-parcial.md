@@ -11,13 +11,19 @@ REQ-ORC-001
 Título:
 
 ```text
-Aprovação parcial de itens do orçamento
+Aprovação Parcial de Orçamento
 ```
 
 Módulo:
 
 ```text
 Oficina / Orçamento
+```
+
+Task:
+
+```text
+TASK-0001 — Aprovação Parcial de Orçamento
 ```
 
 Agente responsável:
@@ -32,12 +38,6 @@ Agente de domínio:
 AG-03 — Domínio Oficina
 ```
 
-Task relacionada:
-
-```text
-TASK-0001 — Aprovação Parcial de Orçamento
-```
-
 Status:
 
 ```text
@@ -50,276 +50,135 @@ Prioridade:
 HIGH
 ```
 
-Data:
+Revisão:
 
 ```text
-2026-09-05
+2
+```
+
+Data da revisão:
+
+```text
+2026-09-08
+```
+
+Decision Request relacionada:
+
+```text
+DR-0001 — Momento de obsolescência de versão comercial pendente
+```
+
+Decisão:
+
+```text
+OPÇÃO B
 ```
 
 ---
 
-# 2. Objetivo
+## 2. Objetivo
 
-Permitir que o cliente analise e decida individualmente sobre cada item de um orçamento.
+Permitir que o cliente analise um orçamento e tome decisões individualmente sobre cada item apresentado.
 
-O cliente deve poder:
+O cliente pode:
 
 ```text
-aprovar um item;
-rejeitar um item;
-não tomar decisão sobre outro item.
+aprovar;
+
+rejeitar;
+
+não decidir.
 ```
 
-O sistema não deve exigir aprovação ou rejeição de todos os itens para que os itens já aprovados possam seguir no fluxo operacional.
+A ausência de decisão sobre um item não impede a consolidação das decisões tomadas sobre outros itens.
 
 ---
 
-# 3. Problema de negócio
+## 3. Contexto
 
-Na operação da oficina, um orçamento pode conter múltiplos serviços.
+A Ordem de Serviço existe antes do orçamento.
 
-O cliente pode desejar executar apenas parte dos serviços apresentados.
-
-Exemplo:
+Relacionamento:
 
 ```text
-Orçamento
-
-Serviço A
-R$ 500
-→ cliente aprova
-
-Serviço B
-R$ 300
-→ cliente rejeita
-
-Serviço C
-R$ 700
-→ cliente ainda não decidiu
+WorkOrder
+↓
+Quote
+↓
+QuoteRevision
+↓
+QuoteItem / QuoteItemRevision
 ```
 
-O sistema deve representar:
+A aprovação do orçamento:
 
 ```text
-Serviço A → APROVADO
-Serviço B → REJEITADO
-Serviço C → PENDENTE_APROVACAO
-```
-
-O orçamento não pode ser representado apenas por:
-
-```text
-aprovado = true
-```
-
-ou:
-
-```text
-aprovado = false
-```
-
-porque isso perde a decisão individual de cada item.
-
----
-
-# 4. Resultado esperado
-
-O sistema deve permitir que um orçamento possua simultaneamente itens em estados diferentes.
-
-Exemplo:
-
-```text
-ORÇAMENTO
-
-Item 1
-→ APROVADO
-
-Item 2
-→ REJEITADO
-
-Item 3
-→ PENDENTE_APROVACAO
-```
-
-O item aprovado deve poder seguir para execução independentemente dos demais.
-
----
-
-# 5. Escopo
-
-Este requisito cobre:
-
-```text
-- decisão individual por item;
-- aprovação parcial;
-- rejeição individual;
-- item sem decisão;
-- validade do orçamento;
-- preservação de decisões anteriores;
-- revisões;
-- alteração comercial;
-- alteração interna;
-- complementos;
-- reabertura de item rejeitado;
-- identificação do cliente;
-- evidência da decisão;
-- acesso público seguro;
-- idempotência da decisão.
+não cria a OS;
+não fecha a OS;
+não significa pagamento;
+não significa recebimento;
+não emite NFS-e;
+não gera comissão automaticamente.
 ```
 
 ---
 
-# 6. Fora do escopo
+## 4. Cliente externo
 
-Este requisito não define:
+O cliente não precisa possuir:
 
 ```text
-- envio por WhatsApp;
-- integração com WhatsApp;
-- pagamento;
-- recebimento;
-- geração de conta a receber;
-- emissão de NFS-e;
-- cálculo de comissão;
-- reserva automática de estoque;
-- compra automática;
-- implementação Java;
-- implementação React;
-- estrutura física definitiva do banco.
+usuário;
+senha;
+perfil;
+sessão interna.
 ```
 
-Esses assuntos pertencem a requisitos ou Tasks específicas.
-
----
-
-# 7. Atores
-
-## 7.1 Cliente
-
-O cliente:
+O acesso ocorre através de:
 
 ```text
-não possui login interno no ERP no MVP.
-```
-
-Pode acessar o orçamento através de link público seguro.
-
----
-
-## 7.2 Gerente
-
-Usuário interno autorizado pode:
-
-```text
-criar orçamento;
-alterar itens;
-adicionar complementos;
-reabrir item rejeitado;
-reenviar orçamento.
-```
-
-A autorização final dependerá das permissões definidas no módulo de segurança.
-
----
-
-## 7.3 Sistema
-
-O sistema deve:
-
-```text
-validar link;
-validar revisão;
-validar validade;
-registrar decisões;
-preservar histórico;
-registrar evidências;
-impedir aplicação de decisão em versão incorreta.
+link público seguro.
 ```
 
 ---
 
-# 8. Conceitos
+## 5. Estados funcionais da decisão
 
-## 8.1 Orçamento
-
-Conjunto comercial apresentado ao cliente dentro de uma Ordem de Serviço.
-
----
-
-## 8.2 Item do orçamento
-
-Unidade individual que pode receber decisão do cliente.
-
-Um item pode corresponder, conforme o domínio da Oficina, a um serviço ou cobrança apresentada ao cliente.
-
-A modelagem definitiva pertence ao AG-03 e AG-02.
-
----
-
-## 8.3 Revisão
-
-Representação versionada do conteúdo comercial apresentado ao cliente.
-
-Uma revisão deve permitir identificar exatamente:
+Estados funcionais:
 
 ```text
-o que foi apresentado;
-quando foi apresentado;
-qual preço foi apresentado;
-qual descrição foi apresentada;
-qual quantidade foi apresentada.
-```
+PENDENTE_APROVACAO
 
----
-
-## 8.4 Decisão
-
-Manifestação do cliente em relação a um item específico de uma revisão específica.
-
-Valores funcionais necessários:
-
-```text
 APROVADO
+
 REJEITADO
 ```
 
-A ausência de decisão mantém o item:
+---
+
+## 6. Pendência
+
+Ausência de decisão significa:
 
 ```text
 PENDENTE_APROVACAO
 ```
 
----
+enquanto a versão continuar apta a receber decisão.
 
-# 9. Regra de aprovação individual
-
-Cada item deve possuir decisão própria.
-
-É proibido exigir que todo orçamento tenha uma única decisão indivisível.
-
----
-
-# 10. Aprovação parcial
-
-O sistema deve suportar:
+Regra:
 
 ```text
-Item A → APROVADO
-Item B → APROVADO
-Item C → PENDENTE_APROVACAO
-```
-
-sem transformar automaticamente o item C em:
-
-```text
+SEM DECISÃO
+≠
 REJEITADO
 ```
 
 ---
 
-# 11. Rejeição parcial
+## 7. Aprovação parcial
 
-Também deve ser permitido:
+Exemplo:
 
 ```text
 Item A → APROVADO
@@ -327,1294 +186,1270 @@ Item B → REJEITADO
 Item C → PENDENTE_APROVACAO
 ```
 
+Esse estado é válido.
+
+O sistema não exige decisão completa do orçamento.
+
 ---
 
-# 12. Item sem decisão
+## 8. Execução independente
 
-O cliente não é obrigado a decidir todos os itens em uma única interação.
-
-Um item que não recebeu aprovação nem rejeição permanece:
+Um item aprovado pode seguir para seu fluxo operacional permitido mesmo que outros itens permaneçam:
 
 ```text
-PENDENTE_APROVACAO
+pendentes;
+rejeitados.
 ```
 
----
-
-# 13. Execução dos itens aprovados
-
-Um item aprovado pode seguir para o fluxo operacional de execução.
+Estado comercial e estado operacional são conceitos distintos.
 
 Exemplo:
 
 ```text
-Serviço A → APROVADO
-Serviço B → PENDENTE_APROVACAO
+COMERCIAL:
+APROVADO
+
+OPERACIONAL:
+NÃO INICIADO
+```
+
+---
+
+## 9. Histórico
+
+Toda decisão consolidada é histórica.
+
+É proibido sobrescrever uma decisão anterior para representar uma nova condição comercial.
+
+Exemplo proibido:
+
+```text
+A-v1
+R$ 500
+APROVADO
+```
+
+ser alterado para:
+
+```text
+A-v1
+R$ 600
+APROVADO
+```
+
+A condição de R$ 600 precisa ser representada por nova versão.
+
+---
+
+## 10. QuoteRevision
+
+`QuoteRevision` representa:
+
+```text
+uma apresentação global do orçamento.
+```
+
+Estados técnicos mínimos:
+
+```text
+DRAFT
+
+PRESENTED
+```
+
+---
+
+## 11. QuoteItem
+
+`QuoteItem` representa:
+
+```text
+a identidade lógica permanente de um item comercial.
+```
+
+---
+
+## 12. QuoteItemRevision
+
+`QuoteItemRevision` representa:
+
+```text
+uma condição comercial específica daquele item.
+```
+
+Inclui, no mínimo:
+
+```text
+descrição;
+quantidade;
+preço.
+```
+
+---
+
+## 13. Alterações comerciais
+
+As seguintes alterações exigem nova versão comercial:
+
+```text
+preço;
+
+descrição apresentada ao cliente;
+
+quantidade apresentada ao cliente.
+```
+
+A nova versão exige nova decisão.
+
+---
+
+## 14. Alterações internas
+
+Alterações exclusivamente internas não invalidam automaticamente uma decisão comercial.
+
+Exemplos:
+
+```text
+técnico;
+
+fornecedor;
+
+custo;
+
+referência interna;
+
+informação operacional.
+```
+
+---
+
+## 15. Snapshot comercial
+
+A decisão deve permanecer vinculada exatamente à condição comercial visualizada pelo cliente.
+
+Alterações posteriores no:
+
+```text
+catálogo;
+
+preço padrão;
+
+descrição padrão;
+
+custos internos
+```
+
+não alteram retroativamente o conteúdo aprovado.
+
+---
+
+## 16. Complemento
+
+Uma nova revisão global pode adicionar itens sem alterar versões comerciais existentes.
+
+Exemplo:
+
+```text
+R1
+├── A-v1
+└── B-v1
+```
+
+Depois:
+
+```text
+R2
+├── A-v1
+├── B-v1
+└── C-v1
+```
+
+A existência de `R2`:
+
+```text
+não invalida A-v1;
+não invalida B-v1.
+```
+
+C-v1 inicia sua própria decisão.
+
+---
+
+## 17. Reabertura de item rejeitado
+
+Usuário interno autorizado pode reabrir um item rejeitado.
+
+Antes:
+
+```text
+A-v1
+REJEITADO
+```
+
+Depois:
+
+```text
+A-v1
+REJEITADO — histórico
+
+A-v2
+PENDENTE_APROVACAO
+```
+
+A rejeição anterior nunca é apagada.
+
+---
+
+## 18. Reabertura com mesmos termos
+
+Mesmo quando:
+
+```text
+descrição;
+quantidade;
+preço
+```
+
+continuarem iguais, uma reabertura cria nova oportunidade de decisão.
+
+Portanto deve existir:
+
+```text
+nova QuoteItemRevision.
+```
+
+---
+
+# 19. DR-0001 — Obsolescência Comercial
+
+A Decision Request:
+
+```text
+DR-0001
+```
+
+foi decidida pelo proprietário do produto como:
+
+```text
+OPÇÃO B
+```
+
+---
+
+## 20. Nova versão em DRAFT
+
+Dado:
+
+```text
+A-v1
+PRESENTED
+PENDENTE_APROVACAO
+```
+
+quando uma nova versão:
+
+```text
+A-v2
+```
+
+for criada somente dentro de:
+
+```text
+QuoteRevision DRAFT
+```
+
+então:
+
+```text
+A-v1 CONTINUA APTA A RECEBER DECISÃO
+```
+
+desde que as demais condições permaneçam válidas.
+
+---
+
+## 21. Justificativa da regra DRAFT
+
+`DRAFT` representa:
+
+```text
+trabalho interno.
+```
+
+Uma condição que ainda não foi apresentada ao cliente não substitui a proposta que ele efetivamente recebeu.
+
+Regra:
+
+```text
+DRAFT NÃO INVALIDA
+A PROPOSTA APRESENTADA.
+```
+
+---
+
+## 22. Nova versão PRESENTED
+
+Quando uma nova versão comercial do:
+
+```text
+MESMO QuoteItem
+```
+
+for efetivamente:
+
+```text
+PRESENTED
+```
+
+ao cliente, a versão comercial anterior:
+
+```text
+DEIXA DE ACEITAR NOVAS DECISÕES.
+```
+
+---
+
+## 23. Exemplo
+
+Inicialmente:
+
+```text
+R1 PRESENTED
+
+A-v1
+R$ 500
+PENDENTE
+```
+
+Gerente prepara:
+
+```text
+A-v2
+R$ 600
+DRAFT
 ```
 
 Resultado:
 
 ```text
-Serviço A pode ser executado.
-Serviço B continua aguardando.
+A-v1 ainda é decidível.
 ```
 
-A execução do item A não depende da decisão sobre o item B.
-
----
-
-# 14. Item pendente
-
-Item:
+Depois:
 
 ```text
-PENDENTE_APROVACAO
+R2 PRESENTED
+A-v2
+R$ 600
 ```
 
-não pode ser tratado como aprovado.
-
----
-
-# 15. Item rejeitado
-
-Item:
+Resultado:
 
 ```text
-REJEITADO
-```
+A-v1 deixa de aceitar nova decisão.
 
-não pode ser iniciado como serviço aprovado sem nova operação válida de reabertura/revisão.
+A-v2 passa a ser a nova condição comercial decidível.
+```
 
 ---
 
-# 16. Validade padrão
+## 24. Decisão anterior preservada
 
-A validade padrão de um orçamento é:
+Se A-v1 já tiver recebido decisão antes da apresentação de A-v2:
+
+```text
+A-v1 APPROVED
+```
+
+ou:
+
+```text
+A-v1 REJECTED
+```
+
+essa decisão continua histórica.
+
+A apresentação de A-v2:
+
+```text
+não apaga;
+
+não altera;
+
+não migra
+```
+
+a decisão de A-v1.
+
+---
+
+## 25. Aprovação não migra entre versões
+
+É proibido concluir:
+
+```text
+A-v1 APPROVED
+→
+A-v2 APPROVED
+```
+
+automaticamente.
+
+A-v2 representa nova condição comercial.
+
+---
+
+## 26. Obsolescência é por item
+
+Uma nova:
+
+```text
+QuoteRevision
+```
+
+global não torna todos os itens anteriores automaticamente obsoletos.
+
+A pergunta correta é:
+
+```text
+EXISTE UMA QuoteItemRevision POSTERIOR
+DO MESMO QuoteItem
+QUE FOI EFETIVAMENTE PRESENTED?
+```
+
+---
+
+## 27. Complemento após DR-0001
+
+Exemplo:
+
+```text
+R1
+A-v1
+```
+
+Depois:
+
+```text
+R2
+A-v1
+B-v1
+```
+
+Mesmo que R2 seja `PRESENTED`:
+
+```text
+A-v1 não fica obsoleta
+```
+
+porque a mesma `QuoteItemRevision` foi reutilizada.
+
+---
+
+## 28. Token não supera regra comercial
+
+Mesmo quando:
+
+```text
+token válido;
+token não expirado;
+token não revogado;
+```
+
+uma versão comercial já substituída:
+
+```text
+não pode receber nova decisão.
+```
+
+Regra:
+
+```text
+TOKEN VÁLIDO
+≠
+VERSÃO DECIDÍVEL
+```
+
+---
+
+## 29. Validade comercial
+
+Validade padrão:
 
 ```text
 7 dias
 ```
 
----
-
-# 17. Configuração de validade
-
-A validade pertence à apresentação/revisão comercial.
-
-A implementação deve permitir preservar a data efetiva utilizada em cada revisão.
+a partir da apresentação, salvo configuração aprovada aplicável.
 
 ---
 
-# 18. Efeito da expiração
+## 30. Efeito da expiração
 
-A expiração afeta:
+A expiração bloqueia:
 
 ```text
-itens ainda pendentes
+novas decisões sobre itens ainda pendentes.
 ```
 
-e não deve invalidar automaticamente:
+Não altera:
 
 ```text
-itens aprovados anteriormente dentro da validade.
+aprovações anteriores;
+
+rejeições anteriores;
+
+histórico.
 ```
 
 ---
 
-# 19. Exemplo de expiração
+## 31. Aprovação existente após expiração
+
+Exemplo:
 
 ```text
-Dia 1:
-orçamento enviado
-
 Dia 3:
-Item A aprovado
+A-v1 APPROVED
 
 Dia 8:
-orçamento atingiu validade
-
-Resultado:
-
-Item A → continua APROVADO
-Item B pendente → não pode receber nova aprovação sem renovação válida
-```
-
----
-
-# 20. Histórico
-
-Nenhuma decisão anterior deve desaparecer porque uma nova revisão foi criada.
-
-O sistema deve permitir reconstruir:
-
-```text
-qual item foi apresentado;
-qual versão foi apresentada;
-qual decisão foi tomada;
-quando ocorreu;
-quem informou a decisão.
-```
-
----
-
-# 21. Alteração comercial
-
-As seguintes alterações invalidam a aprovação anterior para a nova versão:
-
-```text
-preço;
-descrição;
-quantidade.
-```
-
----
-
-# 22. Efeito da alteração comercial
-
-Exemplo:
-
-```text
-Revisão 1
-
-Troca da caixa de direção
-R$ 1.500
-
-Cliente:
-APROVADO
-```
-
-Depois:
-
-```text
-Gerente altera preço para R$ 1.700
-```
-
-Resultado obrigatório:
-
-```text
-Revisão 1
-R$ 1.500
-→ APROVADO
-→ preservada historicamente
-
-Revisão 2
-R$ 1.700
-→ PENDENTE_APROVACAO
-```
-
----
-
-# 23. Proibição de sobrescrita
-
-É proibido transformar:
-
-```text
-Revisão 1
-R$ 1.500
-APROVADO
-```
-
-em:
-
-```text
-Revisão 1
-R$ 1.700
-APROVADO
-```
-
-Isso produziria evidência falsa de que o cliente aprovou R$ 1.700.
-
----
-
-# 24. Alteração de descrição
-
-Alteração de descrição apresentada ao cliente exige nova aprovação.
-
----
-
-# 25. Alteração de quantidade
-
-Alteração de quantidade apresentada ao cliente exige nova aprovação.
-
----
-
-# 26. Alteração interna
-
-Alterações que não modificam a oferta comercial ao cliente não invalidam automaticamente a aprovação.
-
-Exemplos:
-
-```text
-técnico responsável;
-fornecedor;
-custo de aquisição;
-custo médio;
-informação operacional interna.
-```
-
----
-
-# 27. Exemplo de alteração interna
-
-```text
-Cliente aprovou:
-Serviço X
-R$ 500
-```
-
-Depois:
-
-```text
-Técnico A
-→ substituído por Técnico B
-```
-
-Se descrição, quantidade e preço apresentados ao cliente permanecerem iguais:
-
-```text
-aprovação continua válida.
-```
-
----
-
-# 28. Complementos
-
-Novos serviços podem ser identificados depois de uma aprovação parcial.
-
-O sistema deve permitir adicionar novos itens sem invalidar automaticamente os itens anteriormente aprovados.
-
----
-
-# 29. Exemplo de complemento
-
-Situação inicial:
-
-```text
-Item A
-→ APROVADO
-
-Item B
-→ APROVADO
-```
-
-Durante execução:
-
-```text
-novo problema identificado
+revisão expirada
 ```
 
 Resultado:
 
 ```text
-Item A
-→ continua APROVADO
-
-Item B
-→ continua APROVADO
-
-Item C
-→ PENDENTE_APROVACAO
+A-v1 continua APPROVED.
 ```
 
 ---
 
-# 30. Reabertura de item rejeitado
+## 32. Identificação do cliente
 
-Gerente autorizado pode reabrir um item anteriormente rejeitado.
-
----
-
-# 31. Preservação da rejeição
-
-Reabrir não significa apagar a rejeição anterior.
-
-Exemplo:
-
-```text
-Revisão 1
-Item A
-R$ 700
-→ REJEITADO
-```
-
-Gerente renegocia:
-
-```text
-Revisão 2
-Item A
-R$ 600
-→ PENDENTE_APROVACAO
-```
-
-A decisão:
-
-```text
-REJEITADO na revisão 1
-```
-
-continua no histórico.
-
----
-
-# 32. Decisão vinculada à revisão
-
-Uma decisão deve estar vinculada exatamente à revisão que o cliente visualizou.
-
----
-
-# 33. Revisão antiga
-
-Se uma nova revisão substituir comercialmente uma revisão anterior, uma ação realizada utilizando a revisão anterior não pode ser aplicada silenciosamente à revisão nova.
-
----
-
-# 34. Regra contra aprovação implícita
-
-O sistema não pode concluir:
-
-```text
-"o cliente aprovou a versão nova porque já tinha aprovado a antiga"
-```
-
-quando houve mudança que exige nova aprovação.
-
----
-
-# 35. Acesso do cliente
-
-O cliente não precisa criar conta.
-
-O sistema deve fornecer:
-
-```text
-link público seguro
-```
-
-para acesso ao orçamento.
-
----
-
-# 36. Token público
-
-O link deve utilizar token:
-
-```text
-imprevisível;
-limitado ao recurso;
-com validade;
-revogável quando necessário.
-```
-
-A definição técnica pertence ao AG-09 e AG-02.
-
----
-
-# 37. Identificação para decisão
-
-Para concluir uma decisão pública, registrar:
+Para consolidar decisão pública devem ser informados:
 
 ```text
 nome;
-CPF ou CNPJ;
-aceite explícito.
+
+CPF ou CNPJ.
 ```
 
 ---
 
-# 38. Evidências técnicas
+## 33. Aceite explícito
 
-Também registrar:
+É obrigatório:
 
 ```text
-timestamp;
+explicitAcceptance = true
+```
+
+A simples abertura do link:
+
+```text
+não aprova;
+não rejeita;
+não cria decisão.
+```
+
+---
+
+## 34. Evidências
+
+A submissão deve preservar, no mínimo:
+
+```text
+Quote;
+
+QuoteRevision;
+
+QuoteItemRevision;
+
+decisão;
+
+nome declarado;
+
+CPF/CNPJ declarado;
+
+aceite explícito;
+
+timestamp do servidor;
+
 IP;
-user-agent.
+
+User-Agent.
 ```
 
-Esses dados servem como evidência técnica da operação.
-
 ---
 
-# 39. Aceite explícito
+## 35. Tempo
 
-O cliente deve executar uma ação clara de confirmação.
-
-Não considerar mera abertura do link como aprovação.
-
----
-
-# 40. Dados apresentados
-
-O sistema deve ser capaz de identificar o conteúdo comercial apresentado no momento da decisão.
-
-No mínimo:
+A autoridade temporal é:
 
 ```text
-item;
-descrição;
-quantidade;
-preço;
-revisão.
+servidor.
 ```
+
+Não confiar no horário informado pelo navegador.
 
 ---
 
-# 41. Auditoria
+## 36. Idempotência
 
-A operação deve preservar dados suficientes para demonstrar:
+A retransmissão da mesma operação não pode duplicar decisões.
+
+Mesmo:
 
 ```text
-quem declarou a decisão;
-qual decisão;
-sobre qual item;
-sobre qual revisão;
-quando;
-sobre quais condições comerciais.
+requestId
++
+mesmo conteúdo semântico
+```
+
+deve produzir:
+
+```text
+mesmo efeito funcional.
 ```
 
 ---
 
-# 42. Token e auditoria
+## 37. Reuso conflitante
 
-O segredo bruto utilizado no link não precisa ser armazenado de forma recuperável para fins de auditoria.
+Mesmo:
 
-O AG-09 deverá definir estratégia segura de identificação do acesso.
+```text
+requestId
+```
+
+com conteúdo diferente deve gerar:
+
+```text
+CONFLITO.
+```
 
 ---
 
-# 43. Idempotência
+## 38. Atomicidade
 
-Solicitação repetida não pode criar efeito operacional duplicado.
+Uma submissão com múltiplas decisões é atômica.
 
 Exemplo:
 
 ```text
-cliente clica em APROVAR;
-rede demora;
-cliente clica novamente;
-duas requisições chegam.
+A APPROVE
+B REJECT
 ```
 
-Resultado:
+Se B não puder ser consolidada:
 
 ```text
-uma única aprovação efetiva.
+A também não deve ser consolidada
+naquela submissão.
 ```
 
 ---
 
-# 44. Concorrência
+## 39. Uma decisão efetiva por versão
 
-O requisito deve funcionar corretamente mesmo quando:
+No escopo da TASK-0001:
 
 ```text
-cliente está visualizando revisão antiga
-e gerente cria nova revisão.
+uma QuoteItemRevision
+possui no máximo
+uma decisão efetiva.
 ```
 
 ---
 
-# 45. Regra de concorrência
+## 40. Retratação
 
-Nenhuma decisão deve migrar automaticamente de uma revisão para outra.
+Retratação pública não faz parte desta Task.
 
----
-
-# 46. Relação com a Ordem de Serviço
-
-O orçamento pertence ao contexto de uma Ordem de Serviço existente.
-
-A OS existe antes do orçamento.
-
----
-
-# 47. Aprovação não cria OS
-
-A aprovação de orçamento não cria uma nova OS.
-
----
-
-# 48. Aprovação não fecha OS
-
-A aprovação de itens não significa:
+Portanto:
 
 ```text
-OS concluída;
-OS fechada;
-veículo entregue.
+APPROVED
+→ REJECTED
 ```
 
----
-
-# 49. Aprovação e estoque
-
-A aprovação poderá futuramente disparar processos relacionados a:
+ou:
 
 ```text
-reserva de peça;
-necessidade de compra.
+REJECTED
+→ APPROVED
 ```
 
-Esses efeitos pertencem aos módulos correspondentes.
+não são atualizações permitidas da mesma `QuoteItemRevision`.
 
-Não fazem parte desta Task de simulação.
+Nova oportunidade exige nova versão quando prevista pelo processo.
 
 ---
 
-# 50. Aprovação e financeiro
+## 41. Segurança
 
-Aprovação não significa automaticamente:
+O cliente somente pode acessar:
 
 ```text
-pagamento;
-recebimento;
-liquidação;
-conciliação.
+Quote;
+
+QuoteRevision;
+
+QuoteItemRevision
 ```
 
----
-
-# 51. Aprovação e comissão
-
-Aprovação não gera comissão.
-
-A comissão torna-se elegível de acordo com as regras do serviço concluído.
+autorizados pelo acesso público correspondente.
 
 ---
 
-# 52. Aprovação e fiscal
+## 42. IDOR
 
-Aprovação não significa emissão de NFS-e.
-
----
-
-# 53. Estados funcionais mínimos
-
-Para decisão do item:
+É obrigatório impedir:
 
 ```text
-PENDENTE_APROVACAO
-APROVADO
-REJEITADO
+token do Quote A
+→ Quote B
 ```
 
-Estados adicionais técnicos ou de revisão poderão ser definidos pelo AG-03/AG-02 sem alterar a semântica aprovada.
-
----
-
-# 54. Transições funcionais
-
-Fluxo básico:
+e:
 
 ```text
-PENDENTE_APROVACAO
-    ├── aprovar
-    │      ↓
-    │   APROVADO
-    │
-    └── rejeitar
-           ↓
-        REJEITADO
+token da Revision R1
+→ item que não pertence a R1.
 ```
 
 ---
 
-# 55. Alteração comercial de aprovado
+## 43. Dados internos proibidos no acesso público
+
+Não expor:
 
 ```text
-APROVADO
-↓
-alteração comercial
-↓
-aprovação histórica preservada
-+
-nova revisão
-↓
-PENDENTE_APROVACAO
+custos;
+
+margem;
+
+lucro;
+
+comissão;
+
+salário;
+
+fornecedor;
+
+dados bancários;
+
+anotações administrativas;
+
+dados internos da oficina não necessários à decisão.
 ```
 
 ---
 
-# 56. Reabertura de rejeitado
+## 44. Concorrência crítica
+
+Cenário:
 
 ```text
-REJEITADO
-↓
-gerente autorizado reabre
-↓
-rejeição histórica preservada
-+
-nova revisão
-↓
-PENDENTE_APROVACAO
+cliente tenta decidir A-v1
+
+ao mesmo tempo em que
+
+gerente apresenta A-v2.
 ```
 
----
-
-# 57. Regra sobre estados históricos
-
-Não modificar o estado histórico para simular nova decisão.
-
-Criar nova representação/revisão quando necessário.
+O sistema deve produzir uma ordem coerente.
 
 ---
 
-# 58. Cenário principal
+## 45. DECIDE vence
+
+Se a decisão de A-v1 for consolidada primeiro:
+
+```text
+A-v1 recebe decisão válida.
+```
+
+Depois A-v2 pode ser apresentada.
+
+A decisão de A-v1 permanece histórica.
+
+---
+
+## 46. PRESENT vence
+
+Se A-v2 for apresentada primeiro:
+
+```text
+A-v1 torna-se não decidível.
+```
+
+A tentativa de registrar nova decisão em A-v1 deve ser rejeitada.
+
+---
+
+## 47. Regra de concorrência
+
+Não pode existir resultado final no qual:
+
+```text
+A-v2 já havia se tornado a nova condição apresentada
+```
+
+e posteriormente:
+
+```text
+A-v1 recebeu uma nova decisão
+```
+
+sem detecção de conflito.
+
+---
+
+# 48. Critérios de Aceite
+
+## CA-01 — Aprovação parcial
 
 Dado:
 
 ```text
-Orçamento possui:
-
-A — R$ 300
-B — R$ 500
-C — R$ 700
+A
+B
+C
 ```
+
+pendentes.
 
 Quando:
 
 ```text
-cliente aprova A;
-cliente rejeita B;
-cliente não decide C.
+A e B forem aprovados.
 ```
 
 Então:
 
 ```text
-A → APROVADO
-B → REJEITADO
-C → PENDENTE_APROVACAO
-```
-
-E:
-
-```text
-A pode seguir para execução.
+A = APROVADO
+B = APROVADO
+C = PENDENTE_APROVACAO
 ```
 
 ---
 
-# 59. Critério de aceite CA-01
+## CA-02 — Execução independente
 
-```gherkin
-DADO que um orçamento possui três itens pendentes
-QUANDO o cliente aprovar dois itens
-ENTÃO os dois itens devem ficar aprovados
-E o terceiro deve permanecer pendente
-```
+Item aprovado pode seguir para execução permitida sem exigir decisão dos demais itens.
 
 ---
 
-# 60. Critério de aceite CA-02
+## CA-03 — Rejeição individual
 
-```gherkin
-DADO que um item está aprovado
-E outro item do mesmo orçamento está pendente
-QUANDO o usuário autorizado iniciar o serviço aprovado
-ENTÃO o sistema deve permitir sua execução
-SEM exigir decisão sobre o item pendente
-```
+Cliente pode rejeitar somente determinado item.
 
 ---
 
-# 61. Critério de aceite CA-03
+## CA-04 — Histórico
 
-```gherkin
-DADO que um item está pendente
-QUANDO o cliente rejeitar esse item
-ENTÃO o item deve ficar rejeitado
-E não deve ser tratado como item aprovado
-```
+Nova revisão não apaga decisões anteriores.
 
 ---
 
-# 62. Critério de aceite CA-04
+## CA-05 — Alteração de preço
 
-```gherkin
-DADO que um item possui uma decisão registrada
-QUANDO uma nova revisão for criada
-ENTÃO a decisão anterior deve permanecer disponível no histórico
-```
+Alterar preço apresentado cria nova versão comercial pendente.
 
 ---
 
-# 63. Critério de aceite CA-05
+## CA-06 — Alteração interna
 
-```gherkin
-DADO que um item foi aprovado
-QUANDO o preço apresentado ao cliente for alterado
-ENTÃO a aprovação anterior deve ser preservada historicamente
-E uma nova revisão deve ficar pendente de aprovação
-```
+Alterar somente técnico não invalida decisão comercial.
 
 ---
 
-# 64. Critério de aceite CA-06
+## CA-07 — Expiração
 
-```gherkin
-DADO que um item foi aprovado
-QUANDO apenas o técnico responsável for alterado
-ENTÃO a aprovação do cliente deve permanecer válida
-```
+Item pendente não aceita nova decisão após expiração da condição comercial aplicável.
 
 ---
 
-# 65. Critério de aceite CA-07
+## CA-08 — Aprovação sobrevive à expiração
 
-```gherkin
-DADO que um item está pendente
-E a revisão atingiu sua data de validade
-QUANDO o cliente tentar aprovar esse item
-ENTÃO a nova aprovação deve ser impedida
-ATÉ existir condição válida para nova decisão
-```
+Item aprovado anteriormente permanece aprovado.
 
 ---
 
-# 66. Critério de aceite CA-08
+## CA-09 — Revisão exata
 
-```gherkin
-DADO que um item foi aprovado durante a validade
-QUANDO a revisão posteriormente expirar
-ENTÃO o item deve permanecer aprovado
-```
+Decisão somente afeta a versão comercial exata correspondente.
 
 ---
 
-# 67. Critério de aceite CA-09
+## CA-10 — Idempotência
 
-```gherkin
-DADO que existe uma revisão comercial mais nova
-QUANDO uma solicitação da revisão anterior for recebida
-ENTÃO o sistema não deve aplicar essa decisão à revisão nova
-```
+Retry equivalente não duplica efeito.
 
 ---
 
-# 68. Critério de aceite CA-10
+## CA-11 — Reabertura
 
-```gherkin
-DADO que uma decisão foi processada
-QUANDO a mesma operação for reenviada
-ENTÃO nenhuma decisão operacional duplicada deve ser criada
-```
+Reabertura preserva rejeição anterior e cria nova oportunidade.
 
 ---
 
-# 69. Critério de aceite CA-11
+## CA-12 — Complemento
 
-```gherkin
-DADO que o cliente rejeitou um item
-QUANDO um gerente autorizado reabrir esse item
-ENTÃO a rejeição anterior deve permanecer no histórico
-E uma nova revisão deve aguardar decisão
-```
+Novo item pode ser incluído sem invalidar versões comerciais não alteradas.
 
 ---
 
-# 70. Critério de aceite CA-12
+## CA-13 — Identificação
 
-```gherkin
-DADO que itens anteriores já foram aprovados
-QUANDO um novo item for acrescentado como complemento
-ENTÃO os itens anteriormente aprovados devem permanecer aprovados
-E o novo item deve aguardar decisão
-```
-
----
-
-# 71. Critério de aceite CA-13
-
-```gherkin
-DADO que o cliente acessa o orçamento por link público
-QUANDO tentar registrar uma decisão
-ENTÃO nome
-E CPF ou CNPJ
-E aceite explícito
-DEVEM ser informados conforme validação aplicável
-```
-
----
-
-# 72. Critério de aceite CA-14
-
-```gherkin
-DADO um token público inválido
-QUANDO alguém tentar consultar o orçamento
-ENTÃO o sistema deve negar o acesso
-E não deve revelar dados da OS
-```
-
----
-
-# 73. Critério de aceite CA-15
-
-```gherkin
-DADO que o cliente confirmou uma decisão
-QUANDO a decisão for persistida
-ENTÃO o sistema deve registrar timestamp
-E IP
-E user-agent
-E revisão
-E itens decididos
-```
-
----
-
-# 74. Cenários de erro
-
-O sistema deve tratar explicitamente:
-
-```text
-token inválido;
-token expirado;
-revisão inválida;
-revisão obsoleta;
-item inexistente;
-item não pertencente à revisão;
-item em estado incompatível;
-identificação ausente;
-solicitação duplicada;
-concorrência com nova revisão.
-```
-
----
-
-# 75. Mensagens
-
-A interface deve diferenciar, no mínimo:
-
-```text
-link inválido;
-link expirado;
-orçamento atualizado;
-decisão registrada;
-item já decidido;
-erro inesperado.
-```
-
-A redação final pertence ao AG-12.
-
----
-
-# 76. Requisitos de segurança
-
-AG-09 deve garantir análise de:
-
-```text
-entropia do token;
-expiração;
-revogação;
-escopo;
-CSRF quando aplicável;
-rate limiting quando necessário;
-exposição de dados;
-logs;
-armazenamento seguro;
-auditoria.
-```
-
----
-
-# 77. Dados pessoais
-
-O fluxo manipula:
+Decisão exige:
 
 ```text
 nome;
 CPF/CNPJ;
-IP;
-user-agent.
-```
-
-O acesso a esses dados deve respeitar necessidade operacional.
-
----
-
-# 78. Persistência histórica
-
-O modelo de dados deve permitir preservar:
-
-```text
-orçamento;
-revisão;
-item;
-conteúdo comercial;
-decisão;
-evidência.
+aceite explícito.
 ```
 
 ---
 
-# 79. Proibição de DELETE histórico
+## CA-14 — Token inválido
 
-Decisão do cliente não deve ser apagada fisicamente como fluxo normal de negócio.
+Token inválido não revela dados do orçamento.
 
 ---
 
-# 80. API
+## CA-15 — Evidências
 
-A futura API deverá permitir, conceitualmente:
+Decisão consolidada registra evidências exigidas.
+
+---
+
+## CA-16 — DRAFT não invalida
+
+Dado:
 
 ```text
-consultar revisão pública;
-registrar decisões;
-consultar histórico interno;
-criar revisão;
-reabrir item.
+A-v1 apresentada e pendente.
 ```
 
-Os endpoints definitivos não pertencem ao AG-01.
-
----
-
-# 81. Frontend interno
-
-Deve ser possível visualizar:
+Quando:
 
 ```text
-itens;
-status individual;
-revisões;
-histórico de decisão.
+A-v2 for criada apenas em DRAFT.
 ```
 
----
-
-# 82. Frontend público
-
-Deve ser possível:
+Então:
 
 ```text
-visualizar orçamento;
-identificar itens;
-aprovar item;
-rejeitar item;
-deixar item sem decisão;
-informar identificação;
-confirmar aceite.
+A-v1 continua decidível,
+respeitadas as demais regras.
 ```
 
 ---
 
-# 83. Não obrigatoriedade de decisão completa
+## CA-17 — PRESENTED substitui
 
-A interface não deve obrigar o cliente a selecionar:
+Dado:
 
 ```text
-APROVAR
-ou
-REJEITAR
+A-v1 apresentada e pendente.
 ```
 
-para todos os itens antes de enviar decisões.
-
----
-
-# 84. Preservação de não decisão
-
-Item omitido na submissão deve permanecer pendente.
-
-Não converter automaticamente em rejeitado.
-
----
-
-# 85. Regras não definidas neste requisito
-
-Este requisito não define:
+Quando:
 
 ```text
-estrutura exata das tabelas;
-nomes de endpoints;
-nome de classes Java;
-nome de componentes React;
-algoritmo de geração de token;
-estratégia exata de locking;
-status HTTP específicos;
-estrutura final de eventos.
+A-v2 for efetivamente PRESENTED.
 ```
 
-Esses pontos serão tratados pelos agentes técnicos.
-
----
-
-# 86. Dependências funcionais
-
-Dependências:
+Então:
 
 ```text
-Cliente
-Veículo
-Ordem de Serviço
-Serviço da OS
-Orçamento
-Item de orçamento
+A-v1 deixa de aceitar nova decisão.
 ```
 
 ---
 
-# 87. Dependências futuras
+## CA-18 — Histórico após substituição
 
-Podem reagir à aprovação:
-
-```text
-Estoque
-Compras
-Workflow
-```
-
-Mas não fazem parte da implementação desta simulação.
-
----
-
-# 88. Riscos de produto
-
-## 88.1 Perda de decisão
-
-Impacto:
+Se A-v1 já possuía decisão antes da apresentação de A-v2:
 
 ```text
-ALTO
-```
-
-Mitigação:
-
-```text
-histórico imutável/versionado.
+essa decisão permanece registrada.
 ```
 
 ---
 
-## 88.2 Aprovação de preço diferente
+## CA-19 — Complemento com mesma versão
 
-Impacto:
+Dado:
 
 ```text
-CRÍTICO
+R1 contém A-v1.
 ```
 
-Mitigação:
+Quando:
 
 ```text
-decisão vinculada à revisão comercial específica.
+R2 contém A-v1 + B-v1
 ```
 
----
-
-## 88.3 Aprovação duplicada
-
-Impacto:
+e R2 for apresentada:
 
 ```text
-ALTO
-```
-
-Mitigação:
-
-```text
-idempotência.
+A-v1 não fica stale apenas por existir R2.
 ```
 
 ---
 
-## 88.4 Exposição pública indevida
+## CA-20 — Token não supera stale
 
-Impacto:
+Dado:
 
 ```text
-ALTO
+token válido
++
+A-v1 substituída por A-v2 apresentada
 ```
 
-Mitigação:
+quando houver tentativa de decidir A-v1:
 
 ```text
-AG-09 participa obrigatoriamente.
-```
-
----
-
-# 89. Decision Requests
-
-Decision Requests impeditivas:
-
-```text
-NENHUMA
+a decisão deve ser rejeitada.
 ```
 
 ---
 
-# 90. Pontos que não devem virar Decision Request
+## CA-21 — Concorrência
 
-Já estão aprovados:
+Na corrida:
 
 ```text
-aprovação parcial;
-validade padrão de 7 dias;
-itens aprovados sobrevivem à expiração;
-preço alterado exige nova aprovação;
-descrição alterada exige nova aprovação;
-quantidade alterada exige nova aprovação;
-alteração interna não invalida;
-rejeitado pode ser reaberto;
-cliente sem login;
-identificação por nome + CPF/CNPJ;
-registro de IP e user-agent.
+DECIDE A-v1
+×
+PRESENT A-v2
 ```
 
-Não reabrir essas decisões sem novo requisito do proprietário.
+o sistema deve consolidar uma ordem coerente sem permitir commits contraditórios.
 
 ---
 
-# 91. Rastreabilidade
-
-Task:
+# 49. Regras Consolidadas
 
 ```text
-TASK-0001
-```
+RN-01
+Decisão é individual por item.
 
-Requisito:
+RN-02
+Ausência de decisão permanece pendente.
 
-```text
-REQ-ORC-001
-```
+RN-03
+Aprovação parcial é permitida.
 
-Agentes obrigatórios:
+RN-04
+Mudança de preço exige nova versão.
 
-```text
-AG-00
-AG-01
-AG-03
-AG-02
-AG-09
-AG-10
-AG-11
-AG-12
-AG-13
-AG-15
+RN-05
+Mudança de descrição exige nova versão.
+
+RN-06
+Mudança de quantidade exige nova versão.
+
+RN-07
+Mudança exclusivamente interna não invalida decisão.
+
+RN-08
+Histórico não é sobrescrito.
+
+RN-09
+Complemento preserva versões não alteradas.
+
+RN-10
+Reabertura cria nova oportunidade.
+
+RN-11
+Decisão pertence à versão comercial exata.
+
+RN-12
+Expiração bloqueia novas decisões pendentes.
+
+RN-13
+Decisões anteriores sobrevivem à expiração.
+
+RN-14
+Cliente não precisa de conta interna.
+
+RN-15
+Decisão exige identificação e aceite.
+
+RN-16
+Submissão é idempotente.
+
+RN-17
+Submissão com múltiplas decisões é atômica.
+
+RN-18
+Uma versão possui no máximo uma decisão efetiva.
+
+RN-19
+Nova versão em DRAFT não invalida a anterior.
+
+RN-20
+Nova versão do mesmo item PRESENTED substitui
+a anterior para novas decisões.
+
+RN-21
+Nova revisão global não invalida todos os itens anteriores.
+
+RN-22
+Complemento reutilizando mesma QuoteItemRevision
+não invalida essa versão.
+
+RN-23
+Token válido não supera obsolescência comercial.
+
+RN-24
+Obsolescência nunca apaga decisão histórica.
 ```
 
 ---
 
-# 92. Resultado do AG-01
+# 50. Fora do Escopo
+
+Não faz parte da especificação executável desta Task:
+
+```text
+implementação Java;
+
+implementação React;
+
+migration Flyway;
+
+WhatsApp;
+
+pagamento;
+
+NFS-e;
+
+comissão;
+
+estoque completo;
+
+compras;
+
+assinatura digital certificada;
+
+retratação pública.
+```
+
+---
+
+# 51. Decision Requests
+
+Decision Request relacionada:
+
+```text
+DR-0001
+```
+
+Status:
+
+```text
+DECIDED
+```
+
+Decisão:
+
+```text
+OPÇÃO B
+```
+
+Decision Requests bloqueadoras abertas:
+
+```text
+0
+```
+
+---
+
+# 52. Resultado do AG-01
 
 ```text
 TASK:
 TASK-0001
 
+REQUIREMENT:
+REQ-ORC-001
+
+REVISION:
+2
+
 STATUS:
-PRODUCT_APPROVED
+APPROVED
 
-REQUISITO:
-REQ-ORC-001
+PARTIAL APPROVAL:
+APPROVED
 
-MÓDULO:
-OFICINA / ORÇAMENTO
+COMMERCIAL VERSIONING:
+APPROVED
 
-REGRAS:
-DEFINIDAS
+COMPLEMENT:
+APPROVED
 
-CRITÉRIOS DE ACEITE:
-DEFINIDOS
+REOPEN:
+APPROVED
 
-AMBIGUIDADES IMPEDITIVAS:
-NENHUMA
+EXPIRATION:
+APPROVED
 
-DECISION REQUESTS:
-NENHUMA
+PUBLIC ACCESS:
+APPROVED
 
-PRONTO PARA AG-03:
-SIM
+IDEMPOTENCY:
+APPROVED
+
+ATOMICITY:
+APPROVED
+
+DR-0001:
+INCORPORATED
+
+DRAFT INVALIDATES PREVIOUS:
+NO
+
+NEW PRESENTED ITEM VERSION INVALIDATES
+PREVIOUS FOR NEW DECISIONS:
+YES
+
+BLOCKING DECISION REQUESTS:
+0
+
+READY:
+YES
 ```
 
 ---
 
-# 93. Handoff AG-01 → AG-03
+# 53. Regra Final
 
 ```text
-Task:
-TASK-0001
+DRAFT
+NÃO SUBSTITUI
+A PROPOSTA APRESENTADA.
 
-Requisito:
-REQ-ORC-001
+NOVA VERSÃO COMERCIAL
+DO MESMO ITEM
+PRESENTED
+SUBSTITUI A ANTERIOR
+PARA NOVAS DECISÕES.
 
-Objetivo:
-Permitir decisão individual dos itens do orçamento.
+COMPLEMENTO COM A MESMA
+QuoteItemRevision
+NÃO INVALIDA ESSA VERSÃO.
 
-Estados funcionais mínimos:
-PENDENTE_APROVACAO
-APROVADO
-REJEITADO
-
-Invariantes de produto:
-- decisão é individual;
-- aprovação parcial é permitida;
-- item aprovado pode seguir independentemente;
-- alteração comercial exige nova aprovação;
-- alteração interna não invalida;
-- decisão anterior permanece histórica;
-- expiração não invalida item já aprovado;
-- revisão antiga não aprova revisão nova;
-- requisição duplicada não cria efeito duplicado.
-
-Segurança:
-Link público seguro.
-Nome + CPF/CNPJ.
-Aceite explícito.
-Timestamp.
-IP.
-User-agent.
-
-Decision Requests:
-Nenhuma.
-
-Resultado esperado do AG-03:
-Definir modelo de domínio, agregados, entidades,
-value objects, estados, transições, invariantes,
-eventos e contratos necessários.
+DECISÕES HISTÓRICAS
+NUNCA SÃO APAGADAS.
 ```
 
----
-
-# 94. Definition of Ready para domínio
-
-- [x] problema definido;
-- [x] objetivo definido;
-- [x] atores definidos;
-- [x] escopo definido;
-- [x] regras aprovadas;
-- [x] critérios de aceite definidos;
-- [x] segurança identificada;
-- [x] riscos identificados;
-- [x] histórico obrigatório identificado;
-- [x] concorrência identificada;
-- [x] nenhuma Decision Request impeditiva.
-
-Resultado:
-
-```text
-READY_FOR_DOMAIN
-```
-
----
-
-# 95. Regra final
-
-A decisão do cliente deve representar exatamente:
-
-```text
-O QUE ELE VIU
-+
-O QUE ELE DECIDIU
-+
-QUANDO ELE DECIDIU
-```
-
-Nunca:
-
-```text
-uma versão posterior inferida pelo sistema.
-```
-
-**APROVAÇÃO DE ORÇAMENTO É POR ITEM E POR REVISÃO.**
+**A DECISÃO DO CLIENTE É VINCULADA À CONDIÇÃO COMERCIAL QUE ELE EFETIVAMENTE RECEBEU.**

@@ -1,44 +1,97 @@
 # Uber-Hidráulica ERP
 
-ERP desenvolvido para digitalizar e integrar a operação de uma oficina mecânica especializada, centralizando processos de oficina, clientes, veículos, estoque, compras, financeiro, comissões, conciliação, fiscal e rentabilidade.
+ERP em desenvolvimento para digitalizar e integrar a operação da Uber-Hidráulica, centralizando oficina, clientes, veículos, catálogo, estoque, compras, financeiro, comissões, conciliação, fiscal e rentabilidade.
 
-> Projeto em desenvolvimento. Atualmente estamos na fase de especificação funcional, arquitetura e validação de domínio antes do início da implementação do backend e frontend.
+> O projeto está atualmente na fase de especificação e fundação técnica. A primeira simulação completa de governança, `TASK-0001 — Aprovação Parcial de Orçamento`, foi concluída. Backend Spring Boot, frontend React, migrations e testes executáveis ainda não foram iniciados.
 
 ---
 
 ## Objetivo
 
-O objetivo do projeto é substituir controles fragmentados por um sistema integrado capaz de responder, com rastreabilidade:
+O sistema pretende substituir controles fragmentados por uma plataforma capaz de responder, com rastreabilidade:
 
 ```text
 Qual serviço foi realizado?
+
 Quem executou?
+
 Quais peças foram utilizadas?
+
 Quanto custou?
+
 Quanto foi cobrado?
+
 Quanto ainda falta receber?
+
 Quanto foi pago ao fornecedor?
+
 Qual foi a comissão do técnico?
+
 Qual foi o lucro real da OS?
+
+Qual condição comercial o cliente efetivamente aprovou?
 ```
 
-O sistema foi projetado para preservar histórico, evitar duplicidades e separar corretamente conceitos operacionais, financeiros e fiscais.
+Princípios centrais:
+
+```text
+Integridade antes de conveniência.
+
+Histórico antes de sobrescrita.
+
+Backend como fonte de verdade.
+
+Dinheiro sempre com precisão decimal.
+
+Estoque nunca negativo.
+
+Compra não é pagamento.
+
+Recebimento físico não é liquidação financeira.
+
+Movimentação bancária não é despesa automaticamente.
+
+Aprovação pertence à versão comercial apresentada.
+
+Integrações externas não contaminam o domínio.
+
+Módulos não acessam repositories internos de outros módulos.
+```
 
 ---
 
-## Principais módulos
+# Escopo Inicial
 
-O ERP será dividido em módulos de domínio bem definidos:
+O sistema será inicialmente utilizado por uma única oficina.
+
+Perfis internos previstos:
+
+```text
+Dono
+
+Gerente Administrativo
+
+Gerente Financeiro
+```
+
+Mecânicos serão inicialmente entidades operacionais, sem necessidade de autenticação própria.
+
+Cliente externo não terá conta no ERP.
+
+---
+
+# Principais Módulos
 
 ```text
 IAM / Segurança
 ├── usuários
 ├── perfis
 ├── permissões
+├── exceções por usuário
 └── auditoria
 
 CRM
-├── clientes
+├── clientes PF/PJ
 └── veículos
 
 Oficina
@@ -52,24 +105,29 @@ Oficina
 Catálogo
 ├── serviços
 ├── peças
+├── insumos
 ├── componentes
-├── aplicações
+├── kits
+├── aplicações em veículos
 └── grupos de veículos
 
 Estoque
-├── saldo físico
-├── saldo reservado
-├── saldo disponível
+├── físico
+├── reservado
+├── disponível
+├── custo médio
 ├── inventário
-├── perdas
-└── custo médio
+├── ajustes
+└── perdas
 
 Compras
 ├── fornecedores
-├── necessidades de compra
+├── necessidades
 ├── cotações
 ├── pedidos
 ├── recebimentos
+├── documentos fiscais
+├── obrigações
 └── devoluções
 
 Financeiro
@@ -85,6 +143,7 @@ Comissões
 ├── técnicos
 ├── níveis
 ├── cálculo
+├── ajustes
 └── fechamento
 
 Conciliação
@@ -93,94 +152,142 @@ Conciliação
 ├── OFX
 └── CSV
 
-Rentabilidade
-├── custo da OS
+Rentabilidade / Precificação
+├── custo por OS
+├── custo por serviço
 ├── lucro de fechamento
 ├── lucro real atualizado
+├── margem
 └── precificação
 
 Fiscal
+├── NFS-e
+├── DPS
+├── PDF/XML
+└── histórico fiscal
+
+Integrações
+├── Itaú
+├── Rede
 └── NFS-e
 ```
 
 ---
 
-## Stack planejada
+# Stack Planejada
 
-### Backend
+## Backend
 
 ```text
 Java
+
 Spring Boot
+
 Spring Modulith
+
 Spring Security
+
 Spring Data JPA
+
 Bean Validation
+
 Flyway
+
 PostgreSQL
+
 OpenAPI
+
 JUnit
+
 Mockito
+
 Testcontainers
-```
-
-### Frontend
-
-```text
-React
-TypeScript
-React Router
-TanStack Query
-React Hook Form
-Zod
-```
-
-### Infraestrutura
-
-```text
-Docker
-PostgreSQL
-Object Storage S3-compatible
-Cloud-first
-```
-
-Ambientes previstos:
-
-```text
-DEV
-HOMOLOG
-PROD
 ```
 
 ---
 
-## Arquitetura
+## Frontend
 
-O sistema será desenvolvido inicialmente como um:
+```text
+React
+
+TypeScript
+
+React Router
+
+TanStack Query
+
+React Hook Form
+
+Zod
+```
+
+---
+
+## Infraestrutura
+
+```text
+Docker
+
+PostgreSQL
+
+Object Storage S3-compatible
+
+Cloud-first
+```
+
+Ambientes:
+
+```text
+DEV
+
+HOMOLOG
+
+PROD
+```
+
+Não está previsto para o MVP:
+
+```text
+Kubernetes
+
+Kafka
+
+RabbitMQ
+```
+
+---
+
+# Arquitetura
+
+A arquitetura inicial é:
 
 ```text
 MODULAR MONOLITH
 ```
 
-e não como microservices.
+com:
 
-A aplicação terá um único deploy principal, mas com fronteiras internas explícitas entre módulos.
+```text
+Spring Modulith
+```
+
+Não serão criados microservices prematuramente.
 
 ```mermaid
 flowchart TD
     UI[React / TypeScript]
-
     API[Spring Boot REST API]
 
-    IAM[IAM / Segurança]
+    IAM[IAM]
     CRM[CRM]
     WORKSHOP[Oficina]
     CATALOG[Catálogo]
     INVENTORY[Estoque]
     PURCHASES[Compras]
     FINANCE[Financeiro]
-    COMMISSION[Comissões]
     RECON[Conciliação]
+    COMMISSION[Comissões]
     PROFIT[Rentabilidade]
     FISCAL[Fiscal]
 
@@ -196,8 +303,8 @@ flowchart TD
     API --> INVENTORY
     API --> PURCHASES
     API --> FINANCE
-    API --> COMMISSION
     API --> RECON
+    API --> COMMISSION
     API --> PROFIT
     API --> FISCAL
 
@@ -208,8 +315,8 @@ flowchart TD
     INVENTORY --> DB
     PURCHASES --> DB
     FINANCE --> DB
-    COMMISSION --> DB
     RECON --> DB
+    COMMISSION --> DB
     PROFIT --> DB
     FISCAL --> DB
 
@@ -218,14 +325,14 @@ flowchart TD
 
 ---
 
-## Arquitetura interna do backend
+# Arquitetura Interna do Backend
 
-O fluxo principal será:
+Fluxo:
 
 ```text
 Controller
 ↓
-Application Service / Use Case
+Application / Use Case
 ↓
 Domain
 ↓
@@ -234,21 +341,31 @@ Repository Port
 Persistence Adapter
 ```
 
-Regras de negócio não devem ficar em:
+Regras de negócio não devem ser concentradas em:
 
 ```text
-Controller
-Frontend
-Repository
-```
+Controller;
 
-O backend será a fonte de verdade das regras de negócio.
+Frontend;
+
+JpaRepository.
+```
 
 ---
 
-## Fronteiras entre módulos
+# Fronteiras Entre Módulos
 
-Cada módulo será responsável por seus próprios dados e regras.
+Cada módulo é responsável por:
+
+```text
+seus dados;
+
+suas regras;
+
+suas entidades;
+
+seus repositories.
+```
 
 Exemplo:
 
@@ -256,7 +373,7 @@ Exemplo:
 Estoque
 ```
 
-não deve acessar diretamente:
+não acessa diretamente:
 
 ```text
 QuoteRepository
@@ -264,49 +381,23 @@ QuoteRepository
 
 do módulo Oficina.
 
-A comunicação deverá acontecer através de:
+Comunicação intermodular ocorrerá por:
 
 ```text
-Application Contracts
-Domain Events
-Integration Events
+Application Contracts;
+
+interfaces públicas;
+
+Domain Events;
+
+Integration Events.
 ```
 
 ---
 
-## Eventos de domínio
+# Transactional Outbox
 
-O projeto utilizará eventos para reduzir acoplamento entre módulos.
-
-Exemplos:
-
-```text
-WorkOrderOpened
-QuoteSent
-QuoteItemApproved
-QuoteItemRejected
-PartReserved
-PurchaseNeedCreated
-PartReceived
-PartApplied
-ServiceStarted
-ServiceCompleted
-CommissionEligible
-WorkOrderClosed
-VehicleDelivered
-PaymentRegistered
-PaymentReconciled
-WarrantyOpened
-NfseRequested
-NfseIssued
-NfseFailed
-```
-
----
-
-## Transactional Outbox
-
-Eventos importantes que precisam sobreviver a falhas utilizarão:
+Eventos importantes deverão utilizar:
 
 ```text
 Transactional Outbox
@@ -316,36 +407,36 @@ Fluxo conceitual:
 
 ```mermaid
 flowchart LR
-    A[Regra de negócio] --> B[(PostgreSQL)]
-    A --> C[Outbox Event]
+    DOMAIN[Regra de negócio]
+    DB[(PostgreSQL)]
+    OUTBOX[(Outbox)]
+    WORKER[Worker interno]
+    CONSUMER[Módulo consumidor]
 
-    C --> D[Worker interno]
-
-    D --> E[Módulo consumidor]
+    DOMAIN --> DB
+    DOMAIN --> OUTBOX
+    OUTBOX --> WORKER
+    WORKER --> CONSUMER
 ```
 
-No MVP não serão utilizados:
+No MVP:
 
 ```text
-Kafka
-RabbitMQ
+sem Kafka;
+sem RabbitMQ.
 ```
 
 ---
 
-## Ordem de Serviço
+# Ordem de Serviço
 
-A OS é criada quando o veículo entra na oficina.
-
-O orçamento acontece dentro da OS.
-
-Fluxo conceitual:
+A OS é criada na entrada do veículo.
 
 ```mermaid
 flowchart LR
     CLIENT[Cliente]
     VEHICLE[Veículo]
-    OS[Ordem de Serviço]
+    OS[OS]
     QUOTE[Orçamento]
     APPROVAL[Aprovação]
     EXECUTION[Execução]
@@ -363,49 +454,168 @@ flowchart LR
 
 ---
 
-## Aprovação parcial de orçamento
+# Aprovação Parcial de Orçamento
 
-O sistema foi projetado para permitir aprovação individual dos itens.
-
-Exemplo:
+O sistema permite estados simultâneos:
 
 ```text
 Item A → APROVADO
+
 Item B → REJEITADO
+
 Item C → PENDENTE_APROVACAO
 ```
 
-O item aprovado pode seguir para execução sem depender dos demais.
+Um item aprovado pode seguir para execução permitida sem aguardar todos os demais.
 
-Alterações em:
+Alterações comerciais em:
 
 ```text
-preço
-descrição
+preço;
+
+descrição;
+
 quantidade
 ```
 
-exigem nova aprovação.
+exigem nova versão e nova aprovação.
 
-Alterações internas, como:
+Alterações internas como:
 
 ```text
-técnico
-fornecedor
+técnico;
+
+fornecedor;
+
 custo
 ```
 
-não invalidam automaticamente a aprovação do cliente.
+não invalidam automaticamente a decisão comercial.
 
 ---
 
-## Estoque
+## Versionamento Comercial
+
+O sistema diferencia:
+
+```text
+QuoteRevision
+```
+
+de:
+
+```text
+QuoteItemRevision.
+```
+
+Uma revisão global pode reutilizar uma versão comercial existente.
+
+---
+
+## DR-0001
+
+A primeira Decision Request formal do projeto definiu:
+
+```text
+DR-0001
+Momento de obsolescência de versão comercial pendente
+```
+
+Decisão:
+
+```text
+OPÇÃO B
+```
+
+Regra:
+
+```text
+Nova ItemRevision em DRAFT
+não invalida a versão apresentada.
+
+Nova ItemRevision do mesmo item,
+quando PRESENTED,
+faz a versão anterior deixar de aceitar novas decisões.
+
+Uma revisão de complemento reutilizando
+a mesma ItemRevision não invalida essa versão.
+```
+
+---
+
+# Aprovação Pública
+
+O cliente não possui conta interna.
+
+O orçamento poderá ser decidido através de:
+
+```text
+link público seguro.
+```
+
+A decisão registra:
+
+```text
+nome;
+
+CPF/CNPJ;
+
+aceite explícito;
+
+data/hora do servidor;
+
+IP;
+
+User-Agent;
+
+revisão;
+
+versões dos itens;
+
+decisões.
+```
+
+---
+
+## Segurança do Token
+
+Planejamento:
+
+```text
+token opaco;
+
+alta entropia;
+
+SecureRandom;
+
+256 bits recomendados;
+
+URL-safe.
+```
+
+O token bruto:
+
+```text
+não será persistido.
+```
+
+Persistência:
+
+```text
+SHA-256 digest.
+```
+
+---
+
+# Estoque
 
 O estoque diferencia:
 
 ```text
 FÍSICO
+
 RESERVADO
+
 DISPONÍVEL
 ```
 
@@ -415,50 +625,35 @@ Regra:
 disponível = físico - reservado
 ```
 
-O sistema não permitirá estoque negativo.
-
----
-
-## Custos
-
-O estoque utilizará:
+Não será permitido:
 
 ```text
-custo médio ponderado
+estoque negativo.
 ```
-
-Compras específicas para uma OS poderão preservar custo específico para cálculo de rentabilidade.
 
 ---
 
-## Rentabilidade da OS
+# Custos
 
-Um dos principais objetivos do ERP é medir o resultado real de cada Ordem de Serviço.
-
-Cada OS deverá possuir pelo menos:
+Método principal:
 
 ```text
-Lucro no fechamento
-Lucro real atualizado
-Margem no fechamento
-Margem real atualizada
+custo médio ponderado.
 ```
 
-O resultado histórico de fechamento será preservado.
-
-Ajustes posteriores poderão alterar apenas o resultado real atualizado.
+Compra específica de uma OS poderá utilizar seu custo real específico para rentabilidade daquela operação.
 
 ---
 
-## Comissão dos técnicos
+# Comissão dos Técnicos
 
-A comissão será calculada sobre o:
+A comissão utiliza:
 
 ```text
 valor-base do serviço
 ```
 
-e não necessariamente sobre o preço final cobrado do cliente.
+e não necessariamente o preço final cobrado do cliente.
 
 Pool máximo:
 
@@ -469,12 +664,12 @@ Pool máximo:
 Exemplo:
 
 ```text
-Base do serviço = R$ 350
+Base = R$ 350
 
-Técnico N5 = peso 30
-Técnico N2 = peso 10
+N5 = peso 30
+N2 = peso 10
 
-Pool máximo = R$ 105
+Pool = R$ 105
 
 N5:
 30 / 40 × 105
@@ -487,74 +682,83 @@ N2:
 
 ---
 
-## Regime econômico e financeiro
+# Financeiro
 
-O sistema separará três conceitos:
+O sistema separa:
 
 ```text
 COMPETÊNCIA
+
 FLUXO DE CAIXA
+
 CONCILIAÇÃO
 ```
 
-Exemplo:
+Compra de:
 
 ```text
-Compra:
 R$ 1.200
+```
 
-Pagamento:
+paga em:
+
+```text
 3 × R$ 400
 ```
 
-Resultado econômico:
+possui:
 
 ```text
+efeito econômico:
 R$ 1.200
-```
 
-Fluxo de caixa:
-
-```text
-Mês 1 → R$ 400
-Mês 2 → R$ 400
-Mês 3 → R$ 400
+efeito de caixa:
+R$ 400 por parcela.
 ```
 
 ---
 
-## Integrações previstas
+# Rentabilidade
 
-### Itaú
-
-Objetivo:
+Cada OS deverá permitir analisar:
 
 ```text
-movimentações bancárias
-conciliação
-classificação
+Lucro no fechamento
+
+Lucro real atualizado
+
+Margem no fechamento
+
+Margem real atualizada
 ```
 
-### Rede
+O fechamento histórico não é sobrescrito por ajustes posteriores.
 
-Objetivo:
+---
+
+# Integrações
+
+## Itaú
 
 ```text
-transações de cartão
-taxas
-liquidações
+movimentações;
+
+classificação;
+
+conciliação.
 ```
 
-### NFS-e
-
-Objetivo:
+## Rede
 
 ```text
-emissão
-consulta
-cancelamento
-armazenamento de PDF/XML
+transações;
+
+taxas;
+
+liquidações.
 ```
+
+## NFS-e
 
 Município inicial:
 
@@ -562,81 +766,110 @@ Município inicial:
 Uberlândia / MG
 ```
 
-As integrações serão isoladas através de adapters.
+Responsabilidades:
+
+```text
+emissão;
+
+consulta;
+
+cancelamento;
+
+PDF/XML;
+
+histórico.
+```
+
+Integrações serão isoladas através de:
+
+```text
+ports;
+adapters.
+```
 
 ---
 
-## Segurança
+# Segurança Interna
 
-O sistema deverá utilizar:
+Planejamento:
 
 ```text
 Spring Security
-Secure HttpOnly Cookies
-Session-based Authentication
-```
 
-Permissões serão configuráveis por perfil e poderão possuir exceções por usuário.
+Session-based Authentication
+
+Secure HttpOnly Cookie
+```
 
 Perfis iniciais:
 
 ```text
 Dono
+
 Gerente Administrativo
+
 Gerente Financeiro
 ```
 
-Ações críticas poderão exigir aprovação adicional do Dono através da própria sessão autenticada.
+Permissões serão configuráveis.
 
-Não será utilizada senha mestre compartilhada.
+Exceções por usuário também serão permitidas.
 
----
+Ações críticas poderão exigir segunda autorização do Dono através da própria sessão autenticada.
 
-## Aprovação pública do cliente
-
-O cliente não precisa possuir conta no ERP.
-
-Orçamentos poderão ser aprovados através de link público seguro.
-
-A decisão deve registrar evidências como:
+Não será utilizada:
 
 ```text
-nome
-CPF/CNPJ
-aceite explícito
-data/hora
-IP
-user-agent
-revisão apresentada
-itens decididos
+senha mestre compartilhada.
 ```
 
 ---
 
-## Governança por agentes
+# Governança por Agentes
 
-Antes da implementação do sistema foi definida uma estrutura de agentes especializados.
+O projeto possui 16 agentes documentados:
 
 ```text
 AG-00 — Orquestrador
+
 AG-01 — Produto & Requisitos
+
 AG-02 — Arquitetura
+
 AG-03 — Domínio Oficina
+
 AG-04 — Catálogo & Estoque
+
 AG-05 — Compras & Fornecedores
+
 AG-06 — Financeiro, Comissão & Rentabilidade
+
 AG-07 — Conciliação & Integrações Financeiras
+
 AG-08 — Fiscal
+
 AG-09 — Segurança & Auditoria
+
 AG-10 — Banco de Dados
+
 AG-11 — Backend Spring
+
 AG-12 — Frontend React
+
 AG-13 — QA & Testes
+
 AG-14 — DevOps
+
 AG-15 — Revisor Técnico
 ```
 
-Os agentes possuem responsabilidades e limites documentados dentro da pasta:
+Entrada da governança:
+
+```text
+AGENTS.md
+```
+
+Especificações:
 
 ```text
 agents/
@@ -644,51 +877,67 @@ agents/
 
 ---
 
-## Fluxo de desenvolvimento
+# Fluxo de Desenvolvimento
 
-Uma feature passa pelo seguinte processo:
+Fluxo de referência:
 
 ```mermaid
 flowchart TD
     TASK[Task]
-
-    AG00[AG-00 Orquestrador]
+    AG00[AG-00]
     AG01[AG-01 Produto]
     DOMAIN[Agente de Domínio]
     AG02[AG-02 Arquitetura]
-    AG10[AG-10 Banco de Dados]
+    AG09[AG-09 Segurança]
+    AG10[AG-10 Banco]
     AG11[AG-11 Backend]
     AG12[AG-12 Frontend]
     AG13[AG-13 QA]
-    AG09[AG-09 Segurança]
-    AG15[AG-15 Revisão Técnica]
-
-    DONE[Done]
+    AG15[AG-15 Review]
+    DONE[AG-00 / Done]
 
     TASK --> AG00
     AG00 --> AG01
     AG01 --> DOMAIN
     DOMAIN --> AG02
-    AG02 --> AG10
+    AG02 --> AG09
+    AG09 --> AG10
     AG10 --> AG11
     AG11 --> AG12
     AG12 --> AG13
-    AG13 --> AG09
-    AG09 --> AG15
+    AG13 --> AG15
     AG15 --> DONE
 ```
 
-Quando existe ambiguidade relevante:
+AG-09 entra conforme risco da feature.
+
+AG-14 entra quando houver:
 
 ```text
-Decision Request
+infraestrutura;
+
+deploy;
+
+CI/CD;
+
+segredos;
+
+proxy;
+
+HTTPS;
+
+observabilidade.
 ```
 
-é criado antes de prosseguir.
+Ambiguidades relevantes utilizam:
+
+```text
+Decision Request.
+```
 
 ---
 
-## Estrutura atual do repositório
+# Estrutura Atual do Repositório
 
 ```text
 uberhidraulica-erp/
@@ -712,65 +961,108 @@ uberhidraulica-erp/
 │   └── AG-15-revisor-tecnico.md
 │
 ├── decision-requests/
+│   ├── DECISION-REQUEST-TEMPLATE.md
+│   └── DR-0001-obsolescencia-versao-comercial.md
 │
 ├── docs/
 │   ├── api/
 │   ├── architecture/
-│   ├── decisions/
+│   │   ├── database/
+│   │   ├── frontend/
+│   │   ├── governance/
+│   │   ├── oficina/
+│   │   ├── security/
+│   │   └── testing/
 │   ├── domain/
-│   └── requirements/
+│   │   └── oficina/
+│   ├── requirements/
+│   │   └── oficina/
+│   └── review/
 │
 ├── tasks/
-│   ├── backlog/
-│   ├── in-progress/
-│   ├── review/
-│   └── done/
+│   ├── done/
+│   │   └── TASK-0001-aprovacao-parcial-orcamento.md
+│   ├── HANDOFF-TEMPLATE.md
+│   └── TASK-TEMPLATE.md
 │
 ├── AGENTS.md
-├── .gitignore
-└── README.md
+├── README.md
+└── .gitignore
 ```
 
 ---
 
-## Estado atual do projeto
-
-Atualmente:
+# Estado Atual
 
 ```text
 [✓] Requisitos iniciais levantados
-[✓] Arquitetura macro definida
-[✓] Governança definida
-[✓] 16 agentes documentados
-[✓] Estrutura de Tasks criada
-[✓] Estrutura de Decision Requests criada
-[✓] Repositório Git configurado
-[✓] Repositório GitHub criado
 
-[~] Simulação do fluxo de desenvolvimento
-[~] Especificação da aprovação parcial de orçamento
+[✓] Arquitetura macro definida
+
+[✓] Governança definida
+
+[✓] 16 agentes documentados
+
+[✓] Tasks e handoffs estruturados
+
+[✓] Decision Requests estruturadas
+
+[✓] Repositório Git/GitHub configurado
+
+[✓] Simulação completa do fluxo de governança
+
+[✓] TASK-0001 especificada
+
+[✓] DR-0001 decidida
+
+[✓] Review independente da TASK-0001
+
+[✓] Correções da TASK-0001
+
+[✓] Re-review AG-15
+
+[✓] TASK-0001 = SPECIFICATION_DONE
 
 [ ] Projeto Spring Boot
-[ ] Banco PostgreSQL
+
+[ ] PostgreSQL executável / Flyway
+
 [ ] Frontend React
+
 [ ] Testes automatizados
+
 [ ] Integrações externas
+
 [ ] Deploy
 ```
 
 ---
 
-## Primeira feature utilizada para validar a arquitetura
+# TASK-0001
+
+Primeira feature utilizada para validar todo o processo:
 
 ```text
 TASK-0001
 Aprovação Parcial de Orçamento
 ```
 
-Essa feature está sendo utilizada para validar o processo:
+Status:
 
 ```text
-Requisito
+SPECIFICATION_DONE
+```
+
+Implementação:
+
+```text
+NOT_IMPLEMENTED
+```
+
+Fluxo validado:
+
+```text
+Produto
 ↓
 Domínio
 ↓
@@ -786,16 +1078,48 @@ Frontend
 ↓
 QA
 ↓
-Revisão
+AG-15
+↓
+Decision Request
+↓
+Correção
+↓
+Re-review
+↓
+AG-00
 ```
-
-antes de iniciar a implementação de produção.
 
 ---
 
-## Estratégia de implementação
+# Próxima Fase
 
-A primeira vertical slice planejada é:
+A próxima etapa é iniciar a fundação executável do sistema.
+
+Sequência planejada:
+
+```text
+Spring Boot base
+↓
+PostgreSQL / Flyway
+↓
+IAM
+↓
+Cliente
+↓
+Veículo
+↓
+OS
+↓
+Catálogo de Serviços
+↓
+Peças
+↓
+Orçamento
+↓
+Aprovação
+```
+
+A primeira vertical slice funcional completa planejada é:
 
 ```text
 Cliente
@@ -820,181 +1144,73 @@ Fechamento
 ↓
 Custo
 ↓
-Lucro da OS
+Lucro
 ```
 
 ---
 
-## Princípios do projeto
+# Estado de Produção
+
+Atualmente o projeto possui:
 
 ```text
-Integridade antes de conveniência.
+ESPECIFICAÇÃO
+```
 
-Histórico antes de sobrescrita.
+e não:
 
-Backend como fonte de verdade.
+```text
+SISTEMA EM PRODUÇÃO.
+```
 
-Dinheiro sempre com precisão decimal.
+Ainda faltam:
 
-Estoque nunca negativo.
+```text
+código;
 
-Compra não é pagamento.
+migrations;
 
-Recebimento não é compra.
+testes;
 
-Movimentação bancária não é despesa automaticamente.
+CI;
 
-Aprovação do cliente é vinculada à versão apresentada.
+infraestrutura;
 
-Integrações externas não devem contaminar o domínio.
+deploy;
 
-Nenhum módulo acessa diretamente repositories de outro módulo.
+validação operacional.
 ```
 
 ---
 
-## Roadmap macro
+# Repositório
 
-### Fase 1 — Fundação
-
-```text
-IAM
-Usuários
-Permissões
-Auditoria
-```
-
-### Fase 2 — Operação básica
-
-```text
-Clientes
-Veículos
-Serviços
-Peças
-OS
-Orçamento
-Aprovação
-```
-
-### Fase 3 — Operação avançada
-
-```text
-Estoque
-Reservas
-Técnicos
-Comissões
-Compras
-Fornecedores
-```
-
-### Fase 4 — Financeiro
-
-```text
-Contas a pagar
-Contas a receber
-Caixa
-Cartões
-Despesas
-```
-
-### Fase 5 — Gestão
-
-```text
-Conciliação
-Rentabilidade
-Garantia
-Precificação
-```
-
-### Fase 6 — Integrações
-
-```text
-NFS-e
-Itaú
-Rede
-```
-
-### Fase 7 — Automação
-
-```text
-Workflow configurável
-Dashboard
-```
-
----
-
-## Desenvolvimento
-
-O projeto ainda não entrou na implementação de produção.
-
-Quando a base Spring Boot for criada, esta seção será atualizada com:
-
-```text
-pré-requisitos
-setup local
-variáveis de ambiente
-Docker
-PostgreSQL
-execução do backend
-execução do frontend
-testes
-```
-
----
-
-## Segurança do repositório
-
-Nunca versionar:
-
-```text
-.env
-senhas
-API keys
-tokens
-certificados
-arquivos .pfx
-arquivos .p12
-client secrets
-credenciais bancárias
-credenciais fiscais
-```
-
-Esses arquivos já devem ser cobertos pelo `.gitignore` e serão tratados através de configuração segura.
-
----
-
-## Status
-
-```text
-🚧 Em desenvolvimento
-```
-
-Projeto atualmente focado em:
-
-```text
-Domain Modeling
-Software Architecture
-Requirements Engineering
-Modular Monolith
-ERP Development
-```
-
----
-
-## Autor
-
-Projeto desenvolvido para a operação da Uber-Hidráulica.
-
-Repositório:
+Projeto:
 
 ```text
 Wendersonjose/uberhidraulica-erp
 ```
 
+Branch principal:
+
+```text
+main
+```
+
 ---
 
-## Licença
+# Regra Final do Projeto
 
-A licença do projeto ainda não foi definida.
+```text
+ENTENDER
+ANTES DE IMPLEMENTAR.
 
-Até que exista um arquivo `LICENSE`, nenhum modelo de licença deve ser presumido.
+PRESERVAR
+ANTES DE SOBRESCREVER.
+
+VALIDAR
+ANTES DE CONFIAR.
+
+MEDIR
+ANTES DE DECIDIR.
+```
