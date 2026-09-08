@@ -2,7 +2,7 @@
 
 ERP em desenvolvimento para digitalizar e integrar a operação da Uber-Hidráulica, centralizando oficina, clientes, veículos, catálogo, estoque, compras, financeiro, comissões, conciliação, fiscal e rentabilidade.
 
-> O projeto está atualmente na fase de especificação e fundação técnica. A primeira simulação completa de governança, `TASK-0001 — Aprovação Parcial de Orçamento`, foi concluída. Backend Spring Boot, frontend React, migrations e testes executáveis ainda não foram iniciados.
+> A fundação executável do backend foi concluída na `TASK-0002`: Spring Boot, PostgreSQL, Flyway, Testcontainers e Spring Modulith estão funcionando e validados por testes automatizados. A `TASK-0001 — Aprovação Parcial de Orçamento` permanece concluída como especificação. Os módulos funcionais e o frontend React ainda não foram implementados.
 
 ---
 
