@@ -128,4 +128,6 @@ Códigos específicos de administração IAM serão definidos como contrato téc
 
 Formato exato de UUID/identificadores, paginação, envelope e nomes finais de DTOs/códigos HTTP são detalhes técnicos a fechar pelo AG-11 sob revisão AG-02/AG-09/AG-13. Qualquer alteração funcional deve retornar ao fluxo de decisão.
 
+Na implementação, `GET /api/iam/users` aceita `page` (base zero, padrão `0`) e `size` (padrão `20`, intervalo técnico `1..100`) e retorna `content`, `page`, `size`, `totalElements` e `totalPages`. A ordenação interna estável por nome e identificador serve somente à consistência da paginação; não foi criado filtro funcional novo nem foi exposto tipo JPA no contrato.
+
 Frontend permanece fora do escopo. O contrato não foi derivado de interface inexistente; futura Task de frontend IAM/login deverá consultar o Figma aprovado antes da implementação.

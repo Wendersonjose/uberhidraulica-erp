@@ -6,15 +6,17 @@
 ID: TASK-0003
 Tipo: FEATURE BACKEND
 Prioridade: HIGH
-Status: READY
-Fase atual: SPECIFICATION APPROVED
-Implementação: NOT_STARTED
+Status: DONE
+Fase atual: CLOSED
+Implementação: IMPLEMENTED
+Revisão externa: APPROVED
+Decision Requests abertas: 0
 Data de criação: 2026-09-08
 ```
 
 ## 2. Objetivo
 
-Especificar o backend IAM do MVP: identidade, autenticação, autorização, sessão, credenciais e auditoria básica.
+Implementar o backend IAM do MVP: identidade, autenticação, autorização, sessão, credenciais e auditoria básica.
 
 ## 3. Contexto
 
@@ -109,7 +111,7 @@ Bootstrap, login, logout, troca/reset de senha, usuário, perfil, permissão e e
 
 ## 22. Persistência
 
-Usuários, perfis, permissões, associações, exceções, credenciais, sessão e auditoria. Somente especificação; migration não autorizada nesta fase.
+Usuários, perfis, permissões, associações, exceções, credenciais, sessão e auditoria foram implementados pela migration Flyway `V2__iam_foundation.sql`, validada em PostgreSQL real.
 
 ## 23. Concorrência
 
@@ -149,7 +151,7 @@ React, telas, recuperação por e-mail, MFA, SSO/OAuth, frontend em geral e mult
 
 ## 32. Arquivos e artefatos esperados
 
-DR, requisito, domínio/segurança, arquitetura, dados, API, testes, DevOps, handoffs e revisão. Java, migration e testes executáveis pertencem à fase futura.
+DR, requisito, domínio/segurança, arquitetura, dados, API, DevOps, código Java, migration Flyway, testes executáveis, handoffs e revisões de especificação/implementação.
 
 ## 33. Handoffs
 
@@ -174,30 +176,30 @@ AG-00 → AG-01 → AG-09 → AG-02 → AG-10 → AG-11 → AG-13 → AG-14 → 
 
 - [x] estado READY atingido;
 - [x] responsável e dependência definidos;
-- [ ] implementação de código explicitamente autorizada e iniciada.
+- [x] implementação de código explicitamente autorizada e iniciada.
 
 ## 37. Checklist antes de REVIEW
 
-- [ ] implementação concluída;
-- [ ] migration produzida;
-- [ ] testes executáveis aprovados;
-- [ ] documentação pós-implementação atualizada.
+- [x] implementação concluída;
+- [x] migration produzida e validada em PostgreSQL/Testcontainers;
+- [x] testes executáveis aprovados (`31` testes, sem falhas, erros ou ignorados);
+- [x] documentação pós-implementação atualizada.
 
 ## 38. Checklist Definition of Done
 
 - [x] especificação aprovada;
-- [ ] backend e migration implementados;
-- [ ] testes executados;
-- [ ] revisão independente da implementação;
-- [ ] validação final AG-00.
+- [x] backend e migration implementados;
+- [x] testes executados;
+- [x] revisão independente da implementação;
+- [x] validação final AG-00.
 
 ## 39. Resultado da revisão técnica
 
 ```text
-AG-15: APPROVED para especificação
+AG-15: APPROVED
+Revisão externa: APPROVED
 Findings impeditivos: 0
-Apto para DONE: NÃO
-Pronto para implementação: SIM
+Apto para DONE: SIM
 ```
 
 ## 40. Histórico da Task
@@ -205,15 +207,29 @@ Pronto para implementação: SIM
 ```text
 Versão 1 — 2026-09-08 — especificação inicial baseada na DR-0002
 Versão 2 — 2026-09-08 — complementos aprovados na DR-0003
+Versão 3 — 2026-09-09 — backend IAM, migration V2 e suíte de 26 testes implementados
+Versão 4 — 2026-09-09 — EXT-IAM-001..006 fechados e suíte ampliada para 30 testes
+Versão 5 — 2026-09-09 — segunda revisão externa atendida com prova determinística de concorrência, paginação exaustiva e suíte reprodutível de 31 testes
+Versão 6 — 2026-09-10 — terceira e final revisão externa APPROVED; validação final AG-00 e encerramento formal
 ```
 
 ## 41. Encerramento
 
 ```text
-Status final da Task: READY
-Fase de especificação: APPROVED
-Implementação: NOT_STARTED
-Pronta para implementação: SIM
+Status atual da Task: DONE
+Fase atual: CLOSED
+Implementação: IMPLEMENTED
+Revisão externa: APPROVED
+Decision Requests abertas: 0
 ```
 
-A Task não é `DONE` porque a entrega de produção ainda não existe.
+Evidências de fechamento:
+
+- `CA-IAM-001..039`: PASS;
+- `31` testes;
+- `0` failures;
+- `0` errors;
+- `0` skipped;
+- `ApplicationModules.verify()`: PASS;
+- findings externos fechados;
+- nenhuma pendência técnica da `TASK-0003`.

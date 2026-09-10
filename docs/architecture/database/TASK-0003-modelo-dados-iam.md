@@ -110,7 +110,9 @@ SQL definitivo, técnica de upsert e numeração Flyway pertencem à implementa�
 
 ## Concorrência
 
-Testar bootstrap simultâneo, unicidade de e-mail, alteração concorrente de exceção, substituição de sessão e inativação concorrente de Donos. A estratégia física deve serializar ou bloquear adequadamente a decisão de inativação para que commits concorrentes nunca deixem zero Donos `ACTIVE`. Locking/constraint final será definido na implementação e provado com PostgreSQL/Testcontainers.
+Testar bootstrap simultâneo, unicidade de e-mail, alteração concorrente de exceção, substituição de sessão e inativação concorrente de Donos. A estratégia física deve serializar ou bloquear adequadamente a decisão de inativação para que commits concorrentes nunca deixem zero Donos `ACTIVE`.
+
+Na implementação, bootstrap e transição do último Dono usam advisory locks transacionais com chaves fixas. A substituição de sessão usa advisory lock PostgreSQL de sessão derivado do principal normalizado; a conexão dedicada permanece retida pelo filtro externo até o Spring Session JDBC persistir a resposta, impedindo dois logins simultâneos de terminarem com duas sessões efetivas.
 
 ## Migration futura
 

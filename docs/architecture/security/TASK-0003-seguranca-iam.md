@@ -42,6 +42,14 @@ Esta Task não cria regra funcional de composição não aprovada. O mecanismo d
 
 Auditoria é persistente, separada de logs e não guarda segredo. Para mudanças administrativas registra ator, alvo, ação, instante, resultado e antes/depois não sensível. Para login falho preserva evidência minimizada e correlation id sem confirmar conta. Ações de senha registram apenas que ocorreu mudança/reset e o resultado.
 
+### Decisões técnicas da implementação
+
+- falhas e negações são persistidas em transação independente `REQUIRES_NEW`, permanecendo após rollback do caso de uso;
+- um filtro externo ao Spring Session gera UUID de correlação no servidor por request, ignora identificadores livres do cliente e disponibiliza o mesmo valor a todos os eventos daquele fluxo;
+- a troca de sessão por login é serializada por principal com advisory lock de sessão PostgreSQL, mantido até o filtro do Spring Session concluir a persistência da resposta;
+- a rotação explícita por `changeSessionId()` permanece dentro da região serializada, preservando proteção contra fixation;
+- os testes concorrentes validam os dois cookies resultantes e comprovam que exatamente um permanece autenticado.
+
 ## Ameaças mínimas para testes/revisão
 
 ```text
