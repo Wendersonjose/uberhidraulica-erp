@@ -2,7 +2,7 @@
 
 ## Identificação
 
-- Status: `FRONTEND_CORRECTIONS_READY_FOR_REVIEW`
+- Status: `DONE`
 - Prioridade: `CRITICAL`
 - Criada em: `2026-09-10`
 - Proprietário principal: Oficina — `AG-03`
@@ -10,7 +10,7 @@
 
 ## Objetivo
 
-Disponibilizar o backend mínimo executável do fluxo Cliente → Veículo → Serviço → Ordem de Serviço para lançamentos fictícios e teste operacional, sem antecipar os demais domínios do ERP.
+Disponibilizar a vertical mínima executável do fluxo Cliente → Veículo → Serviço → Ordem de Serviço, com backend e frontend integrados, para lançamentos fictícios e teste operacional, sem antecipar os demais domínios do ERP.
 
 ## Escopo
 
@@ -22,7 +22,7 @@ Disponibilizar o backend mínimo executável do fluxo Cliente → Veículo → S
 
 ## Fora do escopo
 
-Frontend React; orçamento completo e aprovação pública; estoque/reserva; compras; financeiro; comissão completa; garantia operacional; fiscal; integrações bancárias; conciliação; rentabilidade; Supabase; exclusão física.
+Orçamento completo e aprovação pública; estoque/reserva; compras; financeiro; comissão completa; garantia operacional; fiscal; integrações bancárias; conciliação; rentabilidade; Supabase; exclusão física.
 
 ## Regras existentes utilizadas
 
@@ -65,8 +65,8 @@ Frontend React; orçamento completo e aprovação pública; estoque/reserva; com
 2. AG-03 → AG-02/AG-09: fronteiras e autenticação — `CONCLUÍDO`.
 3. AG-02 → AG-10/AG-11: persistência e backend — `CONCLUÍDO`.
 4. AG-11 → AG-13: testes incrementais e integração vertical — `CONCLUÍDO`.
-5. AG-13 → AG-15: revisão independente — `EM_REVISÃO`.
-6. AG-15 → AG-00: validação externa e encerramento — `PENDENTE`.
+5. AG-13 → AG-15: revisão independente — `CONCLUÍDO / APPROVED`.
+6. AG-15 → AG-00: validação externa e encerramento — `CONCLUÍDO`.
 
 ## Decision Requests
 
@@ -92,7 +92,7 @@ Os cenários enumerados na solicitação da TASK foram cobertos por testes de ca
 - Teste vertical real: Cliente → Veículo → Serviço → OS → serviço vinculado → consulta, `PASS` em PostgreSQL/Testcontainers.
 - Suíte completa: `42` testes, `0` failures, `0` errors, `0` skipped.
 - `ModularityTest`: `1` teste, `PASS`.
-- Pendência real: revisão externa; frontend permanece para a próxima etapa e está fora desta execução.
+- Backend aprovado com 42 testes PASS e ModularityTest PASS; frontend aprovado com 45 testes PASS, TypeScript, build e lint verdes; integração real pelo navegador e primeiro lançamento fictício de OS validados.
 
 ## Aprovação externa do backend
 
@@ -127,7 +127,7 @@ Os cenários enumerados na solicitação da TASK foram cobertos por testes de ca
 
 ## Correções da revisão externa do frontend
 
-- Checkpoint: `FRONTEND_CORRECTIONS_READY_FOR_REVIEW`; correções implementadas, aguardando revisão externa focada. Task permanece aberta.
+- Checkpoint final: `DONE`; correções revisadas externamente e aprovadas. Task encerrada após integração real, validação operacional e push.
 - `REV-FE-001`: busca por nome case-insensitive corrigida; busca documental exige dígitos; CPF/CNPJ formatados e busca vazia cobertos por testes de interface.
 - `REV-FE-002`: 401 de API protegida encerra sessão local, cancela queries e limpa cache; logout 401 tratado como sessão encerrada; falhas de rede/servidor exibidas com possibilidade de tentar novamente. Respostas de sessão anterior são descartadas. Restauração de sessão e troca obrigatória preservadas, sem armazenamento persistente de autenticação.
 - `REV-FE-003`: estados loading/error/empty e retry nas consultas auxiliares de clientes, veículos, resumo da OS e catálogo; cliente sem veículo recebe orientação e caminho para cadastro existente. Ações dependentes são protegidas.
@@ -135,17 +135,24 @@ Os cenários enumerados na solicitação da TASK foram cobertos por testes de ca
 - `REV-FE-005`: chaves compartilhadas para lista de OS e veículos por cliente; invalidação após criação de OS e cadastro de veículo, com regressões usando cache previamente populado e ainda fresco.
 - `REV-FE-006`: testes de formulários renderizados, quilometragem zero/vazia, payload, navegação, troca de cliente, inclusão/refetch de serviço e subtotal de múltiplos snapshots; regressões de sessão e estados auxiliares.
 - Gates em 2026-09-11: `npm test -- --run` — 45 testes PASS, 0 failures, 3 arquivos; `npm run build` — PASS com TypeScript real; `npx tsc -p tsconfig.app.json --noEmit` — exit 0; `npm run lint` — exit 0, 0 warnings; `git diff --check` — PASS.
-- Java, migrations e pom.xml permanecem sem diferenças, inclusive na comparação com o baseline backend aprovado. Sem dependências novas, alterações de contratos backend, commit ou push.
-- Nenhuma Decision Request necessária para estas correções. Encerramento independente dos findings depende da próxima revisão.
+- Java, migrations e pom.xml permaneceram inalterados em relação ao backend aprovado. Frontend consolidado no commit `4abebf97662c3ba7bd78e93deeef0a8837656da8` e enviado para `origin/main`.
+- Nenhuma Decision Request adicional foi necessária. Revisão pós-correção: `APPROVED`, sem findings impeditivos.
 
-## Pendências da Task
+## Encerramento da Task
 
-- Revisão externa focada pós-correção do frontend.
-- Execução integrada com backend e frontend reais.
-- Validação visual e teste operacional pelo navegador.
-- Primeiro lançamento fictício de OS.
-- Commit/push após revisão e autorização.
-
+- Revisão externa pós-correção do frontend: `APPROVED`.
+- Frontend: `45` testes PASS, `0` failures.
+- TypeScript real: `PASS`.
+- Build frontend: `PASS`.
+- Lint frontend: `PASS`, `0` warnings.
+- Integração backend + frontend real: `PASS`.
+- Validação operacional pelo navegador: `PASS`.
+- Primeiro lançamento fictício de OS: `PASS`.
+- Backend aprovado: commit `fd842d8be0fa9d7ebec8545a14ca4c7247bb79e7`.
+- Frontend integrado: commit `4abebf97662c3ba7bd78e93deeef0a8837656da8`.
+- Push para `origin/main`: `CONCLUÍDO`.
+- Decision Requests abertas: `0`.
+- Pendências da TASK-0004: `0`.
 ## Findings iniciais
 
 - Não existem especificações aprovadas próprias para Cliente, Veículo, Serviço ou abertura de OS no snapshot atual.
@@ -162,3 +169,4 @@ Os cenários enumerados na solicitação da TASK foram cobertos por testes de ca
 - 2026-09-10 — Revisão externa independente do backend `APPROVED`; checkpoint movido para `FRONTEND_PENDING`. A Task permanece aberta.
 - 2026-09-10 — Frontend mínimo implementado e gates locais executados; checkpoint movido para `FRONTEND_IMPLEMENTATION_REVIEW`, sem declarar integração operacional concluída.
 - 2026-09-11 — Corrigidos os seis findings MEDIUM da revisão externa; 45 testes PASS, TypeScript real/build/lint verdes, 0 warnings. Checkpoint movido para `FRONTEND_CORRECTIONS_READY_FOR_REVIEW`, sem concluir a Task e sem commit/push.
+- 2026-09-12 — Revisão pós-correção APPROVED; integração real backend/frontend e primeiro fluxo fictício de OS validados; frontend consolidado no commit 4abebf97662c3ba7bd78e93deeef0a8837656da8 e enviado para origin/main; TASK-0004 encerrada como DONE.
