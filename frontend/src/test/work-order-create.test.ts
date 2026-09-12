@@ -1,0 +1,3 @@
+import{expect,test,vi}from'vitest'
+import{workOrdersApi}from'../api/resources'
+test('abertura de OS envia somente cliente, veículo e quilometragem',async()=>{const fetchMock=vi.spyOn(globalThis,'fetch').mockResolvedValueOnce(new Response(JSON.stringify({headerName:'X-CSRF',parameterName:'_csrf',token:'test'}),{status:200})).mockResolvedValueOnce(new Response(JSON.stringify({id:'o1'}),{status:201}));await workOrdersApi.create({customerId:'c1',vehicleId:'v1',entryMileage:100000});const request=fetchMock.mock.calls[1][1];expect(JSON.parse(String(request?.body))).toEqual({customerId:'c1',vehicleId:'v1',entryMileage:100000})})

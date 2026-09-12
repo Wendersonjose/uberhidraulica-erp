@@ -2,11 +2,11 @@
 
 ## Identificação
 
-- Status: `FRONTEND_PENDING`
+- Status: `FRONTEND_CORRECTIONS_READY_FOR_REVIEW`
 - Prioridade: `CRITICAL`
 - Criada em: `2026-09-10`
 - Proprietário principal: Oficina — `AG-03`
-- Responsável atual: `AG-11`
+- Responsável atual: `AG-12`
 
 ## Objetivo
 
@@ -113,12 +113,38 @@ Os cenários enumerados na solicitação da TASK foram cobertos por testes de ca
 - Ordem de Serviço: `APPROVED`.
 - Integração vertical Cliente → Veículo → Serviço → OS: `APPROVED / PASS`.
 
+## Implementação frontend mínima
+
+- React/TypeScript mantido em `frontend/`, sem recriar o scaffold ou mover o backend.
+- Rotas protegidas para login, troca obrigatória de senha, Clientes PF/PJ, Veículos, Serviços e Ordens de Serviço.
+- Sessão Spring Security real com cookie HttpOnly, `credentials: include` e CSRF dinâmico em todas as mutações, inclusive login e logout.
+- Consultas e mutações centralizadas com TanStack Query; listagem de veículos consolidada por cliente na camada de API.
+- Abertura de OS somente com cliente, veículo pertencente ao cliente e quilometragem; status `ABERTA` recebido do backend.
+- Detalhe da OS com snapshots de serviços, inclusão pelo catálogo real, invalidação da consulta e subtotal local apenas para apresentação.
+- CSS próprio desktop-first alinhado ao Figma, sem Tailwind e sem dados fictícios em runtime.
+- Vitest/jsdom/Testing Library configurados, com cobertura dos fluxos críticos do frontend.
+- Vite proxy `/api` para `http://localhost:8080`.
+
+## Correções da revisão externa do frontend
+
+- Checkpoint: `FRONTEND_CORRECTIONS_READY_FOR_REVIEW`; correções implementadas, aguardando revisão externa focada. Task permanece aberta.
+- `REV-FE-001`: busca por nome case-insensitive corrigida; busca documental exige dígitos; CPF/CNPJ formatados e busca vazia cobertos por testes de interface.
+- `REV-FE-002`: 401 de API protegida encerra sessão local, cancela queries e limpa cache; logout 401 tratado como sessão encerrada; falhas de rede/servidor exibidas com possibilidade de tentar novamente. Respostas de sessão anterior são descartadas. Restauração de sessão e troca obrigatória preservadas, sem armazenamento persistente de autenticação.
+- `REV-FE-003`: estados loading/error/empty e retry nas consultas auxiliares de clientes, veículos, resumo da OS e catálogo; cliente sem veículo recebe orientação e caminho para cadastro existente. Ações dependentes são protegidas.
+- `REV-FE-004`: removido noCheck; tipos de entrada/saída Zod/RHF corrigidos; imports explícitos no setup Vitest; checagem TypeScript efetiva habilitada no build.
+- `REV-FE-005`: chaves compartilhadas para lista de OS e veículos por cliente; invalidação após criação de OS e cadastro de veículo, com regressões usando cache previamente populado e ainda fresco.
+- `REV-FE-006`: testes de formulários renderizados, quilometragem zero/vazia, payload, navegação, troca de cliente, inclusão/refetch de serviço e subtotal de múltiplos snapshots; regressões de sessão e estados auxiliares.
+- Gates em 2026-09-11: `npm test -- --run` — 45 testes PASS, 0 failures, 3 arquivos; `npm run build` — PASS com TypeScript real; `npx tsc -p tsconfig.app.json --noEmit` — exit 0; `npm run lint` — exit 0, 0 warnings; `git diff --check` — PASS.
+- Java, migrations e pom.xml permanecem sem diferenças, inclusive na comparação com o baseline backend aprovado. Sem dependências novas, alterações de contratos backend, commit ou push.
+- Nenhuma Decision Request necessária para estas correções. Encerramento independente dos findings depende da próxima revisão.
+
 ## Pendências da Task
 
-- Frontend React mínimo.
-- Integração frontend/backend.
-- Teste operacional pelo navegador.
+- Revisão externa focada pós-correção do frontend.
+- Execução integrada com backend e frontend reais.
+- Validação visual e teste operacional pelo navegador.
 - Primeiro lançamento fictício de OS.
+- Commit/push após revisão e autorização.
 
 ## Findings iniciais
 
@@ -134,3 +160,5 @@ Os cenários enumerados na solicitação da TASK foram cobertos por testes de ca
 - 2026-09-10 — Owner decidiu DR-0004 e DR-0005; bloqueios removidos e Task retomada em `IN_PROGRESS`, preservando o catálogo já implementado.
 - 2026-09-10 — Backend e integração vertical implementados; testes específicos verdes; Task movida para `IMPLEMENTATION_REVIEW`, aguardando revisão externa e sem commit/push.
 - 2026-09-10 — Revisão externa independente do backend `APPROVED`; checkpoint movido para `FRONTEND_PENDING`. A Task permanece aberta.
+- 2026-09-10 — Frontend mínimo implementado e gates locais executados; checkpoint movido para `FRONTEND_IMPLEMENTATION_REVIEW`, sem declarar integração operacional concluída.
+- 2026-09-11 — Corrigidos os seis findings MEDIUM da revisão externa; 45 testes PASS, TypeScript real/build/lint verdes, 0 warnings. Checkpoint movido para `FRONTEND_CORRECTIONS_READY_FOR_REVIEW`, sem concluir a Task e sem commit/push.

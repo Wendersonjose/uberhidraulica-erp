@@ -1,0 +1,5 @@
+import type{ReactNode}from'react'
+export function PageHeader({title,subtitle,children}:{title:string;subtitle:string;children?:ReactNode}){return <header className="page-header"><div><h1>{title}</h1><p>{subtitle}</p></div><div className="actions">{children}</div></header>}
+export function Field({label,error,children,className=''}:{label:string;error?:string;children:ReactNode;className?:string}){return <div className={`field ${className}`}><label>{label}{children}</label>{error&&<span role="alert" className="error-text">{error}</span>}</div>}
+export function State({loading,error,empty,children}:{loading:boolean;error:unknown;empty:boolean;children:ReactNode}){if(loading)return <div className="card state">Carregando…</div>;if(error)return <div role="alert" className="notice error">Não foi possível carregar os dados. Tente novamente.</div>;if(empty)return <div className="card state">Nenhum registro encontrado.</div>;return <>{children}</>}
+export const Badge=({children,tone='success'}:{children:ReactNode;tone?:'success'|'warning'|'info'})=><span className={`badge ${tone}`}>{children}</span>
