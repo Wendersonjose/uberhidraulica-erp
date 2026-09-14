@@ -2,7 +2,7 @@
 
 ## Identificação
 
-- Status: `IN_PROGRESS`
+- Status: `REVIEW`
 - Prioridade: `HIGH`
 - Criada em: `2026-09-14`
 - Proprietário principal: Oficina — `AG-03`
@@ -88,6 +88,30 @@ Saldo, reserva, disponibilidade e movimentação de estoque; baixa por consumo; 
 2. **Ausência de estoque** — a OS registra consumo comercial sem qualquer efeito físico. Até o módulo Estoque existir, o sistema pode registrar mais itens do que a oficina possui. Probabilidade `ALTA`, impacto `MÉDIO`, mitigado por ser um registro declaradamente comercial.
 3. **Item lançado por engano** — não há remoção. Probabilidade `MÉDIA`, impacto `BAIXO` no MVP, mas exige decisão de histórico antes do uso operacional intenso.
 
+## Resultado dos gates
+
+- `mvn test`: `55` testes, `0` failures, `0` errors, `0` skipped, `BUILD SUCCESS`.
+- `ModularityTest` / `ApplicationModules.verify()`: `PASS` com a dependência `workorder → productcatalog`.
+- `Task0006ProductItemIntegrationTest`: `5` testes `PASS` em PostgreSQL 18 real via Testcontainers.
+- `Task0004VerticalIntegrationTest`: `6` testes `PASS`, sem alteração de asserção.
+- Frontend: `55` testes `PASS`; TypeScript, build e lint verdes, `0` warnings.
+- `git diff --check`: `PASS`.
+
+## Critérios de aceite
+
+`13/13 IMPLEMENTADOS`.
+
+## Revisão
+
+- Revisão interna no papel do `AG-15`: `APPROVED_WITH_NOTES`, em `docs/review/TASK-0006-revisao-tecnica.md`.
+- Findings abertos: `F-06-01` e `F-06-02` `MEDIUM` aceitos com justificativa, `F-06-03` e `F-06-04` `LOW`. Nenhum `CRITICAL` ou `HIGH`.
+- Revisão externa independente: `PENDENTE`. A Task permanece em `REVIEW` e não é declarada `DONE`.
+
+## Conferência solicitada ao proprietário
+
+`RN-02` e `RN-03` são regras novas criadas nesta Task, sem documento aprovado anterior. Ambas recusam o lançamento em vez de supor um valor: produto inativo e produto sem preço de venda não podem ser lançados. Requerem confirmação explícita, especialmente `RN-03`, que impede cobrar item cujo preço ninguém definiu.
+
 ## Histórico
 
 - 2026-09-14 — Task criada como continuação direta da TASK-0005, sendo o primeiro consumo real do contrato público do catálogo de produtos.
+- 2026-09-14 — Backend, migration `V7`, frontend e testes implementados; todos os gates aplicáveis verdes; revisão interna concluída. Status movido para `REVIEW`, aguardando revisão externa independente.

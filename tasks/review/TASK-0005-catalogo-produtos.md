@@ -2,7 +2,7 @@
 
 ## Identificação
 
-- Status: `IN_PROGRESS`
+- Status: `REVIEW`
 - Prioridade: `HIGH`
 - Criada em: `2026-09-14`
 - Proprietário principal: Catálogo & Estoque — `AG-04`
@@ -80,6 +80,30 @@ Saldo físico, reservado e disponível; movimentações; reservas; inventário; 
 
 - `DR-0006` — `OPEN`, não bloqueadora. Precisão e arredondamento de quantidades fracionadas do catálogo físico. Ver `decision-requests/DR-0006-precisao-quantidade-item-fisico.md`.
 
+## Resultado dos gates
+
+- `mvn test`: `55` testes, `0` failures, `0` errors, `0` skipped, `BUILD SUCCESS`.
+- `ModularityTest` / `ApplicationModules.verify()`: `PASS` com o novo módulo `productcatalog`.
+- `ProductCatalogIntegrationTest`: `8` testes `PASS` em PostgreSQL 18 real via Testcontainers.
+- Frontend: `55` testes `PASS`; TypeScript, build e lint verdes, `0` warnings.
+- `git diff --check`: `PASS`.
+- Regressão: IAM, Clientes, Veículos, Serviços e Ordens de Serviço `PASS` sem alteração de asserção.
+
+## Critérios de aceite
+
+`13/13 IMPLEMENTADOS`.
+
+## Revisão
+
+- Revisão interna no papel do `AG-15`: `APPROVED_WITH_NOTES`, em `docs/review/TASK-0005-revisao-tecnica.md`.
+- Findings abertos: `F-05-01` `MEDIUM` aceito, `F-05-02` e `F-05-03` `LOW`. Nenhum `CRITICAL` ou `HIGH`.
+- Revisão externa independente: `PENDENTE`. A Task permanece em `REVIEW` e não é declarada `DONE`.
+
+## Conferência solicitada ao proprietário
+
+O tipo funcional obrigatório do produto não constava da lista de campos sugerida na abertura da sprint. Foi incluído porque a documentação de domínio aprovada (AG-04, seção 10) o exige e precede a Task na ordem de autoridade, e porque acrescentá-lo depois como `NOT NULL` obrigaria a inventar um valor para o catálogo já cadastrado. Requer confirmação explícita.
+
 ## Histórico
 
 - 2026-09-14 — Task criada a partir da auditoria do repositório após o encerramento da TASK-0004. Nenhuma Task posterior à TASK-0004 existia em andamento.
+- 2026-09-14 — Backend, contrato público, migration `V6`, frontend e testes implementados; todos os gates aplicáveis verdes; revisão interna concluída. Status movido para `REVIEW`, aguardando revisão externa independente.
