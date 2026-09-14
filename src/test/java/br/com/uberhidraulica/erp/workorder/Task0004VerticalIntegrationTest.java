@@ -27,7 +27,7 @@ class Task0004VerticalIntegrationTest {
     @DynamicPropertySource static void bootstrap(DynamicPropertyRegistry p){p.add("IAM_BOOTSTRAP_OWNER_NAME",()->"Owner Vertical");p.add("IAM_BOOTSTRAP_OWNER_EMAIL",()->"owner-vertical@example.test");p.add("IAM_BOOTSTRAP_OWNER_PASSWORD",()->"vertical-bootstrap-password");}
     @Autowired MockMvc mvc; @Autowired JdbcTemplate jdbc;
 
-    @BeforeEach void clean(){jdbc.update("delete from workorder.work_order_service");jdbc.update("delete from workorder.work_order");jdbc.update("delete from crm.vehicle");jdbc.update("delete from crm.customer");jdbc.update("delete from servicecatalog.service");}
+    @BeforeEach void clean(){jdbc.update("delete from workorder.work_order_product");jdbc.update("delete from workorder.work_order_service");jdbc.update("delete from workorder.work_order");jdbc.update("delete from crm.vehicle");jdbc.update("delete from crm.customer");jdbc.update("delete from servicecatalog.service");jdbc.update("delete from productcatalog.product");}
 
     @Test void requiresAuthenticationAndCsrf() throws Exception {
         mvc.perform(get("/api/customers")).andExpect(status().isUnauthorized());

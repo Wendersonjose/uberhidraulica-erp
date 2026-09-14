@@ -15,7 +15,7 @@ const customers: Customer[] = [
 ]
 const vehicle: Vehicle = { id: 'v1', customerId: 'c1', manufacturer: 'Marca', model: 'Modelo', plate: 'AAA1A11', modelYear: 2020, mileage: null, steeringGearManufacturer: null }
 const secondVehicle: Vehicle = { ...vehicle, id: 'v2', customerId: 'c2', model: 'Segundo', plate: 'BBB2B22' }
-const order: WorkOrder = { id: 'o1', number: 1, customerId: 'c1', vehicleId: 'v1', entryMileage: 0, openedAt: '2026-09-10T10:00:00Z', status: 'ABERTA', services: [] }
+const order: WorkOrder = { id: 'o1', number: 1, customerId: 'c1', vehicleId: 'v1', entryMileage: 0, openedAt: '2026-09-10T10:00:00Z', status: 'ABERTA', services: [], products: [] }
 const service: Service = { id: 's2', name: 'Segundo serviço', description: 'Descrição do catálogo', basePrice: 999, defaultWarrantyDays: 90, active: true, category: null }
 function json(body: unknown, status = 200) {
   return new Response(status === 204 ? null : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -32,6 +32,7 @@ function mockHttp(overrides: Routes = {}, initial: Session | null = session) {
     'GET /api/customers/c2/vehicles': () => json([secondVehicle]),
     'GET /api/vehicles/v1': () => json(vehicle),
     'GET /api/services': () => json([service]),
+    'GET /api/products': () => json([]),
     'GET /api/work-orders': () => json([]),
     'GET /api/work-orders/o1': () => json(order),
     'GET /api/iam/session': () => current ? json(current) : json({}, 401),

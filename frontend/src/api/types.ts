@@ -1,4 +1,4 @@
-export type Session={id:string;name:string;email:string;profileCode:string;state:string;mustChangePassword:boolean;permissions:string[]};export type Customer={id:string;personType:'PF'|'PJ';name:string;document:string;status:'ACTIVE'|'INACTIVE';createdAt:string;updatedAt:string};export type Vehicle={id:string;customerId:string;plate:string;manufacturer:string;model:string;modelYear:number;mileage:number|null;steeringGearManufacturer:string|null};export type Service={id:string;name:string;description:string;category:string|null;basePrice:number;defaultWarrantyDays:number;active:boolean};export type WorkOrderService={id:string;serviceId:string;name:string;description:string;basePrice:number;warrantyDays:number;addedAt:string};export type WorkOrder={id:string;number:number;customerId:string;vehicleId:string;entryMileage:number;openedAt:string;status:'ABERTA';services:WorkOrderService[]}
+export type Session={id:string;name:string;email:string;profileCode:string;state:string;mustChangePassword:boolean;permissions:string[]};export type Customer={id:string;personType:'PF'|'PJ';name:string;document:string;status:'ACTIVE'|'INACTIVE';createdAt:string;updatedAt:string};export type Vehicle={id:string;customerId:string;plate:string;manufacturer:string;model:string;modelYear:number;mileage:number|null;steeringGearManufacturer:string|null};export type Service={id:string;name:string;description:string;category:string|null;basePrice:number;defaultWarrantyDays:number;active:boolean};export type WorkOrderService={id:string;serviceId:string;name:string;description:string;basePrice:number;warrantyDays:number;addedAt:string};export type WorkOrder={id:string;number:number;customerId:string;vehicleId:string;entryMileage:number;openedAt:string;status:'ABERTA';services:WorkOrderService[];products:WorkOrderProduct[]}
 
 export type ProductType = 'PART' | 'SUPPLY' | 'COMPONENT' | 'KIT' | 'INTERNAL_USE_MATERIAL'
 export type ProductUnit = 'UNIDADE' | 'LITRO' | 'METRO' | 'QUILOGRAMA'
@@ -13,4 +13,8 @@ export const PRODUCT_TYPE_LABELS: Record<ProductType, string> = {
 }
 export const PRODUCT_UNIT_LABELS: Record<ProductUnit, string> = {
   UNIDADE: 'Unidade', LITRO: 'Litro', METRO: 'Metro', QUILOGRAMA: 'Quilograma',
+}
+export type WorkOrderProduct = {
+  id: string; productId: string; description: string; internalCode: string | null
+  unit: string; quantity: number; unitPrice: number; addedAt: string
 }
