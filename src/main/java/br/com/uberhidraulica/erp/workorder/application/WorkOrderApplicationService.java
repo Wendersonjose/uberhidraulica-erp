@@ -1,10 +1,12 @@
 package br.com.uberhidraulica.erp.workorder.application;
 import br.com.uberhidraulica.erp.crm.CustomerVehicleQuery;
+import br.com.uberhidraulica.erp.productcatalog.ProductCatalogQuery;
 import br.com.uberhidraulica.erp.servicecatalog.ServiceCatalogQuery;
 import br.com.uberhidraulica.erp.workorder.domain.*;
 import br.com.uberhidraulica.erp.workorder.port.WorkOrderRepositoryPort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.*;
 
@@ -13,7 +15,8 @@ public class WorkOrderApplicationService {
     private final WorkOrderRepositoryPort repository;
     private final CustomerVehicleQuery crm;
     private final ServiceCatalogQuery catalog;
-    public WorkOrderApplicationService(WorkOrderRepositoryPort repository,CustomerVehicleQuery crm,ServiceCatalogQuery catalog){this.repository=repository;this.crm=crm;this.catalog=catalog;}
+    private final ProductCatalogQuery products;
+    public WorkOrderApplicationService(WorkOrderRepositoryPort repository,CustomerVehicleQuery crm,ServiceCatalogQuery catalog,ProductCatalogQuery products){this.repository=repository;this.crm=crm;this.catalog=catalog;this.products=products;}
 
     @Transactional public WorkOrder open(UUID customerId,UUID vehicleId,Long mileage){
         crm.customer(customerId).orElseThrow(()->new WorkOrderException("CUSTOMER_NOT_FOUND","Cliente não encontrado"));
@@ -28,6 +31,24 @@ public class WorkOrderApplicationService {
         var service=catalog.service(serviceId).orElseThrow(()->new WorkOrderException("SERVICE_NOT_FOUND","Serviço não encontrado"));
         var item=new WorkOrder.ServiceItem(UUID.randomUUID(),service.id(),service.name(),service.description(),service.basePrice(),service.defaultWarrantyDays(),Instant.now());
         repository.addService(id,item);
+        return get(id);
+    }
+
+    /**
+     * Lança um item físico na OS copiando do catálogo descrição, código interno, unidade e preço.
+     *
+     * <p>Produto inativo é recusado (AG-04, seção 13) e produto sem preço de venda também: cobrar
+     * exige um preço que alguém definiu, e arbitrar um valor aqui inventaria dinheiro. Nenhum saldo
+     * de estoque é consultado ou reservado — o módulo Estoque não existe.</p>
+     */
+    @Transactional public WorkOrder addProduct(UUID id,UUID productId,BigDecimal quantity){
+        get(id);
+        var product=products.product(productId).orElseThrow(()->new WorkOrderException("PRODUCT_NOT_FOUND","Produto não encontrado"));
+        if(!product.active()) throw new WorkOrderException("PRODUCT_INACTIVE","Produto inativo não pode ser lançado na OS");
+        if(product.salePrice()==null) throw new WorkOrderException("PRODUCT_WITHOUT_SALE_PRICE","Produto sem preço de venda definido no catálogo");
+        var item=new WorkOrder.ProductItem(UUID.randomUUID(),product.id(),product.description(),product.internalCode(),
+                product.unit(),quantity,product.salePrice(),Instant.now());
+        repository.addProduct(id,item);
         return get(id);
     }
 }

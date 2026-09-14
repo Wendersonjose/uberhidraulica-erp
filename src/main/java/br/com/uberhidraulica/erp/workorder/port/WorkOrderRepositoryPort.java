@@ -6,4 +6,5 @@ public interface WorkOrderRepositoryPort {
     Optional<WorkOrder> findById(UUID id);
     List<WorkOrder> findAll();
     WorkOrder.ServiceItem addService(UUID workOrderId,WorkOrder.ServiceItem item);
+    WorkOrder.ProductItem addProduct(UUID workOrderId,WorkOrder.ProductItem item);
 }
