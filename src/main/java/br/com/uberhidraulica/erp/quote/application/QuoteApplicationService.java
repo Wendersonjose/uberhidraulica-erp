@@ -129,7 +129,9 @@ public class QuoteApplicationService {
                 .orElseThrow(() -> new QuoteException("QUOTE_REVISION_NOT_FOUND", "Revisão não encontrada"));
         quote.checkPresentable(revision);
         QuoteRevision presented = revision.present(Instant.now(clock), QuoteRevision.DEFAULT_VALIDITY);
-        if (!repository.present(presented, revision.version()))
+        // Apresentar e decidir avançam a mesma versão do orçamento. É isso que impede que uma decisão
+        // seja aceita com base numa obsolescência lida antes desta apresentação.
+        if (!repository.touch(quote.id(), quote.version()) || !repository.present(presented, revision.version()))
             throw new QuoteException("QUOTE_REVISION_CONCURRENTLY_MODIFIED",
                     "A revisão foi alterada por outra operação; recarregue o orçamento");
         return get(workOrderId, quoteId);

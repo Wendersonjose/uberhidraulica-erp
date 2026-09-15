@@ -21,8 +21,13 @@ import java.util.UUID;
 @RequestMapping("/api/work-orders/{workOrderId}/quotes")
 public class QuoteController {
     private final QuoteApplicationService application;
+    private final br.com.uberhidraulica.erp.quote.application.PublicQuoteService publicQuotes;
 
-    public QuoteController(QuoteApplicationService application) { this.application = application; }
+    public QuoteController(QuoteApplicationService application,
+                           br.com.uberhidraulica.erp.quote.application.PublicQuoteService publicQuotes) {
+        this.application = application;
+        this.publicQuotes = publicQuotes;
+    }
 
     @PostMapping
     ResponseEntity<Response> open(@PathVariable UUID workOrderId) {
@@ -62,6 +67,57 @@ public class QuoteController {
     @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'QUOTE_PRESENT')")
     Response present(@PathVariable UUID workOrderId, @PathVariable UUID quoteId, @PathVariable UUID revisionId) {
         return Response.from(application.present(workOrderId, quoteId, revisionId), application.now());
+    }
+
+    /**
+     * Emite o link público de uma apresentação. O token bruto aparece <b>uma única vez</b>, aqui.
+     *
+     * <p>Exige {@code QUOTE_PRESENT}: o link é o meio pelo qual a proposta chega ao cliente, então
+     * emiti-lo tem a mesma autoridade de apresentá-la.</p>
+     */
+    @PostMapping("/{quoteId}/revisions/{revisionId}/public-access")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'QUOTE_PRESENT')")
+    ResponseEntity<IssuedAccessResponse> issuePublicAccess(@PathVariable UUID workOrderId,
+                                                           @PathVariable UUID quoteId,
+                                                           @PathVariable UUID revisionId) {
+        var issued = publicQuotes.issue(application.get(workOrderId, quoteId), revisionId, null);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .header(org.springframework.http.HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(IssuedAccessResponse.from(issued));
+    }
+
+    @GetMapping("/{quoteId}/public-access")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'QUOTE_PRESENT')")
+    List<AccessResponse> listPublicAccess(@PathVariable UUID workOrderId, @PathVariable UUID quoteId) {
+        Instant now = application.now();
+        return publicQuotes.accesses(application.get(workOrderId, quoteId)).stream()
+                .map(access -> AccessResponse.from(access, now)).toList();
+    }
+
+    @PostMapping("/{quoteId}/public-access/{accessId}/revoke")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'QUOTE_PRESENT')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void revokePublicAccess(@PathVariable UUID workOrderId, @PathVariable UUID quoteId,
+                            @PathVariable UUID accessId) {
+        publicQuotes.revoke(application.get(workOrderId, quoteId), accessId);
+    }
+
+    /** {@code token} só existe nesta resposta; o banco guarda apenas o digest. */
+    public record IssuedAccessResponse(UUID accessId, UUID quoteRevisionId, String token,
+                                       Instant validUntil) {
+        static IssuedAccessResponse from(br.com.uberhidraulica.erp.quote.application.PublicQuoteService.IssuedAccess issued) {
+            return new IssuedAccessResponse(issued.access().id(), issued.access().quoteRevisionId(),
+                    issued.rawToken(), issued.access().validUntil());
+        }
+    }
+
+    /** Nunca expõe o digest: o identificador do acesso é o que serve para correlacionar. */
+    public record AccessResponse(UUID id, UUID quoteRevisionId, Instant createdAt, Instant validUntil,
+                                 Instant revokedAt, boolean active) {
+        static AccessResponse from(br.com.uberhidraulica.erp.quote.domain.PublicQuoteAccess access, Instant now) {
+            return new AccessResponse(access.id(), access.quoteRevisionId(), access.createdAt(),
+                    access.validUntil(), access.revokedAt(), !access.revoked() && !access.expiredAt(now));
+        }
     }
 
     public record RevisionRequest(@NotEmpty @Valid List<ItemRequest> items) {}
