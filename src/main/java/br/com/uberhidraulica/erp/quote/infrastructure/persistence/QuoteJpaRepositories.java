@@ -11,6 +11,16 @@ import java.util.UUID;
 
 interface QuoteJpaRepository extends JpaRepository<QuoteEntity, UUID> {
     List<QuoteEntity> findByWorkOrderIdOrderByCreatedAtAscIdAsc(UUID workOrderId);
+
+    /**
+     * Avanço condicional da versão do agregado.
+     *
+     * <p>Além de detectar a concorrência, a atualização mantém a linha travada até o commit, de modo
+     * que a operação concorrente não consegue decidir com base em uma leitura já vencida.</p>
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update QuoteEntity q set q.version = q.version + 1 where q.id = :id and q.version = :expectedVersion")
+    int touch(@Param("id") UUID id, @Param("expectedVersion") long expectedVersion);
 }
 
 interface QuoteRevisionJpaRepository extends JpaRepository<QuoteRevisionEntity, UUID> {

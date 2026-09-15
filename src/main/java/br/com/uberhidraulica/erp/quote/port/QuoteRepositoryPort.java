@@ -29,4 +29,14 @@ public interface QuoteRepositoryPort {
      * @return {@code false} quando a revisão mudou desde a leitura, sem aplicar nada
      */
     boolean present(QuoteRevision revision, long expectedVersion);
+
+    /**
+     * Avança a versão do orçamento, falhando se ele já tiver sido alterado desde a leitura.
+     *
+     * <p>É o ponto de serialização entre apresentar e decidir: as duas operações tocam a mesma linha,
+     * então a que chegar depois encontra a versão mudada em vez de gravar sobre uma leitura vencida.</p>
+     *
+     * @return {@code false} quando outra operação alterou o orçamento no intervalo
+     */
+    boolean touch(UUID quoteId, long expectedVersion);
 }

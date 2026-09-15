@@ -111,6 +111,11 @@ public class JpaQuoteRepositoryAdapter implements QuoteRepositoryPort {
         return revisions.present(revision.id(), revision.presentedAt(), revision.validUntil(), expectedVersion) == 1;
     }
 
+    @Override
+    public boolean touch(UUID quoteId, long expectedVersion) {
+        return quotes.touch(quoteId, expectedVersion) == 1;
+    }
+
     private Quote load(QuoteEntity entity) {
         List<QuoteRevisionItemEntity> links = revisionItems.findByQuoteIdOrderByDisplayOrderAsc(entity.id);
         Map<UUID, List<QuoteRevision.Entry>> entriesByRevision = links.stream()
