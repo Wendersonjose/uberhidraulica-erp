@@ -22,6 +22,9 @@ import java.util.Map;
 @Configuration
 @EnableMethodSecurity
 public class SecurityConfig {
+    private static final org.slf4j.Logger LOGGER =
+            org.slf4j.LoggerFactory.getLogger(SecurityConfig.class);
+
     @Bean PasswordEncoder passwordEncoder() { return PasswordEncoderFactories.createDelegatingPasswordEncoder(); }
     @Bean AuthenticationManager authenticationManager(IamUserDetailsService users, PasswordEncoder encoder) {
         DaoAuthenticationProvider provider = new DaoAuthenticationProvider(users);
@@ -56,7 +59,15 @@ public class SecurityConfig {
                             response.getWriter().write("{\"code\":\"AUTHENTICATION_REQUIRED\",\"message\":\"Autenticação necessária\",\"details\":[]}");
                         })
                         .accessDeniedHandler((request, response, exception) -> {
-                            deniedAudit.record(request, SecurityContextHolder.getContext().getAuthentication());
+                            // A negação precisa chegar ao cliente mesmo que a auditoria falhe: o acesso
+                            // foi barrado de qualquer forma, e devolver 500 esconderia isso. A falha de
+                            // auditoria fica registrada em log de erro para não passar despercebida.
+                            try {
+                                deniedAudit.record(request, SecurityContextHolder.getContext().getAuthentication());
+                            } catch (RuntimeException auditFailure) {
+                                LOGGER.error("Falha ao auditar acesso negado a {} {}",
+                                        request.getMethod(), request.getRequestURI(), auditFailure);
+                            }
                             response.setStatus(403); response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                             response.getWriter().write("{\"code\":\"ACCESS_DENIED\",\"message\":\"Acesso negado\",\"details\":[]}");
                         }))

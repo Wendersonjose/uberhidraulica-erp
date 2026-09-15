@@ -10,6 +10,8 @@ import java.util.UUID;
 
 @Service
 public class DeniedOperationAuditService {
+    private static final int TARGET_ID_MAX = 120;
+
     private final AuditPort audit;
 
     public DeniedOperationAuditService(AuditPort audit) { this.audit = audit; }
@@ -36,7 +38,17 @@ public class DeniedOperationAuditService {
             return new DeniedOperation("USER_CREATED", "USER", null);
         if (path.matches("/api/iam/profiles/[^/]+/permissions/[^/]+"))
             return new DeniedOperation("PUT".equals(method) ? "PROFILE_PERMISSION_ADDED" : "PROFILE_PERMISSION_REMOVED", "PROFILE", parts[4]);
-        return new DeniedOperation("IAM_ACCESS", "HTTP_ENDPOINT", method + " " + path);
+        return new DeniedOperation("IAM_ACCESS", "HTTP_ENDPOINT", truncated(method + " " + path));
+    }
+
+    /**
+     * O caminho de uma requisição não tem limite; {@code audit_event.target_id} tem 120 caracteres.
+     *
+     * <p>Sem este corte, negar acesso a uma rota longa fazia a própria gravação da auditoria falhar,
+     * e a negação chegava ao cliente como erro de servidor em vez de 403.</p>
+     */
+    private static String truncated(String value) {
+        return value.length() <= TARGET_ID_MAX ? value : value.substring(0, TARGET_ID_MAX - 1) + "…";
     }
 
     private record DeniedOperation(String action, String targetType, String targetId) {}

@@ -35,6 +35,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.*;
+import java.util.stream.Stream;
 import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -83,9 +84,15 @@ class IamAuthenticationIntegrationTest {
         assertThat(jdbc.queryForObject("select count(*) from iam.profile", Long.class)).isEqualTo(3);
         assertThat(jdbc.queryForList("select code from iam.profile order by code", String.class))
                 .containsExactly("DONO", "GERENTE_ADMINISTRATIVO", "GERENTE_FINANCEIRO");
+        // O catálogo do IAM continua inteiro no DONO; permissões de outros módulos entram pelas
+        // migrations desses módulos, e por isso a lista esperada é declarada por extenso.
+        assertThat(authorizations.profilePermissions(ProfileCode.DONO))
+                .containsAll(br.com.uberhidraulica.erp.iam.domain.IamPermissions.ALL);
         assertThat(authorizations.profilePermissions(ProfileCode.DONO)).containsExactlyInAnyOrderElementsOf(
-                br.com.uberhidraulica.erp.iam.domain.IamPermissions.ALL);
-        assertThat(authorizations.profilePermissions(ProfileCode.GERENTE_ADMINISTRATIVO)).isEmpty();
+                Stream.concat(br.com.uberhidraulica.erp.iam.domain.IamPermissions.ALL.stream(),
+                        Stream.of("QUOTE_PRESENT")).toList());
+        assertThat(authorizations.profilePermissions(ProfileCode.GERENTE_ADMINISTRATIVO))
+                .containsExactly("QUOTE_PRESENT");
         assertThat(authorizations.profilePermissions(ProfileCode.GERENTE_FINANCEIRO)).isEmpty();
         assertThat(jdbc.queryForObject("select count(*) from iam.audit_event where action='FIRST_OWNER_BOOTSTRAPPED'", Long.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("select must_change_password from iam.credential", Boolean.class)).isTrue();
