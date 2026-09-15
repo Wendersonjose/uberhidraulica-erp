@@ -1,0 +1,112 @@
+# TASK-0007 — Orçamento com versionamento comercial
+
+## Identificação
+
+- Status: `IN_PROGRESS`
+- Prioridade: `CRITICAL`
+- Criada em: `2026-09-15`
+- Proprietário principal: Oficina — `AG-03`
+- Responsável atual: `AG-11`
+
+## Objetivo
+
+Tornar executável a fundação comercial do orçamento já especificada e aprovada na `TASK-0001`: identidade do orçamento, apresentações versionadas, itens comerciais com histórico imutável, apresentação ao cliente com validade de sete dias e a regra de obsolescência da `DR-0001` calculada por item.
+
+## Contexto
+
+A `TASK-0001` está `SPECIFICATION_DONE` desde 2026-09-08, com requisito, domínio, arquitetura, modelo de dados, segurança e plano de testes aprovados, e `DR-0001` decidida. Nada disso havia sido implementado.
+
+Depois da `TASK-0006` a OS já sabe o que foi feito e o que foi aplicado, mas não sabe **o que foi combinado com o cliente**. Esta Task implementa a parte comercial interna; o acesso público e a decisão do cliente vêm em seguida.
+
+## Escopo
+
+- `workshop.quote`, `quote_revision`, `quote_item`, `quote_item_revision` e `quote_revision_item`, conforme o modelo aprovado (REVISION 2), inclusive as FKs compostas contra associação cross-quote.
+- Módulo Spring Modulith `quote`, com dependência declarada em `workorder` e `iam`.
+- Contratos públicos novos: `WorkOrderQuery` e `CurrentUser`.
+- Endpoints internos de criação do orçamento, criação de revisão, apresentação, consulta e histórico.
+- Derivação de obsolescência e de expiração, sem coluna de estado.
+- Telas de orçamentos da OS e de detalhe do orçamento, com criação de revisão e apresentação.
+- Testes de integração em PostgreSQL real e testes de interface.
+
+## Fora do escopo
+
+Acesso público por token; `PublicQuoteAccess`; decisão do cliente; `QuoteDecisionSubmission`; `QuoteDecision`; aprovação parcial; rejeição; reabertura de item; retratação; idempotência de submissão; evidências de decisão; eventos de domínio e outbox; total do orçamento calculado pelo backend; desconto; acréscimo; imposto; comissão; execução operacional; estoque; exclusão ou edição de versão comercial já criada; descarte de rascunho; permissões granulares.
+
+## Regras aprovadas implementadas
+
+| Regra | Origem | Onde |
+| --- | --- | --- |
+| `RN-04` a `RN-06` — preço, descrição ou quantidade exigem nova versão | REQ-ORC-001 | `QuoteItemRevision.sameCommercialTerms` |
+| `RN-08` — histórico não é sobrescrito | REQ-ORC-001 | nenhuma operação de update de versão comercial existe |
+| `RN-09`, `RN-21`, `RN-22` — complemento preserva versões não alteradas | REQ-ORC-001 | reaproveitamento da versão vigente na nova revisão |
+| `RN-12`, `RN-13` — expiração bloqueia pendentes e não afeta o passado | REQ-ORC-001 | `DecisionAvailability.EXPIRED`, derivado |
+| `RN-19` — rascunho não invalida a versão apresentada | `DR-0001` opção B | `Quote.superseded` exige apresentação efetiva |
+| `RN-20` — nova versão apresentada substitui a anterior | `DR-0001` opção B | `Quote.superseded` |
+| Validade comercial de 7 dias | REQ-ORC-001 seção 29 | `QuoteRevision.DEFAULT_VALIDITY` |
+| Obsolescência é por item, não por revisão | arquitetura seção 14 | `Quote.superseded` percorre versões do mesmo item |
+| Proibição de `is_stale` / `current` | modelo de dados seção 31 | nenhuma coluna de estado derivado |
+| `EXPIRED` não é estado persistido | modelo de dados seção 14 | `CHECK` aceita só `DRAFT` e `PRESENTED` |
+| Integridade cross-quote no banco | modelo de dados, finding `HIGH-01` | FKs compostas de `quote_revision_item` |
+| Relógio controlável | arquitetura seção 44 | `Clock` injetado |
+| Optimistic locking na apresentação | arquitetura seções 29 e 34 | update condicional por `version` |
+| Proibição de IDOR | arquitetura seção 39 | todo acesso valida `quote.workOrderId` |
+
+## Regras definidas nesta Task
+
+1. `RN-T7-01` — Uma nova revisão sempre nasce em `DRAFT` e recebe o próximo número. Não existe edição de revisão: compor de novo é criar outra revisão, e rascunhos antigos permanecem como registro de trabalho interno.
+2. `RN-T7-02` — Uma revisão de número inferior a outra já apresentada não pode ser apresentada, para que a sequência do que o cliente recebeu permaneça legível.
+3. `RN-T7-03` — Apresentar exige pelo menos um item: uma proposta vazia daria ao cliente algo inexistente para decidir e iniciaria uma validade sem conteúdo.
+4. `RN-T7-04` — A validade comercial não é parametrizável por requisição enquanto não existir configuração aprovada.
+5. `RN-T7-05` — O mesmo item comercial não pode aparecer duas vezes na mesma revisão.
+6. `RN-T7-06` — O total do item é gravado **somente** quando `quantidade × preço` é exato em até quatro casas decimais. Qualquer caso que exigiria arredondar é recusado com `422 QUOTE_TOTAL_REQUIRES_ROUNDING_DECISION`. **Justificativa:** arredondar por conta própria alteraria o valor cobrado do cliente por decisão de implementação; recusar é a única alternativa que não inventa dinheiro (`DR-0006`, `DR-0007`).
+7. `RN-T7-07` — Itens do orçamento saem na ordem em que o cliente os vê, derivada do `displayOrder` da apresentação.
+
+## Critérios de aceite
+
+1. `CA-01` — Criar orçamento de uma OS existente retorna `201`, sem revisões, com autoria do usuário autenticado.
+2. `CA-02` — Criar revisão gera `DRAFT` numerada, itens comerciais com versão 1, totais exatos e `availability = NOT_PRESENTED`.
+3. `CA-03` — Apresentar move para `PRESENTED`, grava o instante e define validade de exatamente 7 dias, e o item passa a `AVAILABLE`.
+4. `CA-04` — `DR-0001` opção B: criar A-v2 apenas em rascunho mantém A-v1 `AVAILABLE` e deixa A-v2 `NOT_PRESENTED`.
+5. `CA-05` — Apresentar A-v2 torna A-v1 `SUPERSEDED` e A-v2 `AVAILABLE`, sem apagar nem alterar A-v1.
+6. `CA-06` — Complemento que reaproveita os mesmos termos não cria nova versão do item e mantém A-v1 `AVAILABLE`.
+7. `CA-07` — Apresentação com validade vencida deixa o item pendente como `EXPIRED`.
+8. `CA-08` — Orçamento de outra OS, orçamento inexistente, revisão inexistente, item inexistente e serviço de outra OS respondem `404`.
+9. `CA-09` — Lista vazia, descrição em branco, quantidade zero ou negativa e preço negativo respondem `400`.
+10. `CA-10` — Total que exigiria arredondamento responde `422` e nada é gravado.
+11. `CA-11` — Apresentar duas vezes responde `409`; apresentar revisão fora de ordem responde `409`; gravação com versão divergente não aplica nada.
+12. `CA-12` — Item vinculado a serviço da OS preserva o vínculo, e o histórico sai em ordem cronológica.
+13. `CA-13` — O PostgreSQL rejeita revisão de um orçamento associada a versão de item de outro orçamento, além de número, status, quantidade, preço e ordem inválidos.
+14. `CA-14` — Todos os endpoints exigem sessão; mutações exigem CSRF.
+15. `CA-15` — O frontend lista orçamentos, abre orçamento, compõe revisão semeada pela última apresentação, apresenta rascunho e mostra a situação derivada de cada versão.
+16. `CA-16` — `ApplicationModules.verify()`, `mvn test`, gates do frontend e `git diff --check` passam.
+
+## Módulos envolvidos
+
+- `quote` (novo, proprietário), consumindo `workorder` e `iam` por contrato público.
+- `workorder` e `iam` receberam apenas contratos públicos novos; nenhuma regra existente foi alterada.
+- Agentes: AG-00, AG-01, AG-02, AG-03, AG-09, AG-10, AG-11, AG-12, AG-13 e AG-15.
+
+## Decision Requests
+
+- `DR-0001` — `DECIDED`, opção B. Implementada e coberta por teste.
+- `DR-0006` — `OPEN`, não bloqueadora. Precisão da quantidade.
+- `DR-0007` — `OPEN`, **aberta nesta Task**. Política monetária global: escala e arredondamento. Bloqueia total não exato, desconto, imposto, comissão e rentabilidade.
+- `DR-0008` — `OPEN`, **aberta nesta Task**. Vínculo entre item de orçamento e item físico da OS. Bloqueia rentabilidade por item e reserva de estoque a partir de aprovação.
+
+## Divergências registradas em relação à especificação aprovada
+
+1. **Módulo próprio `quote`** em vez de tudo dentro de "Oficina". Registrado em `docs/architecture/oficina/TASK-0007-revisao-fronteira-modulo-orcamento.md`.
+2. **`POST .../items/{itemId}/reopen` não implementado.** Reabrir item rejeitado só tem significado quando existe decisão; pertence à Task seguinte.
+3. **Escala monetária `NUMERIC(19,4)`** como o modelo aprovado sugere, divergindo das duas casas já usadas no restante do sistema. Registrado em `DR-0007`.
+4. **FK real de `quote.work_order_id` para `workorder.work_order`**, que o DDL aprovado não tinha porque a OS ainda não existia.
+
+## Riscos
+
+1. **Total não exato recusado** — a trava do `RN-T7-06` é correta, mas visível ao operador como uma recusa. Probabilidade `BAIXA` (exige preço sub-centavo), impacto `BAIXO`, mitigado por `DR-0007`.
+2. **Rascunhos acumulados** — não há descarte de rascunho; um erro de composição deixa uma revisão `DRAFT` permanente. Probabilidade `MÉDIA`, impacto `BAIXO`: rascunho não produz efeito comercial nem aparece ao cliente.
+3. **Orçamento sem vínculo com item físico** — `DR-0008`. Probabilidade `ALTA`, impacto `MÉDIO` para rentabilidade futura.
+4. **Ausência de decisão** — o orçamento pode ser apresentado mas ainda não pode ser aprovado. É a ordem deliberada do roadmap, não uma omissão.
+
+## Histórico
+
+- 2026-09-15 — Task criada a partir da especificação aprovada da TASK-0001, que estava `SPECIFICATION_DONE` e `NOT_IMPLEMENTED` desde 2026-09-08.
