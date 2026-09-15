@@ -2,6 +2,7 @@ package br.com.uberhidraulica.erp.workorder.application;
 import br.com.uberhidraulica.erp.crm.CustomerVehicleQuery;
 import br.com.uberhidraulica.erp.productcatalog.ProductCatalogQuery;
 import br.com.uberhidraulica.erp.servicecatalog.ServiceCatalogQuery;
+import br.com.uberhidraulica.erp.workorder.WorkOrderQuery;
 import br.com.uberhidraulica.erp.workorder.domain.*;
 import br.com.uberhidraulica.erp.workorder.port.WorkOrderRepositoryPort;
 import org.springframework.stereotype.Service;
@@ -11,7 +12,7 @@ import java.time.Instant;
 import java.util.*;
 
 @Service
-public class WorkOrderApplicationService {
+public class WorkOrderApplicationService implements WorkOrderQuery {
     private final WorkOrderRepositoryPort repository;
     private final CustomerVehicleQuery crm;
     private final ServiceCatalogQuery catalog;
@@ -32,6 +33,15 @@ public class WorkOrderApplicationService {
         var item=new WorkOrder.ServiceItem(UUID.randomUUID(),service.id(),service.name(),service.description(),service.basePrice(),service.defaultWarrantyDays(),Instant.now());
         repository.addService(id,item);
         return get(id);
+    }
+
+    @Override @Transactional(readOnly=true) public Optional<WorkOrderReference> workOrder(UUID id){
+        return repository.findById(id).map(w->new WorkOrderReference(w.id(),w.number(),w.customerId(),w.vehicleId()));
+    }
+    @Override @Transactional(readOnly=true) public List<ServiceItemReference> serviceItems(UUID workOrderId){
+        return repository.findById(workOrderId).map(w->w.services().stream()
+                .map(i->new ServiceItemReference(i.id(),i.serviceId(),i.name(),i.description(),i.basePrice())).toList())
+                .orElse(List.of());
     }
 
     /**
