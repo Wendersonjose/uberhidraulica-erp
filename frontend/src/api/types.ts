@@ -18,3 +18,25 @@ export type WorkOrderProduct = {
   id: string; productId: string; description: string; internalCode: string | null
   unit: string; quantity: number; unitPrice: number; addedAt: string
 }
+export type DecisionAvailability = 'AVAILABLE' | 'SUPERSEDED' | 'EXPIRED' | 'NOT_PRESENTED'
+export type QuoteItemRevision = {
+  id: string; revisionSequence: number; description: string; quantity: number; unitPrice: number
+  totalPrice: number; revisionReason: string | null; presented: boolean
+  availability: DecisionAvailability; createdAt: string; createdBy: string
+}
+export type QuoteItem = {
+  id: string; workOrderServiceId: string | null; createdAt: string; revisions: QuoteItemRevision[]
+}
+export type QuoteRevisionEntry = { quoteItemRevisionId: string; displayOrder: number }
+export type QuoteRevision = {
+  id: string; revisionNumber: number; status: 'DRAFT' | 'PRESENTED'; presentedAt: string | null
+  validUntil: string | null; expired: boolean; createdAt: string; createdBy: string
+  items: QuoteRevisionEntry[]
+}
+export type Quote = {
+  id: string; workOrderId: string; createdAt: string; createdBy: string
+  revisions: QuoteRevision[]; items: QuoteItem[]
+}
+export const AVAILABILITY_LABELS: Record<DecisionAvailability, string> = {
+  AVAILABLE: 'Decidível', SUPERSEDED: 'Substituída', EXPIRED: 'Expirada', NOT_PRESENTED: 'Rascunho',
+}
