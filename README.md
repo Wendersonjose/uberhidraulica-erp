@@ -6,7 +6,9 @@ ERP em desenvolvimento para digitalizar e integrar a operação da Uber-Hidrául
 >
 > A `TASK-0004` entregou a vertical Cliente → Veículo → Serviço → Ordem de Serviço, com backend e frontend React integrados. A `TASK-0005` acrescentou o catálogo de produtos físicos (peças, fluidos e insumos), a `TASK-0006` passou a permitir o lançamento desses itens na OS com snapshot comercial, e a `TASK-0007` implementou o orçamento com versionamento comercial: apresentações versionadas, histórico imutável por item, validade de sete dias e obsolescência derivada por item.
 >
-> Da `TASK-0001 — Aprovação Parcial de Orçamento`, a parte comercial interna está implementada; o acesso público por link, a decisão do cliente e a aprovação parcial continuam apenas especificados. Estoque, compras, financeiro, comissão, conciliação, fiscal e rentabilidade ainda não foram implementados.
+> A `TASK-0008` fechou a `TASK-0001 — Aprovação Parcial de Orçamento`: o cliente abre um link seguro, vê a proposta que recebeu e decide item a item, sem conta interna, com evidências, idempotência e atomicidade. Estoque, compras, financeiro, comissão, conciliação, fiscal e rentabilidade ainda não foram implementados.
+>
+> **Antes de produção**, o fluxo público exige configuração de HTTPS, de proxies confiáveis para o IP real e de limitação de requisições — registrado em `docs/review/TASK-0008-revisao-tecnica.md`.
 
 ---
 
