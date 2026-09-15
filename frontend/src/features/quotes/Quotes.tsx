@@ -3,7 +3,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { quotesApi, type QuoteItemInput } from '../../api/resources'
 import { queryKeys } from '../../api/queryKeys'
-import { AVAILABILITY_LABELS, type Quote, type QuoteItemRevision } from '../../api/types'
+import { AVAILABILITY_LABELS, QUOTE_PRESENT, type Quote, type QuoteItemRevision } from '../../api/types'
+import { useAuth } from '../../auth/useAuth'
 import { Badge, PageHeader, State } from '../../components/ui'
 import { QueryState } from '../../components/QueryState'
 import { formatBrl, formatDate } from '../../utils/format'
@@ -63,6 +64,8 @@ export function QuotesPage() {
 
 export function QuoteDetailPage() {
   const { id = '', quoteId = '' } = useParams()
+  const { session } = useAuth()
+  const canPresent = Boolean(session?.permissions?.includes(QUOTE_PRESENT))
   const client = useQueryClient()
   const [apiError, setApiError] = useState('')
   const quote = useQuery({
@@ -93,7 +96,7 @@ export function QuoteDetailPage() {
     {apiError && <div role="alert" className="notice error">{apiError}</div>}
     <QueryState label="o orçamento" loading={quote.isLoading} error={quote.error} retry={quote.refetch}>
       {quote.data && <>
-        <RevisionsCard quote={quote.data} presenting={present.isPending}
+        <RevisionsCard quote={quote.data} presenting={present.isPending} canPresent={canPresent}
           onPresent={revisionId => run(() => present.mutateAsync(revisionId), 'Falha ao apresentar a revisão')} />
         <ItemsCard quote={quote.data} />
         <NewRevisionCard workOrderId={id} quote={quote.data} onDone={invalidate} onError={setApiError} />
@@ -102,8 +105,12 @@ export function QuoteDetailPage() {
   </>
 }
 
-function RevisionsCard({ quote, presenting, onPresent }: {
-  quote: Quote; presenting: boolean; onPresent: (revisionId: string) => void
+/**
+ * `canPresent` é conveniência de interface, não proteção: o endpoint exige `QUOTE_PRESENT` de
+ * qualquer forma, e esconder o botão não substitui a verificação do backend.
+ */
+function RevisionsCard({ quote, presenting, canPresent, onPresent }: {
+  quote: Quote; presenting: boolean; canPresent: boolean; onPresent: (revisionId: string) => void
 }) {
   const highestPresented = quote.revisions
     .filter(revision => revision.status === 'PRESENTED')
@@ -113,7 +120,7 @@ function RevisionsCard({ quote, presenting, onPresent }: {
     {quote.revisions.length === 0
       ? <div className="state">Nenhuma revisão criada.</div>
       : <table className="table">
-        <thead><tr><th>Revisão</th><th>Situação</th><th>Apresentada em</th><th>Válida até</th><th>Itens</th><th>Ações</th></tr></thead>
+        <thead><tr><th>Revisão</th><th>Situação</th><th>Apresentada em</th><th>Válida até</th><th>Itens</th><th>Total</th><th>Ações</th></tr></thead>
         <tbody>{quote.revisions.map(revision => <tr key={revision.id}>
           <td><strong>R{revision.revisionNumber}</strong></td>
           <td>{revision.status === 'PRESENTED'
@@ -123,8 +130,11 @@ function RevisionsCard({ quote, presenting, onPresent }: {
           <td>{revision.presentedAt ? formatDate(revision.presentedAt) : '—'}</td>
           <td>{revision.validUntil ? formatDate(revision.validUntil) : '—'}</td>
           <td>{revision.items.length}</td>
+          <td>{formatBrl(Number(revision.total))}</td>
           <td>{revision.status === 'DRAFT' && revision.revisionNumber >= highestPresented
-            ? <button className="btn" disabled={presenting} onClick={() => onPresent(revision.id)}>Apresentar</button>
+            ? <button className="btn" disabled={presenting || !canPresent}
+              title={canPresent ? undefined : 'Seu perfil não pode apresentar orçamento'}
+              onClick={() => onPresent(revision.id)}>Apresentar</button>
             : <span className="muted">—</span>}</td>
         </tr>)}</tbody>
       </table>}
@@ -132,10 +142,6 @@ function RevisionsCard({ quote, presenting, onPresent }: {
 }
 
 function ItemsCard({ quote }: { quote: Quote }) {
-  const presentedTotal = quote.items
-    .flatMap(item => item.revisions)
-    .filter(revision => revision.availability === 'AVAILABLE')
-    .reduce((sum, revision) => sum + Number(revision.totalPrice), 0)
   return <section className="card table-wrap" style={{ marginTop: 22 }}>
     <h2>Itens comerciais e versões</h2>
     {quote.items.length === 0
@@ -154,7 +160,7 @@ function ItemsCard({ quote }: { quote: Quote }) {
       </table>}
     <div className="subtotal">
       <span>Total decidível apresentado</span>
-      <span data-testid="quote-available-total">{formatBrl(presentedTotal)}</span>
+      <span data-testid="quote-available-total">{formatBrl(Number(quote.availableTotal))}</span>
     </div>
   </section>
 }
@@ -215,12 +221,12 @@ function NewRevisionCard({ workOrderId, quote, onDone, onError }: {
       </div>
       <div className="field">
         <label htmlFor={`quantity-${index}`}>Quantidade {index + 1}</label>
-        <input id={`quantity-${index}`} className="input" type="number" step="0.001" min="0"
+        <input id={`quantity-${index}`} className="input" type="number" step="0.0001" min="0"
           value={row.quantity} onChange={event => update(index, { quantity: event.target.value })} />
       </div>
       <div className="field">
         <label htmlFor={`unitPrice-${index}`}>Preço unitário {index + 1}</label>
-        <input id={`unitPrice-${index}`} className="input" type="number" step="0.01" min="0"
+        <input id={`unitPrice-${index}`} className="input" type="number" step="0.0001" min="0"
           value={row.unitPrice} onChange={event => update(index, { unitPrice: event.target.value })} />
       </div>
       <div className="field">

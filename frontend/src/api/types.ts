@@ -30,13 +30,15 @@ export type QuoteItem = {
 export type QuoteRevisionEntry = { quoteItemRevisionId: string; displayOrder: number }
 export type QuoteRevision = {
   id: string; revisionNumber: number; status: 'DRAFT' | 'PRESENTED'; presentedAt: string | null
-  validUntil: string | null; expired: boolean; createdAt: string; createdBy: string
+  validUntil: string | null; expired: boolean; total: number; createdAt: string; createdBy: string
   items: QuoteRevisionEntry[]
 }
 export type Quote = {
-  id: string; workOrderId: string; createdAt: string; createdBy: string
+  id: string; workOrderId: string; createdAt: string; createdBy: string; availableTotal: number
   revisions: QuoteRevision[]; items: QuoteItem[]
 }
+/** Permissão exigida pelo backend para apresentar; a interface apenas reflete a mesma regra. */
+export const QUOTE_PRESENT = 'QUOTE_PRESENT'
 export const AVAILABILITY_LABELS: Record<DecisionAvailability, string> = {
   AVAILABLE: 'Decidível', SUPERSEDED: 'Substituída', EXPIRED: 'Expirada', NOT_PRESENTED: 'Rascunho',
 }
