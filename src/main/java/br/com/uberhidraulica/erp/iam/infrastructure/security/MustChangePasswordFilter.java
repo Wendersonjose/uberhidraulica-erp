@@ -33,7 +33,10 @@ public class MustChangePasswordFilter extends OncePerRequestFilter {
 
     private boolean allowed(HttpServletRequest request) {
         String path = request.getRequestURI();
+        // O orçamento público não depende da sessão interna: um operador com troca de senha pendente
+        // que abra o link do cliente não deve ser barrado por uma regra que não se aplica a ele ali.
         return path.equals("/api/iam/session") || path.equals("/api/iam/password/change")
-                || path.equals("/api/iam/auth/logout") || path.equals("/api/iam/csrf");
+                || path.equals("/api/iam/auth/logout") || path.equals("/api/iam/csrf")
+                || path.startsWith("/api/public/quotes/");
     }
 }

@@ -22,6 +22,9 @@ import java.util.Map;
 @Configuration
 @EnableMethodSecurity
 public class SecurityConfig {
+    /** Superfície pública do orçamento: sem sessão, sem CSRF e sem acesso a nada além dela. */
+    private static final String PUBLIC_QUOTE = "/api/public/quotes/**";
+
     private static final org.slf4j.Logger LOGGER =
             org.slf4j.LoggerFactory.getLogger(SecurityConfig.class);
 
@@ -47,8 +50,14 @@ public class SecurityConfig {
                                             DeniedOperationAuditService deniedAudit) throws Exception {
         http.authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/iam/auth/login", "/api/iam/csrf", "/actuator/health").permitAll()
+                        // O cliente externo não tem conta: a autorização do orçamento público é o token
+                        // opaco do caminho, verificado pelo próprio módulo de Orçamento.
+                        .requestMatchers(PUBLIC_QUOTE).permitAll()
                         .anyRequest().authenticated())
-                .csrf(csrf -> {})
+                // CSRF protege credencial ambiente do navegador. No fluxo público não existe credencial
+                // ambiente: quem não tem o token não consegue nada, e quem tem não precisa da vítima.
+                // Exigir CSRF aqui só tornaria o fluxo impossível, sem remover ataque nenhum.
+                .csrf(csrf -> csrf.ignoringRequestMatchers(PUBLIC_QUOTE))
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable())
                 .logout(logout -> logout.disable())
