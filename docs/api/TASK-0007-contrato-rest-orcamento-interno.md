@@ -59,8 +59,11 @@ cria versão nova; nada além deles cria.
 
 `workOrderServiceId`, quando informado, precisa ser um serviço lançado **naquela** OS.
 
-Limites de entrada: quantidade estritamente positiva com até três casas; preço unitário não negativo
-com até duas casas. Ambos são persistidos em `NUMERIC(19,4)`.
+Limites de entrada, conforme a `DR-0007`: quantidade estritamente positiva com até **quatro** casas;
+preço unitário não negativo com até **quatro** casas. Ambos são persistidos em `NUMERIC(19,4)`.
+
+O total do item é `quantidade × preço unitário`, calculado com a precisão integral do `BigDecimal` —
+os operandos nunca são arredondados antes — e levado a **duas** casas com `HALF_UP`.
 
 Resposta `201` com o orçamento completo.
 
@@ -68,6 +71,12 @@ Resposta `201` com o orçamento completo.
 
 Sem corpo. Move a revisão de `DRAFT` para `PRESENTED`, grava `presentedAt` e define
 `validUntil = presentedAt + 7 dias`.
+
+**Exige a permissão `QUOTE_PRESENT`.** Apresentar define os valores que o cliente poderá aceitar e
+inicia a validade comercial: estar autenticado não basta. Por perfil, `DONO` e
+`GERENTE_ADMINISTRATIVO` têm a permissão; `GERENTE_FINANCEIRO` não a recebe automaticamente, e as
+exceções individuais do IAM continuam valendo. A verificação é do backend — esconder o botão na
+interface é conveniência, não proteção.
 
 **A validade não é parametrizável.** REQ-ORC-001 seção 29 admite outro prazo apenas por configuração
 aprovada, e nenhuma existe; aceitar o prazo por requisição deixaria a validade comercial na mão de
@@ -84,9 +93,10 @@ ambas ter sucesso.
 ```json
 {
   "id": "…", "workOrderId": "…", "createdAt": "…", "createdBy": "…",
+  "availableTotal": 500.00,
   "revisions": [
     { "id": "…", "revisionNumber": 1, "status": "PRESENTED",
-      "presentedAt": "…", "validUntil": "…", "expired": false,
+      "presentedAt": "…", "validUntil": "…", "expired": false, "total": 500.00,
       "items": [ { "quoteItemRevisionId": "…", "displayOrder": 1 } ] }
   ],
   "items": [
@@ -101,6 +111,12 @@ ambas ter sucesso.
 ```
 
 Itens saem na ordem em que o cliente os vê, derivada do `displayOrder` da apresentação.
+
+### Totais
+
+`total` da revisão e `availableTotal` do orçamento são a **soma dos totais de item já arredondados**
+(`DR-0007`). Somar primeiro e arredondar depois faria a soma visual dos itens divergir do total
+apresentado ao cliente. A interface não recalcula: exibe o que o backend entrega.
 
 ### `availability`
 
@@ -143,13 +159,17 @@ Lista cronológica derivada do próprio dado, sem tabela de eventos:
 | Revisão já apresentada | `409` | `QUOTE_REVISION_ALREADY_PRESENTED` |
 | Revisão anterior à última apresentada | `409` | `QUOTE_REVISION_OUT_OF_ORDER` |
 | Revisão alterada entre leitura e gravação | `409` | `QUOTE_REVISION_CONCURRENTLY_MODIFIED` |
-| Total exigiria decisão de arredondamento | `422` | `QUOTE_TOTAL_REQUIRES_ROUNDING_DECISION` |
+| Total gravado diverge de quantidade × preço | `400` | `QUOTE_ITEM_REVISION_TOTAL_MISMATCH` |
 | Sem sessão | `401` | `AUTHENTICATION_REQUIRED` |
 | Sem token CSRF | `403` | `ACCESS_DENIED` |
+| Sessão sem `QUOTE_PRESENT` ao apresentar | `403` | `ACCESS_DENIED` |
 
-O `422` é o único caso em que o sistema recusa um pedido correto: quantidade e preço gerariam um total
-com mais de quatro casas decimais, e a regra de arredondamento comercial ainda não foi decidida
-(`DR-0006`, `DR-0007`). Arredondar por conta própria mudaria o valor cobrado do cliente.
+`QUOTE_ITEM_REVISION_TOTAL_MISMATCH` só aparece se alguém alterar o total diretamente no banco: a
+leitura confere o valor gravado contra a fórmula em vez de recalculá-lo em silêncio, para que uma
+linha adulterada fique visível.
+
+> Até 2026-09-15 existia um `422 QUOTE_TOTAL_REQUIRES_ROUNDING_DECISION` que recusava o total não
+> exato. Ele foi removido com a aprovação da `DR-0007`, que definiu `HALF_UP` sobre duas casas.
 
 ## 8. Ausências deliberadas
 

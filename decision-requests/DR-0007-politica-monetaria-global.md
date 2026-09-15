@@ -1,11 +1,12 @@
 # DR-0007 — Política monetária global: escala e arredondamento
 
 - Tipo: `FINANCIAL`
-- Status: `OPEN`
+- Status: `DECIDED`
 - Task: `TASK-0007`, e toda Task posterior que calcule dinheiro
 - Origem: `AG-10 — Banco de Dados` e `AG-06 — Financeiro`
 - Responsável pela decisão: proprietário do produto
 - Criada em: `2026-09-15`
+- Decidida em: `2026-09-15`
 
 ## Problema
 
@@ -64,6 +65,67 @@ O sistema deve usar duas casas decimais em toda a cadeia monetária, quatro casa
 
 ## Decisão final do Owner
 
-- Data: `-`
-- Opção escolhida: `-`
-- Decisão: `PENDENTE`
+- Data: `2026-09-15`
+- Opção escolhida: `C — quatro casas internas, duas casas no que é cobrado`
+- Arredondamento oficial: `RoundingMode.HALF_UP`
+- Responsável: proprietário do produto
+
+> A recomendação registrada acima sugeria arredondar a soma, e **não** as parcelas. O proprietário
+> decidiu o contrário: as parcelas são arredondadas e o total é a soma delas, para que a conta que o
+> cliente faz somando os itens da tela bata exatamente com o total apresentado. A recomendação
+> anterior é mantida como registro do que foi proposto, não do que vale.
+
+### Regras resultantes
+
+**Precisão**
+
+1. Dinheiro e quantidade comercial nunca usam `double` ou `float`. Em Java, `BigDecimal`.
+2. Valores unitários, custos e preços de referência: até **4 casas decimais**, persistidos
+   preferencialmente em `NUMERIC(19,4)`.
+3. Quantidades: até **4 casas decimais**. Quantidade física já persistida **não** é reduzida
+   silenciosamente para caber em uma escala menor.
+4. Valor monetário efetivamente cobrado ou apresentado ao cliente: **2 casas decimais**.
+
+**Cálculo**
+
+```text
+total_item = quantidade × preco_unitario
+```
+
+O produto é calculado com a precisão integral do `BigDecimal`. **Os operandos nunca são arredondados
+antes da multiplicação.** Somente o resultado monetário do item é levado a 2 casas com `HALF_UP`.
+
+```text
+total_orcamento = soma(total_item_ja_arredondado)
+```
+
+Somar primeiro e arredondar depois faria a soma visual dos itens divergir do total apresentado ao
+cliente. A política soma parcelas já arredondadas exatamente para evitar essa divergência.
+
+Descontos percentuais, impostos, comissões e regras fiscais futuras reutilizam esta política quando
+aplicável. Uma exigência fiscal ou legal específica poderá criar exceção, e ela deverá ser
+documentada como tal — não implementada por conveniência.
+
+**Banco**
+
+Migrations `V1` a `V8` **não** são alteradas. Qualquer ajuste ocorre somente em migration nova.
+
+Ampliar colunas antigas de `NUMERIC(15,2)` para `NUMERIC(19,4)` só se faz quando houver necessidade
+concreta, por migration nova que preserve os dados. **Não haverá migração especulativa de todas as
+tabelas apenas por uniformidade estética.** A conversão que existe hoje ocorre na direção segura:
+um valor de duas casas cabe sem perda em quatro.
+
+### Consequência imediata na implementação
+
+A trava temporária `QUOTE_TOTAL_REQUIRES_ROUNDING_DECISION` (HTTP 422), que recusava o total não
+exato enquanto não havia política, foi **removida**. Produtos com mais de duas casas monetárias
+passam a ser aceitos e arredondados por `HALF_UP`.
+
+Entrada de quantidade e de preço unitário no orçamento passou de três e duas casas, respectivamente,
+para **quatro casas em ambos**, conforme a regra 2.
+
+### Rastreabilidade
+
+- Escala e arredondamento do valor: resolvidos aqui.
+- Precisão da quantidade de item físico: continua em `DR-0006`, que trata da regra operacional de
+  fracionamento, não da escala de persistência.

@@ -2,7 +2,8 @@
 
 - Revisor: `AG-15 — Revisor Técnico` (revisão interna da sprint autônoma)
 - Data: `2026-09-15`
-- Escopo revisado: módulo `quote`, migration `V8`, contratos `WorkOrderQuery` e `CurrentUser`, telas de orçamento e testes
+- Escopo revisado: módulo `quote`, migrations `V8` e `V9`, contratos `WorkOrderQuery` e `CurrentUser`, telas de orçamento e testes
+- Atualizado em `2026-09-15` após a aprovação da `DR-0007` e da permissão `QUOTE_PRESENT`
 - Resultado: `APPROVED_WITH_NOTES` — nenhum finding `CRITICAL` ou `HIGH` aberto
 
 > Revisão **interna**, feita pelo mesmo agente que implementou. Não substitui a revisão externa
@@ -45,13 +46,36 @@ Itens criados na mesma revisão recebem o mesmo `createdAt`, e o desempate era o
 
 Corrigido ordenando por `displayOrder` da apresentação, que é a ordem que o cliente efetivamente vê, com `createdAt` e `id` apenas como desempate final.
 
+### `BUG-07-03` — negar acesso a uma rota longa quebrava a auditoria
+
+Encontrado ao testar a permissão `QUOTE_PRESENT`. O registro de acesso negado usa
+`método + caminho` como alvo, e `iam.audit_event.target_id` tem 120 caracteres. O caminho de
+apresentação tem três UUIDs e ultrapassa esse limite: a gravação da auditoria falhava e a negação
+chegava ao cliente como erro de servidor em vez de `403`.
+
+O defeito é anterior a esta Task — qualquer rota longa o dispararia — e só apareceu agora porque
+nenhum endpoint protegido era longo o bastante.
+
+Corrigido em duas camadas: o alvo da auditoria é truncado na origem, e o manipulador de acesso
+negado passou a registrar falha de auditoria em log de erro sem deixar de responder `403`. A negação
+não pode depender do sucesso de um registro acessório.
+
 ## 3. Dinheiro
 
-Nenhum valor é arredondado em nenhum ponto. O total do item é gravado somente quando o produto é exato em até quatro casas; o caso não exato é recusado com `422`.
+A `DR-0007` foi aprovada em 2026-09-15 e está implementada: quantidade e preço unitário com até
+quatro casas, produto calculado com a precisão integral do `BigDecimal`, resultado do item levado a
+duas casas com `HALF_UP`, e total da apresentação como soma das parcelas já arredondadas.
 
-Isso é deliberadamente inconveniente. A alternativa seria escolher `HALF_UP` ou `HALF_EVEN` por conta própria, e essa escolha muda o valor cobrado do cliente. A recusa está registrada em `DR-0007`, com a trava isolada em um único método do domínio, fácil de substituir quando a regra existir.
+Os operandos nunca são arredondados antes da multiplicação — arredondar primeiro daria um total
+diferente do que a conta real dá.
 
-Há hoje duas escalas monetárias no sistema (`NUMERIC(15,2)` e `NUMERIC(19,4)`), ambas vindas de documentos aprovados. A conversão atual só ocorre na direção segura. Registrado em `DR-0007`.
+Cobertura de fronteira: terceira casa menor, igual e maior que cinco; quantidade fracionária; preço
+unitário com quatro casas; e a soma de três itens de `0,125`, que pela política resulta em `0,39` e
+não em `0,38`. Há também teste de arquitetura provando que **nenhum** campo, retorno ou parâmetro do
+módulo usa `double`, `float`, `Double` ou `Float`.
+
+As duas escalas do sistema (`NUMERIC(15,2)` e `NUMERIC(19,4)`) permanecem, por decisão explícita: a
+conversão ocorre na direção segura e não haverá migração especulativa apenas por uniformidade.
 
 ## 4. Histórico
 
@@ -61,7 +85,12 @@ Teste específico prova que apresentar A-v2 não altera A-v1.
 
 ## 5. Segurança
 
-Sem alteração no IAM. Endpoints herdam autenticação obrigatória e CSRF, ambos verificados por teste.
+Endpoints herdam autenticação obrigatória e CSRF, ambos verificados por teste, e apresentar exige
+`QUOTE_PRESENT`.
+
+O IAM foi tocado em dois pontos, ambos declarados: a migration `V9` cadastra a permissão nova e a
+concede aos perfis aprovados, e o registro de acesso negado foi corrigido (`BUG-07-03`). Nenhuma
+regra de autenticação, sessão ou CSRF foi alterada, e nenhuma permissão existente mudou de perfil.
 
 O teste usa **sessão real**, com login e troca obrigatória de senha, em vez de principal simulado. Isso foi necessário porque `created_by` vem do usuário autenticado, e um principal falso não provaria que a autoria é registrada — de fato o teste confere que `createdBy` é o `id` do dono no banco.
 
@@ -83,13 +112,17 @@ Isso não é violável agora: não há operação de decisão para competir com 
 
 Ação: **requisito de entrada da próxima Task.** A submissão de decisão terá de reconferir obsolescência dentro da própria transação e coordenar com a apresentação por item, não por revisão. Registrado aqui para não se perder.
 
-### `F-07-02` — `MEDIUM` — Apresentar não exige permissão específica
+### `F-07-02` — `RESOLVIDO` em 2026-09-15 — Apresentar exige `QUOTE_PRESENT`
 
-Qualquer usuário autenticado pode criar e apresentar orçamento. Apresentar é um ato comercial: define o preço que o cliente vai receber e inicia a validade.
+O proprietário decidiu: apresentar passou a exigir a permissão explícita `QUOTE_PRESENT`, cadastrada
+pela migration `V9` e concedida por perfil a `DONO` e `GERENTE_ADMINISTRATIVO`.
 
-Justificativa da omissão: o modelo de permissões aprovado não define permissões de orçamento, e inventá-las alteraria o IAM sem decisão.
+A verificação é do backend, por `@PreAuthorize`. A interface desabilita o botão quando a sessão não
+tem a permissão, e isso é conveniência de UX: há teste provando que a chamada direta à API sem a
+permissão responde `403` e que a revisão continua em `DRAFT`.
 
-Ação: recomendado ao proprietário decidir a permissão de apresentação antes do uso operacional com mais de um usuário.
+Criar orçamento e compor revisão continuam exigindo apenas sessão autenticada — nenhum dos dois
+apresenta valor ao cliente.
 
 ### `F-07-03` — `MEDIUM` — Leitura do orçamento faz cinco consultas, e a listagem multiplica
 
@@ -99,13 +132,11 @@ Justificativa: a derivação é obrigatória (`is_stale` é proibido), e otimiza
 
 Ação: aceito. Revisar se uma OS passar a ter muitos orçamentos, ou quando a listagem precisar de paginação.
 
-### `F-07-04` — `LOW` — O total lido do banco é recalculado, não conferido
+### `F-07-04` — `RESOLVIDO` em 2026-09-15 — O total lido do banco é conferido
 
-O construtor de `QuoteItemRevision` recalcula `totalPrice` a partir de quantidade e preço, inclusive ao ler do banco, ignorando o valor persistido.
-
-O efeito positivo é que a fórmula é a única fonte de verdade e a validação vale também na leitura. O efeito negativo é que uma linha adulterada diretamente no banco seria silenciosamente "corrigida" na resposta, em vez de denunciada.
-
-Ação: aceito para esta Task. Se auditoria de adulteração se tornar requisito, a leitura deve comparar e falhar em divergência.
+A leitura passou a comparar o total persistido com a fórmula e a falhar em divergência
+(`QUOTE_ITEM_REVISION_TOTAL_MISMATCH`), em vez de recalcular em silêncio. Uma linha adulterada
+diretamente no banco agora é denunciada, e há teste que a produz de propósito.
 
 ### `F-07-05` — `LOW` — Não existe descarte de rascunho
 

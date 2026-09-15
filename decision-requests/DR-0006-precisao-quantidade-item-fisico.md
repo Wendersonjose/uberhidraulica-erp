@@ -52,6 +52,22 @@ O orçamento passou a existir e trouxe duas informações novas que esta decisã
 A escala monetária e a regra de arredondamento do valor foram separadas nesta `DR-0007`. Esta DR
 permanece responsável apenas pela precisão da **quantidade**.
 
+## Efeito da DR-0007, decidida em 2026-09-15
+
+A `DR-0007` fixou o **teto**: quantidade comercial aceita até quatro casas decimais, e quantidade
+física já persistida não é reduzida em silêncio para caber em escala menor.
+
+Consequências concretas:
+
+- o item de orçamento passou a aceitar quatro casas, e o total já não depende mais desta DR;
+- o item físico da OS (`V7`) continua em `NUMERIC(15,3)` e aceitando três casas. Ampliar essa coluna
+  exigiria migration nova, e a `DR-0007` é explícita em só fazer isso diante de necessidade concreta.
+  A necessidade depende justamente do que **esta** DR ainda não decidiu: se a oficina lança fração de
+  litro, de metro e de quilo, e com que granularidade.
+
+Portanto o que resta aqui é uma decisão **operacional**, não de persistência: qual fracionamento a
+oficina realmente usa ao lançar item físico.
+
 ---
 
 ## Impacto e bloqueio
