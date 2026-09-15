@@ -2,7 +2,7 @@
 
 ## Identificação
 
-- Status: `IN_PROGRESS`
+- Status: `REVIEW`
 - Prioridade: `CRITICAL`
 - Criada em: `2026-09-15`
 - Proprietário principal: Oficina — `AG-03`
@@ -107,6 +107,43 @@ Acesso público por token; `PublicQuoteAccess`; decisão do cliente; `QuoteDecis
 3. **Orçamento sem vínculo com item físico** — `DR-0008`. Probabilidade `ALTA`, impacto `MÉDIO` para rentabilidade futura.
 4. **Ausência de decisão** — o orçamento pode ser apresentado mas ainda não pode ser aprovado. É a ordem deliberada do roadmap, não uma omissão.
 
+## Resultado dos gates
+
+- `mvn test`: `69` testes, `0` failures, `0` errors, `0` skipped, `BUILD SUCCESS`.
+- `ModularityTest` / `ApplicationModules.verify()`: `PASS` com o módulo `quote` e a dependência `quote → workorder, iam`.
+- `Task0007QuoteVersioningIntegrationTest`: `14` testes `PASS` em PostgreSQL 18 real via Testcontainers.
+- Frontend: `64` testes `PASS`, `0` failures; TypeScript, build e lint verdes, `0` warnings.
+- `git diff --check`: `PASS`.
+- Regressão: IAM, Clientes, Veículos, Serviços, Produtos, OS e itens físicos `PASS`, sem alteração de asserção.
+
+## Critérios de aceite
+
+`16/16 IMPLEMENTADOS`.
+
+## Revisão
+
+- Revisão interna no papel do `AG-15`: `APPROVED_WITH_NOTES`, em `docs/review/TASK-0007-revisao-tecnica.md`.
+- Findings abertos: `F-07-01`, `F-07-02` e `F-07-03` `MEDIUM`; `F-07-04` a `F-07-06` `LOW`. Nenhum `CRITICAL` ou `HIGH`.
+- Revisão externa independente: `PENDENTE`. A Task permanece em `REVIEW` e não é declarada `DONE`.
+
+## Bugs de produção encontrados e corrigidos
+
+1. `BUG-07-01` — a apresentação não aparecia na resposta porque o update condicional não sincronizava o contexto de persistência; o banco gravava e a releitura devolvia a revisão ainda em `DRAFT`.
+2. `BUG-07-02` — a ordem dos itens do orçamento era aleatória, porque itens criados na mesma revisão empatavam em `createdAt` e desempatavam pelo `UUID`.
+
+Ambos foram encontrados pelos testes desta Task, e não por inspeção.
+
+## Conferência solicitada ao proprietário
+
+1. `RN-T7-06` — recusar o total que exigiria arredondamento, em vez de arredondar. Depende de `DR-0007`.
+2. `F-07-02` — apresentar orçamento hoje não exige permissão específica; qualquer usuário autenticado pode definir o preço que o cliente receberá.
+3. Divergências declaradas: módulo próprio `quote`, `reopen` não implementado, escala `NUMERIC(19,4)` e FK real de `quote.work_order_id`.
+
+## Pré-requisito para a Task de decisão pública
+
+`F-07-01` — o ponto de serialização atual é a revisão. A arquitetura aprovada exige coordenação no contexto lógico do `QuoteItem` para a corrida `DECIDE A-v1 × PRESENT A-v2`. Enquanto não existe decisão, nada é violável; quando existir, a submissão terá de reconferir obsolescência dentro da própria transação.
+
 ## Histórico
 
 - 2026-09-15 — Task criada a partir da especificação aprovada da TASK-0001, que estava `SPECIFICATION_DONE` e `NOT_IMPLEMENTED` desde 2026-09-08.
+- 2026-09-15 — Backend, migration `V8`, contratos públicos, frontend e testes implementados; todos os gates aplicáveis verdes; dois bugs de produção corrigidos; revisão interna concluída. Status movido para `REVIEW`, aguardando revisão externa independente.

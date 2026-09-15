@@ -4,9 +4,9 @@ ERP em desenvolvimento para digitalizar e integrar a operação da Uber-Hidrául
 
 > **Estado em 2026-09-14.** A fundação executável do backend foi concluída na `TASK-0002` e o IAM na `TASK-0003`: Spring Boot, PostgreSQL, Flyway, Testcontainers, Spring Modulith, autenticação por sessão e CSRF estão funcionando e validados por testes automatizados.
 >
-> A `TASK-0004` entregou a vertical Cliente → Veículo → Serviço → Ordem de Serviço, com backend e frontend React integrados. A `TASK-0005` acrescentou o catálogo de produtos físicos (peças, fluidos e insumos) e a `TASK-0006` passou a permitir o lançamento desses itens na OS com snapshot comercial.
+> A `TASK-0004` entregou a vertical Cliente → Veículo → Serviço → Ordem de Serviço, com backend e frontend React integrados. A `TASK-0005` acrescentou o catálogo de produtos físicos (peças, fluidos e insumos), a `TASK-0006` passou a permitir o lançamento desses itens na OS com snapshot comercial, e a `TASK-0007` implementou o orçamento com versionamento comercial: apresentações versionadas, histórico imutável por item, validade de sete dias e obsolescência derivada por item.
 >
-> A `TASK-0001 — Aprovação Parcial de Orçamento` permanece concluída apenas como especificação. Orçamento, versionamento comercial, aprovação, estoque, compras, financeiro e fiscal ainda não foram implementados.
+> Da `TASK-0001 — Aprovação Parcial de Orçamento`, a parte comercial interna está implementada; o acesso público por link, a decisão do cliente e a aprovação parcial continuam apenas especificados. Estoque, compras, financeiro, comissão, conciliação, fiscal e rentabilidade ainda não foram implementados.
 
 ---
 
