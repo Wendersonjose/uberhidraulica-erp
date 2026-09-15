@@ -21,8 +21,6 @@ public class QuoteExceptionHandler {
     ResponseEntity<ErrorResponse> domain(QuoteException exception) {
         HttpStatus status = exception.code().endsWith("NOT_FOUND") ? HttpStatus.NOT_FOUND
                 : CONFLICTS.contains(exception.code()) ? HttpStatus.CONFLICT
-                // Pedido bem formado que o sistema recusa porque a regra comercial não foi decidida.
-                : "QUOTE_TOTAL_REQUIRES_ROUNDING_DECISION".equals(exception.code()) ? HttpStatus.UNPROCESSABLE_ENTITY
                 : HttpStatus.BAD_REQUEST;
         return ResponseEntity.status(status).body(new ErrorResponse(exception.code(), exception.getMessage(), List.of()));
     }

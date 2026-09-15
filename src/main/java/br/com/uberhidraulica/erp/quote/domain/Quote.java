@@ -1,5 +1,6 @@
 package br.com.uberhidraulica.erp.quote.domain;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
@@ -91,6 +92,31 @@ public record Quote(UUID id, UUID workOrderId, long version, Instant createdAt, 
     private boolean withinValidity(UUID itemRevisionId, Instant now) {
         return revisions.stream().anyMatch(revision -> revision.presented()
                 && revision.contains(itemRevisionId) && !revision.expiredAt(now));
+    }
+
+    /**
+     * Total de uma apresentação: soma dos totais de item <b>já arredondados</b> (DR-0007).
+     *
+     * <p>Somar primeiro e arredondar depois faria a soma visual dos itens divergir do total
+     * apresentado ao cliente, que é exatamente o que a política aprovada evita.</p>
+     */
+    public BigDecimal revisionTotal(QuoteRevision revision) {
+        return revision.entries().stream()
+                .map(entry -> itemRevision(entry.quoteItemRevisionId()))
+                .flatMap(Optional::stream)
+                .map(QuoteItemRevision::totalPrice)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(QuoteItemRevision.CHARGED_SCALE, QuoteItemRevision.CHARGED_ROUNDING);
+    }
+
+    /** Total do que o cliente ainda pode aceitar, pelo mesmo critério de soma. */
+    public BigDecimal availableTotal(Instant now) {
+        return items.stream()
+                .flatMap(item -> item.revisions().stream())
+                .filter(revision -> availability(revision, now) == DecisionAvailability.AVAILABLE)
+                .map(QuoteItemRevision::totalPrice)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(QuoteItemRevision.CHARGED_SCALE, QuoteItemRevision.CHARGED_ROUNDING);
     }
 
     /** Estado derivado de aptidão a decisão; nenhuma coluna guarda este valor. */

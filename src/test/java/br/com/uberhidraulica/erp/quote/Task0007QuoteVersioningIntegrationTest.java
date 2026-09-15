@@ -23,12 +23,14 @@ import br.com.uberhidraulica.erp.quote.domain.Quote;
 import br.com.uberhidraulica.erp.quote.domain.QuoteRevision;
 import br.com.uberhidraulica.erp.quote.port.QuoteRepositoryPort;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -257,16 +259,115 @@ class Task0007QuoteVersioningIntegrationTest {
         assertThat(jdbc.queryForObject("select count(*) from workshop.quote_item", Long.class)).isZero();
     }
 
+    /**
+     * Fronteiras do arredondamento aprovado na DR-0007: multiplica com precisao integral e leva
+     * somente o resultado a duas casas com HALF_UP.
+     */
     @Test
-    void refusesTotalThatWouldRequireARoundingDecision() throws Exception {
+    void roundsTheItemTotalWithHalfUpOnEveryBoundary() throws Exception {
         String workOrder = openWorkOrder("10011122233", "QTJ1A11");
         String quote = openQuote(workOrder);
 
-        // 0,001 × 0,01 = 0,00001 — cinco casas. Arredondar aqui mudaria o valor cobrado por conta própria.
-        mvc.perform(revisionRequest(workOrder, quote, "{\"items\":[" + item(null, "Insumo", "0.001", "0.01") + "]}"))
-                .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.code").value("QUOTE_TOTAL_REQUIRES_ROUNDING_DECISION"));
+        String body = createRevision(quote, workOrder, String.join(",",
+                item(null, "Terceira casa menor que cinco", "1", "0.1240"),
+                item(null, "Terceira casa igual a cinco", "1", "0.1250"),
+                item(null, "Terceira casa maior que cinco", "1", "0.1260"),
+                item(null, "Quantidade fracionaria", "2.5", "42.90"),
+                item(null, "Quantidade fracionaria que sobe", "0.5", "0.05"),
+                item(null, "Preco unitario com quatro casas", "7", "0.1429")));
+
+        assertThat(JsonPath.<Double>read(body, "$.items[0].revisions[0].totalPrice")).isEqualTo(0.12);
+        assertThat(JsonPath.<Double>read(body, "$.items[1].revisions[0].totalPrice")).isEqualTo(0.13);
+        assertThat(JsonPath.<Double>read(body, "$.items[2].revisions[0].totalPrice")).isEqualTo(0.13);
+        assertThat(JsonPath.<Double>read(body, "$.items[3].revisions[0].totalPrice")).isEqualTo(107.25);
+        assertThat(JsonPath.<Double>read(body, "$.items[4].revisions[0].totalPrice")).isEqualTo(0.03);
+        assertThat(JsonPath.<Double>read(body, "$.items[5].revisions[0].totalPrice")).isEqualTo(1.0);
+
+        // O banco guarda o valor ja arredondado, nao o produto bruto.
+        assertThat(jdbc.queryForObject("select total_price from workshop.quote_item_revision"
+                + " where description = 'Terceira casa igual a cinco'", BigDecimal.class))
+                .isEqualByComparingTo("0.13");
+    }
+
+    @Test
+    void totalOfThePresentationSumsItemTotalsAlreadyRounded() throws Exception {
+        String workOrder = openWorkOrder("10022233344", "QTP1A11");
+        String quote = openQuote(workOrder);
+
+        // Tres itens de 0,125: somar depois daria 0,375 -> 0,38. A politica soma parcelas ja
+        // arredondadas, entao o total e 0,39 e bate com o que o cliente ve item a item.
+        String body = createRevision(quote, workOrder, String.join(",",
+                item(null, "Item A", "1", "0.1250"),
+                item(null, "Item B", "1", "0.1250"),
+                item(null, "Item C", "1", "0.1250")));
+        assertThat(JsonPath.<Double>read(body, "$.revisions[0].total")).isEqualTo(0.39);
+
+        String presented = present(workOrder, quote, revisionId(body, 0));
+        assertThat(JsonPath.<Double>read(presented, "$.availableTotal")).isEqualTo(0.39);
+    }
+
+    @Test
+    void refusesQuantityAndPriceBeyondFourDecimals() throws Exception {
+        String workOrder = openWorkOrder("10033344455", "QTQ1A11");
+        String quote = openQuote(workOrder);
+
+        mvc.perform(revisionRequest(workOrder, quote, "{\"items\":[" + item(null, "Insumo", "0.00001", "1.00") + "]}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        mvc.perform(revisionRequest(workOrder, quote, "{\"items\":[" + item(null, "Insumo", "1", "0.00001") + "]}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
         assertThat(jdbc.queryForObject("select count(*) from workshop.quote_item_revision", Long.class)).isZero();
+    }
+
+    @Test
+    void refusesToReadAnItemRevisionWhoseStoredTotalWasTamperedWith() throws Exception {
+        String workOrder = openWorkOrder("10044455566", "QTR1A11");
+        String quote = openQuote(workOrder);
+        createRevision(quote, workOrder, item(null, "Servico", "1", "100.00"));
+
+        jdbc.update("update workshop.quote_item_revision set total_price = 1 where quote_id = ?::uuid", quote);
+        mvc.perform(authorized(get("/api/work-orders/{w}/quotes/{q}", workOrder, quote)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("QUOTE_ITEM_REVISION_TOTAL_MISMATCH"));
+    }
+
+    @Test
+    void presentingRequiresTheQuotePresentPermission() throws Exception {
+        String workOrder = openWorkOrder("10055566677", "QTS1A11");
+        String quote = openQuote(workOrder);
+        String revision = revisionId(createRevision(quote, workOrder, item(null, "Servico", "1", "100.00")), 0);
+
+        // GERENTE_FINANCEIRO nao recebe QUOTE_PRESENT por perfil.
+        Session financial = createUserSession("financeiro-quote@example.test", "GERENTE_FINANCEIRO");
+        mvc.perform(post("/api/work-orders/{w}/quotes/{q}/revisions/{r}/present", workOrder, quote, revision)
+                        .cookie(financial.cookie()).header(financial.csrfHeader(), financial.csrfToken()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+        assertThat(jdbc.queryForObject("select status from workshop.quote_revision where id = ?::uuid",
+                String.class, revision)).isEqualTo("DRAFT");
+
+        // Sem sessao o CSRF barra antes; com CSRF e sem sessao, a autenticacao barra.
+        mvc.perform(post("/api/work-orders/{w}/quotes/{q}/revisions/{r}/present", workOrder, quote, revision))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/api/work-orders/{w}/quotes/{q}/revisions/{r}/present", workOrder, quote, revision)
+                        .with(csrf()))
+                .andExpect(status().isUnauthorized());
+
+        // O DONO tem a permissao pelo perfil e consegue apresentar.
+        mvc.perform(authorized(post("/api/work-orders/{w}/quotes/{q}/revisions/{r}/present",
+                        workOrder, quote, revision)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.revisions[0].status").value("PRESENTED"));
+    }
+
+    @Test
+    void quotePresentPermissionIsSeededOnlyForTheApprovedProfiles() {
+        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where version = '9' and success",
+                Long.class)).isEqualTo(1);
+        assertThat(jdbc.queryForList("select p.code from iam.profile_permission pp"
+                        + " join iam.profile p on p.id = pp.profile_id"
+                        + " join iam.permission perm on perm.id = pp.permission_id"
+                        + " where perm.code = 'QUOTE_PRESENT' order by p.code", String.class))
+                .containsExactly("DONO", "GERENTE_ADMINISTRATIVO");
     }
 
     @Test
@@ -444,6 +545,27 @@ class Task0007QuoteVersioningIntegrationTest {
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
     }
 
+    /** Cria um usuario com o perfil pedido e devolve uma sessao dele, ja com a senha trocada. */
+    private Session createUserSession(String email, String profileCode) throws Exception {
+        // Usuários não são apagados entre testes porque a auditoria os referencia; reaproveita-se
+        // aquele já criado, que a esta altura já teve a senha trocada.
+        Session existing = login(email, PASSWORD, true);
+        if (existing != null) return existing;
+        String created = mvc.perform(authorized(post("/api/iam/users"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Usuario Teste\",\"email\":\"" + email + "\",\"profileCode\":\""
+                                + profileCode + "\"}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        String temporary = JsonPath.read(created, "$.temporaryPassword");
+        Session first = login(email, temporary, false);
+        mvc.perform(post("/api/iam/password/change").cookie(first.cookie())
+                        .header(first.csrfHeader(), first.csrfToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"" + temporary + "\",\"newPassword\":\"" + PASSWORD + "\"}"))
+                .andExpect(status().isNoContent());
+        return login(email, PASSWORD, false);
+    }
+
     private String ownerId() {
         return jdbc.queryForObject("select id::text from iam.app_user where normalized_email=?", String.class,
                 OWNER_EMAIL.toLowerCase());
@@ -468,13 +590,17 @@ class Task0007QuoteVersioningIntegrationTest {
     }
 
     private Session login(String password, boolean optional) throws Exception {
+        return login(OWNER_EMAIL, password, optional);
+    }
+
+    private Session login(String email, String password, boolean optional) throws Exception {
         MvcResult csrf = mvc.perform(get("/api/iam/csrf")).andExpect(status().isOk()).andReturn();
         Cookie anonymous = csrf.getResponse().getCookie("SESSION");
         String token = JsonPath.read(csrf.getResponse().getContentAsString(), "$.token");
         String header = JsonPath.read(csrf.getResponse().getContentAsString(), "$.headerName");
         MvcResult result = mvc.perform(post("/api/iam/auth/login").cookie(anonymous).header(header, token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + OWNER_EMAIL + "\",\"password\":\"" + password + "\"}"))
+                        .content("{\"email\":\"" + email + "\",\"password\":\"" + password + "\"}"))
                 .andReturn();
         if (result.getResponse().getStatus() != 200) {
             if (optional) return null;

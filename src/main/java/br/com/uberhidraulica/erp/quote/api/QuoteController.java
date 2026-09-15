@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -58,6 +59,7 @@ public class QuoteController {
     }
 
     @PostMapping("/{quoteId}/revisions/{revisionId}/present")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'QUOTE_PRESENT')")
     Response present(@PathVariable UUID workOrderId, @PathVariable UUID quoteId, @PathVariable UUID revisionId) {
         return Response.from(application.present(workOrderId, quoteId, revisionId), application.now());
     }
@@ -73,26 +75,28 @@ public class QuoteController {
     public record ItemRequest(UUID quoteItemId,
                               UUID workOrderServiceId,
                               @NotBlank @Size(max = 1000) String description,
-                              @NotNull @DecimalMin(value = "0.000", inclusive = false) @Digits(integer = 15, fraction = 3) BigDecimal quantity,
-                              @NotNull @DecimalMin("0.00") @Digits(integer = 17, fraction = 2) BigDecimal unitPrice,
+                              @NotNull @DecimalMin(value = "0.0000", inclusive = false) @Digits(integer = 15, fraction = 4) BigDecimal quantity,
+                              @NotNull @DecimalMin("0.0000") @Digits(integer = 15, fraction = 4) BigDecimal unitPrice,
                               @Size(max = 50) String revisionReason) {}
 
+    /** {@code availableTotal} é a soma dos totais de item já arredondados que o cliente ainda pode aceitar. */
     public record Response(UUID id, UUID workOrderId, Instant createdAt, UUID createdBy,
-                           List<RevisionResponse> revisions, List<ItemResponse> items) {
+                           BigDecimal availableTotal, List<RevisionResponse> revisions, List<ItemResponse> items) {
         static Response from(Quote quote, Instant now) {
             return new Response(quote.id(), quote.workOrderId(), quote.createdAt(), quote.createdBy(),
-                    quote.revisions().stream().map(revision -> RevisionResponse.from(revision, now)).toList(),
+                    quote.availableTotal(now),
+                    quote.revisions().stream().map(revision -> RevisionResponse.from(quote, revision, now)).toList(),
                     quote.items().stream().map(item -> ItemResponse.from(quote, item, now)).toList());
         }
     }
 
     public record RevisionResponse(UUID id, int revisionNumber, RevisionStatus status, Instant presentedAt,
-                                   Instant validUntil, boolean expired, Instant createdAt, UUID createdBy,
-                                   List<EntryResponse> items) {
-        static RevisionResponse from(QuoteRevision revision, Instant now) {
+                                   Instant validUntil, boolean expired, BigDecimal total, Instant createdAt,
+                                   UUID createdBy, List<EntryResponse> items) {
+        static RevisionResponse from(Quote quote, QuoteRevision revision, Instant now) {
             return new RevisionResponse(revision.id(), revision.revisionNumber(), revision.status(),
                     revision.presentedAt(), revision.validUntil(), revision.expiredAt(now),
-                    revision.createdAt(), revision.createdBy(),
+                    quote.revisionTotal(revision), revision.createdAt(), revision.createdBy(),
                     revision.entries().stream()
                             .map(entry -> new EntryResponse(entry.quoteItemRevisionId(), entry.displayOrder()))
                             .toList());
