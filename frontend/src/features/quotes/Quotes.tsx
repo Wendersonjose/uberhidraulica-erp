@@ -7,6 +7,7 @@ import { AVAILABILITY_LABELS, QUOTE_PRESENT, type Quote, type QuoteItemRevision 
 import { useAuth } from '../../auth/useAuth'
 import { Badge, PageHeader, State } from '../../components/ui'
 import { QueryState } from '../../components/QueryState'
+import { QuotePublicAccessCard } from './QuotePublicAccessCard'
 import { formatBrl, formatDate } from '../../utils/format'
 
 const availabilityTone = (availability: QuoteItemRevision['availability']) =>
@@ -99,6 +100,7 @@ export function QuoteDetailPage() {
         <RevisionsCard quote={quote.data} presenting={present.isPending} canPresent={canPresent}
           onPresent={revisionId => run(() => present.mutateAsync(revisionId), 'Falha ao apresentar a revisão')} />
         <ItemsCard quote={quote.data} />
+        <QuotePublicAccessCard workOrderId={id} quote={quote.data} canManage={canPresent} onError={setApiError} />
         <NewRevisionCard workOrderId={id} quote={quote.data} onDone={invalidate} onError={setApiError} />
       </>}
     </QueryState>

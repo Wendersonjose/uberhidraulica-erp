@@ -44,6 +44,7 @@ function mock(overrides: Record<string, unknown> = {}, errors: Record<string, [u
   const routes: Record<string, unknown> = {
     'GET /api/work-orders/o1/quotes': [quote],
     'GET /api/work-orders/o1/quotes/q1234567-abcd': quote,
+    'GET /api/work-orders/o1/quotes/q1234567-abcd/public-access': [],
     ...overrides,
   }
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -165,17 +166,17 @@ test('item novo é enviado sem vínculo com item comercial existente', async () 
   expect(sent.items[1]).toEqual({ quoteItemId: null, description: 'Mangueira', quantity: 1, unitPrice: 80 })
 })
 
-test('recusa de arredondamento do backend aparece na tela', async () => {
+test('conflito de concorrência do backend aparece na tela', async () => {
   mock({ 'GET /api/work-orders/o1/quotes/q1234567-abcd': singleRevisionQuote }, {
     'POST /api/work-orders/o1/quotes/q1234567-abcd/revisions': [{
-      code: 'QUOTE_TOTAL_REQUIRES_ROUNDING_DECISION',
-      message: 'Quantidade e preço geram total com mais de quatro casas decimais',
-    }, 422],
+      code: 'QUOTE_REVISION_CONCURRENTLY_MODIFIED',
+      message: 'A revisão foi alterada por outra operação; recarregue o orçamento',
+    }, 409],
   })
   renderAt('/ordens-servico/o1/orcamentos/q1234567-abcd')
 
   await userEvent.click(await screen.findByRole('button', { name: 'Criar revisão' }))
-  expect(await screen.findByRole('alert')).toHaveTextContent('mais de quatro casas decimais')
+  expect(await screen.findByRole('alert')).toHaveTextContent('recarregue o orçamento')
 })
 
 test('falha ao carregar o orçamento oferece nova tentativa', async () => {

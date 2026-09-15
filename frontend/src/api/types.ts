@@ -42,3 +42,21 @@ export const QUOTE_PRESENT = 'QUOTE_PRESENT'
 export const AVAILABILITY_LABELS: Record<DecisionAvailability, string> = {
   AVAILABLE: 'Decidível', SUPERSEDED: 'Substituída', EXPIRED: 'Expirada', NOT_PRESENTED: 'Rascunho',
 }
+export type PublicDecisionStatus = 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED'
+export type PublicDecisionAvailability = 'DECIDABLE' | 'ALREADY_DECIDED' | 'SUPERSEDED'
+export type PublicQuoteItem = {
+  itemReference: string; description: string; quantity: number; unitPrice: number; totalPrice: number
+  decisionStatus: PublicDecisionStatus; decisionAvailability: PublicDecisionAvailability
+}
+export type PublicQuote = {
+  revisionReference: string; revisionNumber: number; presentedAt: string; validUntil: string
+  total: number; items: PublicQuoteItem[]
+}
+export type PublicQuoteAccess = {
+  id: string; quoteRevisionId: string; createdAt: string; validUntil: string
+  revokedAt: string | null; active: boolean
+}
+export type IssuedQuoteAccess = { accessId: string; quoteRevisionId: string; token: string; validUntil: string }
+export const PUBLIC_STATUS_LABELS: Record<PublicDecisionStatus, string> = {
+  PENDING_APPROVAL: 'Aguardando sua decisão', APPROVED: 'Aprovado', REJECTED: 'Recusado',
+}

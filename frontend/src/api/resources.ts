@@ -1,4 +1,4 @@
-import{api,post}from'./http';import type{Customer,Vehicle,Service,WorkOrder,Product,Quote}from'./types';export const customersApi={list:()=>api<Customer[]>('/api/customers'),get:(id:string)=>api<Customer>(`/api/customers/${id}`),create:(body:unknown)=>post<Customer>('/api/customers',body),vehicles:(id:string)=>api<Vehicle[]>(`/api/customers/${id}/vehicles`)};export const vehiclesApi={create:(body:unknown)=>post<Vehicle>('/api/vehicles',body),get:(id:string)=>api<Vehicle>(`/api/vehicles/${id}`),async listAll(){const customers=await customersApi.list(),groups=await Promise.all(customers.map(async customer=>({customer,vehicles:await customersApi.vehicles(customer.id)})));return groups.flatMap(({customer,vehicles})=>vehicles.map(vehicle=>({vehicle,customer})))}};export const servicesApi={list:()=>api<Service[]>('/api/services'),create:(body:unknown)=>post<Service>('/api/services',body)};export const workOrdersApi={list:()=>api<WorkOrder[]>('/api/work-orders'),get:(id:string)=>api<WorkOrder>(`/api/work-orders/${id}`),create:(body:unknown)=>post<WorkOrder>('/api/work-orders',body),addService:(id:string,serviceId:string)=>post<WorkOrder>(`/api/work-orders/${id}/services`,{serviceId}),addProduct:(id:string,productId:string,quantity:number)=>post<WorkOrder>(`/api/work-orders/${id}/products`,{productId,quantity})}
+import{api,post,publicApi}from'./http';import type{Customer,Vehicle,Service,WorkOrder,Product,Quote,PublicQuote,PublicQuoteAccess,IssuedQuoteAccess}from'./types';export const customersApi={list:()=>api<Customer[]>('/api/customers'),get:(id:string)=>api<Customer>(`/api/customers/${id}`),create:(body:unknown)=>post<Customer>('/api/customers',body),vehicles:(id:string)=>api<Vehicle[]>(`/api/customers/${id}/vehicles`)};export const vehiclesApi={create:(body:unknown)=>post<Vehicle>('/api/vehicles',body),get:(id:string)=>api<Vehicle>(`/api/vehicles/${id}`),async listAll(){const customers=await customersApi.list(),groups=await Promise.all(customers.map(async customer=>({customer,vehicles:await customersApi.vehicles(customer.id)})));return groups.flatMap(({customer,vehicles})=>vehicles.map(vehicle=>({vehicle,customer})))}};export const servicesApi={list:()=>api<Service[]>('/api/services'),create:(body:unknown)=>post<Service>('/api/services',body)};export const workOrdersApi={list:()=>api<WorkOrder[]>('/api/work-orders'),get:(id:string)=>api<WorkOrder>(`/api/work-orders/${id}`),create:(body:unknown)=>post<WorkOrder>('/api/work-orders',body),addService:(id:string,serviceId:string)=>post<WorkOrder>(`/api/work-orders/${id}/services`,{serviceId}),addProduct:(id:string,productId:string,quantity:number)=>post<WorkOrder>(`/api/work-orders/${id}/products`,{productId,quantity})}
 
 export const productsApi = {
   list: () => api<Product[]>('/api/products'),
@@ -20,4 +20,20 @@ export const quotesApi = {
     post<Quote>(`${quotesBase(workOrderId)}/${quoteId}/revisions`, { items }),
   present: (workOrderId: string, quoteId: string, revisionId: string) =>
     post<Quote>(`${quotesBase(workOrderId)}/${quoteId}/revisions/${revisionId}/present`, {}),
+}
+
+export const publicQuotesApi = {
+  view: (token: string) => publicApi<PublicQuote>(`/api/public/quotes/${encodeURIComponent(token)}`),
+  decide: (token: string, body: unknown) =>
+    publicApi<{ quote: PublicQuote; replayed: boolean }>(
+      `/api/public/quotes/${encodeURIComponent(token)}/decisions`,
+      { method: 'POST', body: JSON.stringify(body) }),
+}
+export const quoteAccessApi = {
+  list: (workOrderId: string, quoteId: string) =>
+    api<PublicQuoteAccess[]>(`${quotesBase(workOrderId)}/${quoteId}/public-access`),
+  issue: (workOrderId: string, quoteId: string, revisionId: string) =>
+    post<IssuedQuoteAccess>(`${quotesBase(workOrderId)}/${quoteId}/revisions/${revisionId}/public-access`, {}),
+  revoke: (workOrderId: string, quoteId: string, accessId: string) =>
+    post<void>(`${quotesBase(workOrderId)}/${quoteId}/public-access/${accessId}/revoke`, {}),
 }

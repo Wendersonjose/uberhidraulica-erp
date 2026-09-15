@@ -4,9 +4,18 @@ import { api, ApiError, onSessionIssue, post, resetApiSession } from '../api/htt
 import type { Session } from '../api/types'
 import { AuthContext } from './useAuth'
 
+/**
+ * A rota pública do orçamento é a única do app que não pertence a um usuário interno.
+ *
+ * <p>Sondar a sessão ali seria pedir a um visitante externo que tocasse um endpoint interno sem
+ * necessidade nenhuma: a página não usa sessão para nada.</p>
+ */
+const PUBLIC_ROUTE = /^\/orcamento\//
+
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const publicRoute = PUBLIC_ROUTE.test(window.location.pathname)
   const [session, setSession] = useState<Session | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!publicRoute)
   const revision = useRef(0)
   const client = useQueryClient()
   const clearSessionData = useCallback(() => {
@@ -39,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (issue === 'expired') endSession()
       else setSession(current => current ? { ...current, mustChangePassword: true } : null)
     })
+    if (publicRoute) return () => { unsubscribe() }
     let active = true
     const current = revision.current
     void api<Session>('/api/iam/session').then(next => {
@@ -49,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (active && current === revision.current) setLoading(false)
     })
     return () => { active = false; unsubscribe() }
-  }, [endSession])
+  }, [endSession, publicRoute])
 
   async function login(email: string, password: string) {
     clearSessionData()
