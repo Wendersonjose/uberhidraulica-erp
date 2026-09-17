@@ -1,4 +1,4 @@
-import{api,post,publicApi}from'./http';import type{Customer,Vehicle,Service,WorkOrder,Product,Quote,PublicQuote,PublicQuoteAccess,IssuedQuoteAccess,Page,VehicleListItem,VehicleOwnership}from'./types';export const servicesApi={list:()=>api<Service[]>('/api/services'),create:(body:unknown)=>post<Service>('/api/services',body)};export const workOrdersApi={list:(filter:{customerId?:string;vehicleId?:string}={})=>api<WorkOrder[]>('/api/work-orders'+queryString(filter)),get:(id:string)=>api<WorkOrder>(`/api/work-orders/${id}`),create:(body:unknown)=>post<WorkOrder>('/api/work-orders',body),addService:(id:string,serviceId:string)=>post<WorkOrder>(`/api/work-orders/${id}/services`,{serviceId}),addProduct:(id:string,productId:string,quantity:number)=>post<WorkOrder>(`/api/work-orders/${id}/products`,{productId,quantity})}
+import{api,post,publicApi}from'./http';import type{Customer,Vehicle,Service,WorkOrder,Product,Quote,PublicQuote,PublicQuoteAccess,IssuedQuoteAccess,Page,VehicleListItem,VehicleOwnership,ServiceCategory,VehicleGroup,GroupVehicle,ServicePrice,PriceSuggestion}from'./types';export const workOrdersApi={list:(filter:{customerId?:string;vehicleId?:string}={})=>api<WorkOrder[]>('/api/work-orders'+queryString(filter)),get:(id:string)=>api<WorkOrder>(`/api/work-orders/${id}`),create:(body:unknown)=>post<WorkOrder>('/api/work-orders',body),addService:(id:string,serviceId:string,price?:number)=>post<WorkOrder>(`/api/work-orders/${id}/services`,price===undefined?{serviceId}:{serviceId,price}),addProduct:(id:string,productId:string,quantity:number)=>post<WorkOrder>(`/api/work-orders/${id}/products`,{productId,quantity})}
 
 export const productsApi = {
   list: () => api<Product[]>('/api/products'),
@@ -70,4 +70,37 @@ export const vehiclesApi = {
   ownership: (id: string) => api<VehicleOwnership[]>(`/api/vehicles/${id}/ownership-history`),
   inactivate: (id: string) => post<Vehicle>(`/api/vehicles/${id}/inactivate`, {}),
   reactivate: (id: string) => post<Vehicle>(`/api/vehicles/${id}/reactivate`, {}),
+}
+
+export type ServiceSearchParams = { q?: string; categoryId?: string; active?: boolean; page?: number; size?: number }
+export const servicesApi = {
+  list: () => api<Service[]>('/api/services'),
+  search: (params: ServiceSearchParams) => api<Page<Service>>('/api/services/search' + queryString(params)),
+  get: (id: string) => api<Service>(`/api/services/${id}`),
+  create: (body: unknown) => post<Service>('/api/services', body),
+  update: (id: string, body: unknown) => put<Service>(`/api/services/${id}`, body),
+  inactivate: (id: string) => post<Service>(`/api/services/${id}/inactivate`, {}),
+  reactivate: (id: string) => post<Service>(`/api/services/${id}/reactivate`, {}),
+  prices: (id: string) => api<ServicePrice[]>(`/api/services/${id}/prices`),
+  setVehiclePrice: (id: string, vehicleId: string, price: number) => put<ServicePrice>(`/api/services/${id}/prices/vehicles/${vehicleId}`, { price }),
+  setGroupPrice: (id: string, groupId: string, price: number) => put<ServicePrice>(`/api/services/${id}/prices/groups/${groupId}`, { price }),
+  deletePrice: (id: string, priceId: string) => api<void>(`/api/services/${id}/prices/${priceId}`, { method: 'DELETE' }),
+  suggestion: (id: string, vehicleId: string) => api<PriceSuggestion>(`/api/services/${id}/price-suggestion` + queryString({ vehicleId })),
+}
+export const serviceCategoriesApi = {
+  list: () => api<ServiceCategory[]>('/api/service-categories'),
+  create: (name: string) => post<ServiceCategory>('/api/service-categories', { name }),
+  rename: (id: string, name: string) => put<ServiceCategory>(`/api/service-categories/${id}`, { name }),
+  inactivate: (id: string) => post<ServiceCategory>(`/api/service-categories/${id}/inactivate`, {}),
+  reactivate: (id: string) => post<ServiceCategory>(`/api/service-categories/${id}/reactivate`, {}),
+}
+export const vehicleGroupsApi = {
+  list: () => api<VehicleGroup[]>('/api/vehicle-groups'),
+  create: (body: { name: string; description: string | null }) => post<VehicleGroup>('/api/vehicle-groups', body),
+  update: (id: string, body: { name: string; description: string | null }) => put<VehicleGroup>(`/api/vehicle-groups/${id}`, body),
+  inactivate: (id: string) => post<VehicleGroup>(`/api/vehicle-groups/${id}/inactivate`, {}),
+  reactivate: (id: string) => post<VehicleGroup>(`/api/vehicle-groups/${id}/reactivate`, {}),
+  vehicles: (id: string) => api<GroupVehicle[]>(`/api/vehicle-groups/${id}/vehicles`),
+  assign: (id: string, vehicleId: string) => api<void>(`/api/vehicle-groups/${id}/vehicles/${vehicleId}`, { method: 'PUT' }),
+  remove: (id: string, vehicleId: string) => api<void>(`/api/vehicle-groups/${id}/vehicles/${vehicleId}`, { method: 'DELETE' }),
 }

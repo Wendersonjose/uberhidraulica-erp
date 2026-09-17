@@ -1,4 +1,4 @@
-export type Session={id:string;name:string;email:string;profileCode:string;state:string;mustChangePassword:boolean;permissions:string[]};export type Service={id:string;name:string;description:string;category:string|null;basePrice:number;defaultWarrantyDays:number;active:boolean};export type WorkOrderService={id:string;serviceId:string;name:string;description:string;basePrice:number;warrantyDays:number;addedAt:string};export type WorkOrder={id:string;number:number;customerId:string;vehicleId:string;entryMileage:number;openedAt:string;status:'ABERTA';services:WorkOrderService[];products:WorkOrderProduct[]}
+export type Session={id:string;name:string;email:string;profileCode:string;state:string;mustChangePassword:boolean;permissions:string[]};export type WorkOrder={id:string;number:number;customerId:string;vehicleId:string;entryMileage:number;openedAt:string;status:'ABERTA';services:WorkOrderService[];products:WorkOrderProduct[]}
 
 export type ProductType = 'PART' | 'SUPPLY' | 'COMPONENT' | 'KIT' | 'INTERNAL_USE_MATERIAL'
 export type ProductUnit = 'UNIDADE' | 'LITRO' | 'METRO' | 'QUILOGRAMA'
@@ -78,3 +78,24 @@ export type Vehicle = {
 export type Page<T> = { items: T[]; totalItems: number; page: number; size: number; totalPages: number }
 export type VehicleListItem = { vehicle: Vehicle; customerName: string }
 export type VehicleOwnership = { id: string; customerId: string; customerName: string; startedAt: string; endedAt: string | null }
+
+export type Service = {
+  id: string; name: string; description: string | null; categoryId?: string | null; category: string | null
+  basePrice: number | null; defaultWarrantyDays: number; active: boolean
+}
+export type WorkOrderService = {
+  id: string; serviceId: string; name: string; description: string | null; basePrice: number
+  warrantyDays: number; addedAt: string; priceSource?: PriceSource | 'MANUAL' | null
+}
+export type ServiceCategory = { id: string; name: string; active: boolean }
+export type VehicleGroup = { id: string; name: string; description: string | null; active: boolean; vehicleCount: number }
+export type GroupVehicle = { id: string; customerId: string; plate: string; manufacturer: string; model: string; active: boolean }
+export type ServicePrice = {
+  id: string; serviceId: string; vehicleId: string | null; vehicleGroupId: string | null
+  vehicleGroupName: string | null; price: number; updatedAt: string
+}
+export type PriceSource = 'VEHICLE' | 'GROUP' | 'BASE' | 'NONE'
+export type PriceSuggestion = { serviceId: string; vehicleId: string | null; price: number | null; source: PriceSource }
+export const PRICE_SOURCE_LABELS: Record<string, string> = {
+  VEHICLE: 'preço do veículo', GROUP: 'preço do grupo', BASE: 'preço base', MANUAL: 'informado manualmente', NONE: 'sem preço definido',
+}

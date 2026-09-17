@@ -9,7 +9,9 @@ import java.util.List;
 public class ServiceCatalogExceptionHandler {
     @ExceptionHandler(ServiceCatalogException.class)
     ResponseEntity<ErrorResponse> domain(ServiceCatalogException exception) {
-        HttpStatus status = "SERVICE_NOT_FOUND".equals(exception.code()) ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST;
+        String code = exception.code();
+        HttpStatus status = code.endsWith("NOT_FOUND") ? HttpStatus.NOT_FOUND
+                : code.contains("ALREADY_") || code.endsWith("_INACTIVE") || code.equals("VEHICLE_NOT_IN_GROUP") ? HttpStatus.CONFLICT : HttpStatus.BAD_REQUEST;
         return ResponseEntity.status(status).body(new ErrorResponse(exception.code(), exception.getMessage(), List.of()));
     }
 

@@ -15,7 +15,7 @@ class WorkOrderEntity {
 @Entity @Table(name="work_order_service",schema="workorder")
 class WorkOrderServiceEntity {
  @Id UUID id; @Column(name="work_order_id",nullable=false) UUID workOrderId; @Column(name="service_id",nullable=false) UUID serviceId;
- @Column(name="service_name",nullable=false,length=160) String serviceName; @Column(name="service_description",nullable=false,length=1000) String serviceDescription;
+ @Column(name="service_name",nullable=false,length=160) String serviceName; @Column(name="service_description",length=1000) String serviceDescription; @Column(name="price_source",length=8) String priceSource;
  @Column(name="base_price",nullable=false,precision=15,scale=2) BigDecimal basePrice; @Column(name="warranty_days",nullable=false) int warrantyDays;
  @Column(name="added_at",nullable=false) Instant addedAt;
 }

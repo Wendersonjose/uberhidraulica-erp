@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
@@ -123,8 +123,12 @@ function VehicleForm({ vehicleId, defaults }: { vehicleId?: string; defaults: Fo
   const creating = !vehicleId
   const customers = useQuery({ queryKey: queryKeys.customers, queryFn: customersApi.list, enabled: creating })
   const activeCustomers = customers.data?.filter(c => c.status === 'ACTIVE') ?? []
-  const { register, handleSubmit, setError, formState: { errors, isSubmitting } } =
+  const { register, handleSubmit, setError, setValue, formState: { errors, isSubmitting } } =
     useForm<FormInput, unknown, Form>({ resolver: zodResolver(schema), defaultValues: defaults })
+  const preselected = defaults.customerId
+  const preselectedAvailable = activeCustomers.some(c => c.id === preselected)
+  // As opções chegam depois da montagem; o valor inicial só "pega" quando a opção existe.
+  useEffect(() => { if (preselectedAvailable) setValue('customerId', preselected) }, [preselectedAvailable, preselected, setValue])
   const mutation = useMutation({
     mutationFn: (values: Form) => vehicleId
       ? vehiclesApi.update(vehicleId, vehiclePayload(values))

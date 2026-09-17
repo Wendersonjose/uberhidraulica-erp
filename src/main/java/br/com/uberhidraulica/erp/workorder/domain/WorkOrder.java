@@ -16,7 +16,16 @@ public record WorkOrder(UUID id,Long number,UUID customerId,UUID vehicleId,long 
         if(mileage==null) throw invalid("Quilometragem de entrada é obrigatória");
         return new WorkOrder(UUID.randomUUID(),null,customerId,vehicleId,mileage,now,Status.ABERTA,now,now,List.of(),List.of());
     }
-    public record ServiceItem(UUID id,UUID serviceId,String name,String description,BigDecimal basePrice,int warrantyDays,Instant addedAt) {}
+    /**
+     * Serviço lançado na OS. {@code basePrice} é o preço praticado nesta OS e {@code priceSource} indica se
+     * veio do preço do veículo, do grupo, do preço base ou foi informado manualmente; nulo em lançamentos
+     * anteriores a essa rastreabilidade.
+     */
+    public record ServiceItem(UUID id,UUID serviceId,String name,String description,BigDecimal basePrice,int warrantyDays,Instant addedAt,String priceSource) {
+        public ServiceItem {
+            if(basePrice==null||basePrice.signum()<0||basePrice.scale()>2) throw invalid("Preço do serviço deve ser não negativo e possuir no máximo duas casas decimais");
+        }
+    }
     /**
      * Item físico lançado na OS. Descrição, código interno, unidade e preço unitário são snapshot
      * do catálogo no instante do lançamento: alteração posterior do produto não reescreve a OS.

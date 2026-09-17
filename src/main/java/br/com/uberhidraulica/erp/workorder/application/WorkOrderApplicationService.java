@@ -32,10 +32,19 @@ public class WorkOrderApplicationService implements WorkOrderQuery {
         if(customerId!=null) return repository.findByCustomerId(customerId);
         return repository.findAll();
     }
-    @Transactional public WorkOrder addService(UUID id,UUID serviceId){
-        get(id);
+    /**
+     * Lança um serviço ativo na OS com o preço sugerido para o veículo da OS (veículo → grupo → base) ou com
+     * o preço informado manualmente. O valor praticado fica no snapshot da OS (DR-0011).
+     */
+    @Transactional public WorkOrder addService(UUID id,UUID serviceId,BigDecimal manualPrice){
+        var order=get(id);
         var service=catalog.service(serviceId).orElseThrow(()->new WorkOrderException("SERVICE_NOT_FOUND","Serviço não encontrado"));
-        var item=new WorkOrder.ServiceItem(UUID.randomUUID(),service.id(),service.name(),service.description(),service.basePrice(),service.defaultWarrantyDays(),Instant.now());
+        if(!service.active()) throw new WorkOrderException("SERVICE_INACTIVE","Serviço inativo não pode ser lançado na OS");
+        var suggestion=catalog.suggestPrice(serviceId,order.vehicleId());
+        BigDecimal price=manualPrice!=null?manualPrice:suggestion.price();
+        if(price==null) throw new WorkOrderException("SERVICE_PRICE_REQUIRED","Serviço sem preço definido: informe o preço praticado");
+        String source=manualPrice==null||(suggestion.price()!=null&&suggestion.price().compareTo(manualPrice)==0)?suggestion.source():"MANUAL";
+        var item=new WorkOrder.ServiceItem(UUID.randomUUID(),service.id(),service.name(),service.description(),price,service.defaultWarrantyDays(),Instant.now(),source);
         repository.addService(id,item);
         return get(id);
     }
