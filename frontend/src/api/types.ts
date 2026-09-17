@@ -21,6 +21,7 @@ export type WorkOrderProduct = {
 export type DecisionAvailability = 'AVAILABLE' | 'SUPERSEDED' | 'EXPIRED' | 'NOT_PRESENTED'
 export type QuoteItemRevision = {
   id: string; revisionSequence: number; description: string; quantity: number; unitPrice: number
+  discountAmount?: number; grossTotal?: number; decision?: DecisionType | null
   totalPrice: number; revisionReason: string | null; presented: boolean
   availability: DecisionAvailability; createdAt: string; createdBy: string
 }
@@ -45,7 +46,7 @@ export const AVAILABILITY_LABELS: Record<DecisionAvailability, string> = {
 export type PublicDecisionStatus = 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED'
 export type PublicDecisionAvailability = 'DECIDABLE' | 'ALREADY_DECIDED' | 'SUPERSEDED'
 export type PublicQuoteItem = {
-  itemReference: string; description: string; quantity: number; unitPrice: number; totalPrice: number
+  itemReference: string; description: string; quantity: number; unitPrice: number; discountAmount?: number; totalPrice: number
   decisionStatus: PublicDecisionStatus; decisionAvailability: PublicDecisionAvailability
 }
 export type PublicQuote = {
@@ -115,7 +116,7 @@ export type WorkOrderLifecycle = {
 }
 export type WorkOrder = {
   id: string; number: number; customerId: string; vehicleId: string; entryMileage: number | null; openedAt: string
-  status: Stage; statusInfo?: WorkflowStatus; complaint?: string | null; notes?: string | null; lifecycle?: WorkOrderLifecycle
+  status: Stage; statusInfo?: WorkflowStatus; complaint?: string | null; notes?: string | null; diagnosis?: string | null; lifecycle?: WorkOrderLifecycle
   services: WorkOrderService[]; products: WorkOrderProduct[]
 }
 export type StatusChange = {
@@ -125,3 +126,15 @@ export type StatusChange = {
 export type BoardCard = { id: string; number: number; openedAt: string; complaint: string | null; customerName: string | null; vehicleLabel: string | null }
 export type BoardColumn = { status: WorkflowStatus; orders: BoardCard[] }
 export type StatusUsage = { status: WorkflowStatus; orderCount: number }
+
+export const QUOTE_DISCOUNT = 'QUOTE_DISCOUNT'
+export type DecisionType = 'APPROVE' | 'REJECT'
+export const CONTACT_CHANNELS: Record<string, string> = {
+  PRESENCIAL: 'Presencial', TELEFONE: 'Telefone', WHATSAPP: 'WhatsApp', EMAIL: 'E-mail', OUTRO: 'Outro',
+}
+export const AUTOMATION_LABELS: Record<string, string> = {
+  DIAGNOSIS_REGISTERED: 'Diagnóstico registrado em OS aberta → Em diagnóstico',
+  QUOTE_PRESENTED: 'Orçamento apresentado → Aguardando aprovação',
+  QUOTE_APPROVED: 'Item do orçamento aprovado → Aprovada',
+  QUOTE_REJECTED: 'Todos os itens reprovados → Reprovada',
+}

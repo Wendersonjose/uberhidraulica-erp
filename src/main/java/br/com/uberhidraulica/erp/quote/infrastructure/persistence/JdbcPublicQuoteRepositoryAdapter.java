@@ -135,12 +135,29 @@ public class JdbcPublicQuoteRepositoryAdapter implements PublicQuoteRepositoryPo
                 submission.explicitAcceptance(), Timestamp.from(submission.occurredAt()),
                 submission.ipAddress(), submission.userAgent(), Timestamp.from(submission.occurredAt()));
 
-        for (DecisionSubmission.Decision decision : submission.decisions())
+        saveDecisions(submission.id(), submission.quoteRevisionId(), submission.quoteId(), submission.decisions());
+    }
+
+    @Override
+    public void saveInternal(br.com.uberhidraulica.erp.quote.domain.InternalDecisionSubmission submission) {
+        // request_id recebe o próprio identificador: a unicidade (acesso, request_id) não se aplica sem acesso público.
+        jdbc.update("insert into workshop.quote_decision_submission"
+                        + " (id, channel, quote_revision_id, quote_id, request_id, customer_name, explicit_acceptance,"
+                        + " occurred_at, created_at, contact_channel, recorded_by, notes)"
+                        + " values (?, 'INTERNAL', ?, ?, ?, ?, true, ?, ?, ?, ?, ?)",
+                submission.id(), submission.quoteRevisionId(), submission.quoteId(), submission.id().toString(),
+                submission.authorizedBy(), Timestamp.from(submission.occurredAt()), Timestamp.from(submission.occurredAt()),
+                submission.contactChannel(), submission.recordedBy(), submission.notes());
+        saveDecisions(submission.id(), submission.quoteRevisionId(), submission.quoteId(), submission.decisions());
+    }
+
+    private void saveDecisions(UUID submissionId, UUID revisionId, UUID quoteId, List<DecisionSubmission.Decision> decisions) {
+        for (DecisionSubmission.Decision decision : decisions)
             jdbc.update("insert into workshop.quote_decision"
                             + " (id, submission_id, quote_revision_id, quote_item_revision_id, quote_id,"
                             + " decision_type, occurred_at) values (?, ?, ?, ?, ?, ?, ?)",
-                    decision.id(), submission.id(), submission.quoteRevisionId(),
-                    decision.quoteItemRevisionId(), submission.quoteId(), decision.decisionType().name(),
+                    decision.id(), submissionId, revisionId,
+                    decision.quoteItemRevisionId(), quoteId, decision.decisionType().name(),
                     Timestamp.from(decision.occurredAt()));
     }
 }

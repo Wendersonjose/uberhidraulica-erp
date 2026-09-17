@@ -92,12 +92,12 @@ public class PublicQuoteController {
     }
 
     public record PublicItemResponse(UUID itemReference, String description, BigDecimal quantity,
-                                     BigDecimal unitPrice, BigDecimal totalPrice,
+                                     BigDecimal unitPrice, BigDecimal discountAmount, BigDecimal totalPrice,
                                      DecisionStatus decisionStatus,
                                      PublicDecisionAvailability decisionAvailability) {
         static PublicItemResponse from(PublicQuoteService.PublicItemView item) {
             return new PublicItemResponse(item.itemReference(), item.description(), item.quantity(),
-                    item.unitPrice(), item.totalPrice(), item.decisionStatus(), item.decisionAvailability());
+                    item.unitPrice(), item.discountAmount(), item.totalPrice(), item.decisionStatus(), item.decisionAvailability());
         }
     }
 

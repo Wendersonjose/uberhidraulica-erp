@@ -90,9 +90,9 @@ class IamAuthenticationIntegrationTest {
                 .containsAll(br.com.uberhidraulica.erp.iam.domain.IamPermissions.ALL);
         assertThat(authorizations.profilePermissions(ProfileCode.DONO)).containsExactlyInAnyOrderElementsOf(
                 Stream.concat(br.com.uberhidraulica.erp.iam.domain.IamPermissions.ALL.stream(),
-                        Stream.of("QUOTE_PRESENT")).toList());
+                        Stream.of("QUOTE_PRESENT", "QUOTE_DISCOUNT")).toList());
         assertThat(authorizations.profilePermissions(ProfileCode.GERENTE_ADMINISTRATIVO))
-                .containsExactly("QUOTE_PRESENT");
+                .containsExactlyInAnyOrder("QUOTE_PRESENT", "QUOTE_DISCOUNT");
         assertThat(authorizations.profilePermissions(ProfileCode.GERENTE_FINANCEIRO)).isEmpty();
         assertThat(jdbc.queryForObject("select count(*) from iam.audit_event where action='FIRST_OWNER_BOOTSTRAPPED'", Long.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("select must_change_password from iam.credential", Boolean.class)).isTrue();

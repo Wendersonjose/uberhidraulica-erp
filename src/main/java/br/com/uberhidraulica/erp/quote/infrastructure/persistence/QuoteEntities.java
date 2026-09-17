@@ -53,6 +53,7 @@ class QuoteItemRevisionEntity {
     @Column(nullable = false, length = 1000) String description;
     @Column(nullable = false, precision = 19, scale = 4) BigDecimal quantity;
     @Column(name = "unit_price", nullable = false, precision = 19, scale = 4) BigDecimal unitPrice;
+    @Column(name = "discount_amount", nullable = false, precision = 19, scale = 4) BigDecimal discountAmount;
     @Column(name = "total_price", nullable = false, precision = 19, scale = 4) BigDecimal totalPrice;
     @Column(name = "revision_reason", length = 50) String revisionReason;
     @Column(name = "created_at", nullable = false) Instant createdAt;

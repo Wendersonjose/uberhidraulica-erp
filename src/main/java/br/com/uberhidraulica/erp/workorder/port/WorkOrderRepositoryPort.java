@@ -20,4 +20,8 @@ public interface WorkOrderRepositoryPort {
     Optional<WorkflowStatus> findStatus(UUID id);
     WorkflowStatus saveStatus(WorkflowStatus status);
     long countOrdersInStatus(UUID statusId);
+
+    /** Regras automáticas de status por evento; ausência de evento significa regra inexistente. */
+    Map<String, Boolean> automations();
+    void setAutomation(String event, boolean enabled, java.time.Instant now);
 }

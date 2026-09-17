@@ -87,7 +87,8 @@ export function PublicQuotePage() {
           <td><strong>{item.description}</strong></td>
           <td>{Number(item.quantity)}</td>
           <td>{formatBrl(Number(item.unitPrice))}</td>
-          <td>{formatBrl(Number(item.totalPrice))}</td>
+          <td>{formatBrl(Number(item.totalPrice))}
+            {Number(item.discountAmount ?? 0) > 0 && <div className="muted">desconto de {formatBrl(Number(item.discountAmount))}</div>}</td>
           <td><Badge tone={statusTone(item)}>{PUBLIC_STATUS_LABELS[item.decisionStatus]}</Badge></td>
           <td>{item.decisionAvailability === 'DECIDABLE'
             ? <select className="select" aria-label={`Decisão para ${item.description}`}

@@ -27,13 +27,16 @@ public class PublicQuoteService {
     private final QuoteRepositoryPort quotes;
     private final PublicQuoteRepositoryPort publicAccess;
     private final CurrentUser currentUser;
+    private final br.com.uberhidraulica.erp.workorder.WorkOrderCommercialEvents workOrderEvents;
     private final Clock clock;
 
     public PublicQuoteService(QuoteRepositoryPort quotes, PublicQuoteRepositoryPort publicAccess,
-                              CurrentUser currentUser, Clock clock) {
+                              CurrentUser currentUser, br.com.uberhidraulica.erp.workorder.WorkOrderCommercialEvents workOrderEvents,
+                              Clock clock) {
         this.quotes = quotes;
         this.publicAccess = publicAccess;
         this.currentUser = currentUser;
+        this.workOrderEvents = workOrderEvents;
         this.clock = clock;
     }
 
@@ -41,7 +44,7 @@ public class PublicQuoteService {
     public record IssuedAccess(PublicQuoteAccess access, String rawToken) {}
 
     public record PublicItemView(UUID itemReference, String description, BigDecimal quantity,
-                                 BigDecimal unitPrice, BigDecimal totalPrice, DecisionStatus decisionStatus,
+                                 BigDecimal unitPrice, BigDecimal discountAmount, BigDecimal totalPrice, DecisionStatus decisionStatus,
                                  PublicDecisionAvailability decisionAvailability) {}
 
     public record PublicQuoteView(UUID revisionReference, int revisionNumber, Instant presentedAt,
@@ -122,7 +125,7 @@ public class PublicQuoteService {
             throw new QuoteException("PUBLIC_QUOTE_EXPIRED", "A validade desta proposta terminou");
 
         Map<UUID, DecisionType> alreadyDecided = publicAccess.decisionsByQuote(quote.id());
-        List<DecisionSubmission.Decision> decisions = validateAll(quote, revision, request, alreadyDecided, now);
+        List<DecisionSubmission.Decision> decisions = validateAll(quote, revision, request.decisions(), alreadyDecided, now);
 
         // Reconfirmação dentro da transação: se uma apresentação concorrente entrou entre a leitura e
         // este ponto, a versão do orçamento já mudou e nada é gravado.
@@ -141,7 +144,53 @@ public class PublicQuoteService {
             throw new QuoteException("QUOTE_ITEM_ALREADY_DECIDED",
                     "Um dos itens recebeu decisão durante o envio; recarregue o orçamento");
         }
+        notifyWorkOrder(quote, revision);
         return new DecisionResult(render(loadQuote(access), access, now), false);
+    }
+
+    /**
+     * Registro interno da decisão que o cliente deu fora do link (DR-0013).
+     *
+     * <p>Mesmas regras da decisão pública — revisão apresentada e válida, item não decidido e não obsoleto,
+     * validação completa antes de gravar, serialização pela versão do orçamento — com o usuário
+     * autenticado como evidência no lugar de IP e documento.</p>
+     */
+    @Transactional
+    public Quote registerInternal(Quote quote, UUID revisionId, String contactChannel, String authorizedBy, String notes,
+                                  List<ItemDecision> items) {
+        Instant now = Instant.now(clock);
+        QuoteRevision revision = quote.revision(revisionId)
+                .orElseThrow(() -> new QuoteException("QUOTE_REVISION_NOT_FOUND", "Revisão não encontrada"));
+        if (!revision.presented())
+            throw new QuoteException("QUOTE_REVISION_NOT_PRESENTED", "Somente revisão apresentada ao cliente pode receber decisão");
+        if (revision.expiredAt(now))
+            throw new QuoteException("PUBLIC_QUOTE_EXPIRED", "A validade desta proposta terminou");
+        if (items == null || items.isEmpty())
+            throw new QuoteException("VALIDATION_ERROR", "Informe ao menos uma decisão");
+        List<DecisionSubmission.Decision> decisions = validateAll(quote, revision, items, publicAccess.decisionsByQuote(quote.id()), now);
+        if (!quotes.touch(quote.id(), quote.version()))
+            throw new QuoteException("CONCURRENT_MODIFICATION", "O orçamento foi alterado durante o registro; recarregue antes de decidir");
+        try {
+            publicAccess.saveInternal(new InternalDecisionSubmission(UUID.randomUUID(), revision.id(), quote.id(),
+                    currentUser.requireId(), contactChannel, authorizedBy, notes, now, decisions));
+        } catch (DataIntegrityViolationException collision) {
+            throw new QuoteException("QUOTE_ITEM_ALREADY_DECIDED", "Um dos itens recebeu decisão durante o registro; recarregue o orçamento");
+        }
+        notifyWorkOrder(quote, revision);
+        return quotes.findById(quote.id()).orElseThrow();
+    }
+
+    /** Decisões efetivas por versão comercial do orçamento, para exibição interna. */
+    @Transactional(readOnly = true)
+    public Map<UUID, DecisionType> decisions(Quote quote) { return publicAccess.decisionsByQuote(quote.id()); }
+
+    /** Informa a OS: algum item aprovado, ou todos os itens da apresentação decididos e nenhum aprovado. */
+    private void notifyWorkOrder(Quote quote, QuoteRevision revision) {
+        Map<UUID, DecisionType> decided = publicAccess.decisionsByQuote(quote.id());
+        List<DecisionType> ofRevision = revision.entries().stream().map(entry -> decided.get(entry.quoteItemRevisionId())).toList();
+        boolean anyApproved = ofRevision.contains(DecisionType.APPROVE);
+        boolean allRejected = !ofRevision.isEmpty() && ofRevision.stream().allMatch(type -> type == DecisionType.REJECT);
+        workOrderEvents.quoteDecided(quote.workOrderId(), anyApproved, allRejected);
     }
 
     // ----- apoio -----
@@ -174,11 +223,11 @@ public class PublicQuoteService {
      * <p>A submissão é atômica: se um item não pode ser consolidado, nenhum outro do mesmo envio é.</p>
      */
     private List<DecisionSubmission.Decision> validateAll(Quote quote, QuoteRevision revision,
-                                                          DecisionRequest request,
+                                                          List<ItemDecision> requested,
                                                           Map<UUID, DecisionType> alreadyDecided, Instant now) {
         Set<UUID> seen = new LinkedHashSet<>();
         List<DecisionSubmission.Decision> decisions = new ArrayList<>();
-        for (ItemDecision item : request.decisions()) {
+        for (ItemDecision item : requested) {
             if (item.itemReference() == null || item.decision() == null)
                 throw new QuoteException("VALIDATION_ERROR", "Decisão incompleta");
             if (!seen.add(item.itemReference()))
@@ -209,7 +258,7 @@ public class PublicQuoteService {
                 .map(entry -> quote.itemRevision(entry.quoteItemRevisionId()))
                 .flatMap(Optional::stream)
                 .map(itemRevision -> new PublicItemView(itemRevision.id(), itemRevision.description(),
-                        itemRevision.quantity(), itemRevision.unitPrice(), itemRevision.totalPrice(),
+                        itemRevision.quantity(), itemRevision.unitPrice(), itemRevision.discountAmount(), itemRevision.totalPrice(),
                         status(decided.get(itemRevision.id())),
                         availability(quote, itemRevision, decided)))
                 .toList();

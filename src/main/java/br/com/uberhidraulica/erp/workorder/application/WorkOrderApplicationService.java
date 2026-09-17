@@ -18,7 +18,7 @@ import java.time.Instant;
 import java.util.*;
 
 @Service
-public class WorkOrderApplicationService implements WorkOrderQuery {
+public class WorkOrderApplicationService implements WorkOrderQuery, br.com.uberhidraulica.erp.workorder.WorkOrderCommercialEvents {
     private final WorkOrderRepositoryPort repository;
     private final CustomerVehicleQuery crm;
     private final ServiceCatalogQuery catalog;
@@ -63,6 +63,45 @@ public class WorkOrderApplicationService implements WorkOrderQuery {
     public WorkOrder updateDetails(UUID id, Long mileage, String complaint, String notes) {
         WorkOrder current = locked(id);
         return repository.save(current.updateDetails(mileage, complaint, notes, clock.instant()));
+    }
+
+    /** Diagnóstico técnico; o primeiro registro em OS aberta move para o padrão de EM_DIAGNOSTICO, se a regra estiver ligada. */
+    @Transactional
+    public WorkOrder registerDiagnosis(UUID id, String diagnosis) {
+        WorkOrder current = locked(id);
+        Instant now = clock.instant();
+        WorkOrder diagnosed = repository.save(current.registerDiagnosis(diagnosis, currentUser.id().orElse(null), now));
+        if (current.stage() != Stage.ABERTA || !automationEnabled(AUTOMATION_DIAGNOSIS)) return diagnosed;
+        return automatic(diagnosed, Stage.EM_DIAGNOSTICO, "Diagnóstico registrado");
+    }
+
+    @Override
+    @Transactional
+    public void quotePresented(UUID workOrderId) {
+        if (!automationEnabled(AUTOMATION_QUOTE_PRESENTED)) return;
+        automatic(locked(workOrderId), Stage.AGUARDANDO_APROVACAO, "Orçamento apresentado ao cliente");
+    }
+
+    @Override
+    @Transactional
+    public void quoteDecided(UUID workOrderId, boolean anyApproved, boolean allRejected) {
+        if (anyApproved && automationEnabled(AUTOMATION_QUOTE_APPROVED))
+            automatic(locked(workOrderId), Stage.APROVADA, "Orçamento aprovado pelo cliente");
+        else if (allRejected && automationEnabled(AUTOMATION_QUOTE_REJECTED))
+            automatic(locked(workOrderId), Stage.REPROVADA, "Orçamento reprovado pelo cliente");
+    }
+
+    public static final String AUTOMATION_DIAGNOSIS = "DIAGNOSIS_REGISTERED";
+    public static final String AUTOMATION_QUOTE_PRESENTED = "QUOTE_PRESENTED";
+    public static final String AUTOMATION_QUOTE_APPROVED = "QUOTE_APPROVED";
+    public static final String AUTOMATION_QUOTE_REJECTED = "QUOTE_REJECTED";
+
+    private boolean automationEnabled(String event) { return repository.automations().getOrDefault(event, false); }
+
+    private WorkOrder automatic(WorkOrder current, Stage stage, String reason) {
+        return current.automaticMoveTo(defaultStatus(stage), clock.instant())
+                .map(moved -> transition(current, moved, reason, true))
+                .orElse(current);
     }
 
     // ------------------------------------------------------------------ fluxo

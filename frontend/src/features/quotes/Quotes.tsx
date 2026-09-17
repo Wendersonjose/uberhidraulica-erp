@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { quotesApi, type QuoteItemInput } from '../../api/resources'
 import { queryKeys } from '../../api/queryKeys'
-import { AVAILABILITY_LABELS, QUOTE_PRESENT, type Quote, type QuoteItemRevision } from '../../api/types'
+import { AVAILABILITY_LABELS, CONTACT_CHANNELS, QUOTE_DISCOUNT, QUOTE_PRESENT, type DecisionType, type Quote, type QuoteItemRevision } from '../../api/types'
 import { useAuth } from '../../auth/useAuth'
 import { Badge, PageHeader, State } from '../../components/ui'
 import { QueryState } from '../../components/QueryState'
@@ -67,6 +67,7 @@ export function QuoteDetailPage() {
   const { id = '', quoteId = '' } = useParams()
   const { session } = useAuth()
   const canPresent = Boolean(session?.permissions?.includes(QUOTE_PRESENT))
+  const canDiscount = Boolean(session?.permissions?.includes(QUOTE_DISCOUNT))
   const client = useQueryClient()
   const [apiError, setApiError] = useState('')
   const quote = useQuery({
@@ -74,9 +75,11 @@ export function QuoteDetailPage() {
     queryFn: () => quotesApi.get(id, quoteId),
   })
 
+  // Apresentar e decidir podem mover a OS automaticamente (DR-0013); a OS também é recarregada.
   const invalidate = async () => {
     await client.invalidateQueries({ queryKey: queryKeys.quote(id, quoteId) })
     await client.invalidateQueries({ queryKey: queryKeys.quotes(id) })
+    await client.invalidateQueries({ queryKey: queryKeys.workOrder(id) })
   }
 
   const present = useMutation({
@@ -100,8 +103,9 @@ export function QuoteDetailPage() {
         <RevisionsCard quote={quote.data} presenting={present.isPending} canPresent={canPresent}
           onPresent={revisionId => run(() => present.mutateAsync(revisionId), 'Falha ao apresentar a revisão')} />
         <ItemsCard quote={quote.data} />
+        {canPresent && <InternalDecisionCard workOrderId={id} quote={quote.data} onDone={invalidate} />}
         <QuotePublicAccessCard workOrderId={id} quote={quote.data} canManage={canPresent} onError={setApiError} />
-        <NewRevisionCard workOrderId={id} quote={quote.data} onDone={invalidate} onError={setApiError} />
+        <NewRevisionCard workOrderId={id} quote={quote.data} canDiscount={canDiscount} onDone={invalidate} onError={setApiError} />
       </>}
     </QueryState>
   </>
@@ -149,15 +153,18 @@ function ItemsCard({ quote }: { quote: Quote }) {
     {quote.items.length === 0
       ? <div className="state">Nenhum item comercial.</div>
       : <table className="table">
-        <thead><tr><th>Versão</th><th>Descrição</th><th>Qtd.</th><th>Preço unitário</th><th>Total</th><th>Situação</th></tr></thead>
+        <thead><tr><th>Versão</th><th>Descrição</th><th>Qtd.</th><th>Preço unitário</th><th>Desconto</th><th>Total</th><th>Situação</th><th>Decisão</th></tr></thead>
         <tbody>{quote.items.flatMap(item => item.revisions.map(revision => <tr key={revision.id}>
           <td><strong>{item.id.slice(0, 8)}-v{revision.revisionSequence}</strong></td>
           <td>{revision.description}</td>
           <td>{Number(revision.quantity)}</td>
           <td>{formatBrl(Number(revision.unitPrice))}</td>
+          <td>{Number(revision.discountAmount ?? 0) > 0 ? formatBrl(Number(revision.discountAmount)) : '—'}</td>
           <td>{formatBrl(Number(revision.totalPrice))}</td>
           <td><Badge tone={availabilityTone(revision.availability)}>
             {AVAILABILITY_LABELS[revision.availability]}</Badge></td>
+          <td>{revision.decision ? <Badge tone={revision.decision === 'APPROVE' ? 'success' : 'warning'}>
+            {revision.decision === 'APPROVE' ? 'Aprovado' : 'Reprovado'}</Badge> : <span className="muted">Pendente</span>}</td>
         </tr>))}</tbody>
       </table>}
     <div className="subtotal">
@@ -167,7 +174,65 @@ function ItemsCard({ quote }: { quote: Quote }) {
   </section>
 }
 
-type Row = { quoteItemId: string | null; description: string; quantity: string; unitPrice: string }
+/**
+ * Registro da decisão dada pelo cliente fora do link público (DR-0013). Só versões apresentadas, válidas,
+ * ainda não decididas e não substituídas aparecem; o backend confere tudo de novo.
+ */
+function InternalDecisionCard({ workOrderId, quote, onDone }: { workOrderId: string; quote: Quote; onDone: () => Promise<unknown> }) {
+  const [channel, setChannel] = useState('PRESENCIAL')
+  const [authorizedBy, setAuthorizedBy] = useState('')
+  const [notes, setNotes] = useState('')
+  const [choices, setChoices] = useState<Record<string, DecisionType>>({})
+  const [error, setError] = useState('')
+  const revision = [...quote.revisions].reverse().find(candidate => candidate.status === 'PRESENTED' && !candidate.expired)
+  const revisionsById = new Map(quote.items.flatMap(item => item.revisions.map(r => [r.id, r] as const)))
+  const pending = revision?.items.map(entry => revisionsById.get(entry.quoteItemRevisionId))
+    .filter((r): r is QuoteItemRevision => Boolean(r) && r!.availability === 'AVAILABLE' && !r!.decision) ?? []
+  const decide = useMutation({
+    mutationFn: () => quotesApi.decide(workOrderId, quote.id, revision!.id, {
+      contactChannel: channel, authorizedBy: authorizedBy.trim() || null, notes: notes.trim() || null,
+      decisions: Object.entries(choices).map(([itemReference, decision]) => ({ itemReference, decision })),
+    }),
+    onSuccess: async () => { setChoices({}); setNotes(''); await onDone() },
+  })
+  if (!revision || !pending.length) return null
+  const setAll = (decision: DecisionType) => setChoices(Object.fromEntries(pending.map(r => [r.id, decision])))
+
+  return <section className="card" style={{ marginTop: 22 }} aria-label="Registrar decisão do cliente">
+    <h2>Registrar decisão do cliente — R{revision.revisionNumber}</h2>
+    <p className="muted">Use quando o cliente decidiu pessoalmente, por telefone ou mensagem. Itens sem escolha continuam pendentes.</p>
+    {error && <div role="alert" className="notice error">{error}</div>}
+    <div className="form-grid">
+      <div className="field"><label>Canal de contato<select className="select" value={channel} onChange={e => setChannel(e.target.value)}>
+        {Object.entries(CONTACT_CHANNELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+      </select></label></div>
+      <div className="field"><label>Quem autorizou<input className="input" value={authorizedBy} onChange={e => setAuthorizedBy(e.target.value)} /></label></div>
+      <div className="field full"><label>Observações<input className="input" value={notes} onChange={e => setNotes(e.target.value)} /></label></div>
+    </div>
+    <ul className="history-list" style={{ marginTop: 14 }}>{pending.map(r => <li key={r.id}>
+      <span>{r.description} — <strong>{formatBrl(Number(r.totalPrice))}</strong></span>
+      <select aria-label={`Decisão para ${r.description}`} className="select" value={choices[r.id] ?? ''}
+              onChange={e => setChoices(current => {
+                const next = { ...current }
+                if (e.target.value) next[r.id] = e.target.value as DecisionType
+                else delete next[r.id]
+                return next
+              })}>
+        <option value="">Pendente</option><option value="APPROVE">Aprovar</option><option value="REJECT">Reprovar</option>
+      </select>
+    </li>)}</ul>
+    <div className="form-actions">
+      <button type="button" className="btn secondary" onClick={() => setAll('REJECT')}>Reprovar todos</button>
+      <button type="button" className="btn secondary" onClick={() => setAll('APPROVE')}>Aprovar todos</button>
+      <button type="button" className="btn" disabled={!Object.keys(choices).length || decide.isPending} onClick={async () => {
+        setError('')
+        try { await decide.mutateAsync() } catch (e) { setError(e instanceof Error ? e.message : 'Falha ao registrar a decisão') }
+      }}>Registrar decisão</button>
+    </div>
+  </section>
+}
+
+type Row = { quoteItemId: string | null; description: string; quantity: string; unitPrice: string; discount: string }
 
 /** Semeia a nova revisão com a última apresentação para que o complemento reaproveite versões. */
 function seedRows(quote: Quote): Row[] {
@@ -183,11 +248,12 @@ function seedRows(quote: Quote): Row[] {
       description: revision.description,
       quantity: String(Number(revision.quantity)),
       unitPrice: String(Number(revision.unitPrice)),
+      discount: Number(revision.discountAmount ?? 0) > 0 ? String(Number(revision.discountAmount)) : '',
     }))
 }
 
-function NewRevisionCard({ workOrderId, quote, onDone, onError }: {
-  workOrderId: string; quote: Quote; onDone: () => Promise<unknown>; onError: (message: string) => void
+function NewRevisionCard({ workOrderId, quote, canDiscount, onDone, onError }: {
+  workOrderId: string; quote: Quote; canDiscount: boolean; onDone: () => Promise<unknown>; onError: (message: string) => void
 }) {
   const [rows, setRows] = useState<Row[]>(() => seedRows(quote))
   const [seededFrom, setSeededFrom] = useState(quote.revisions.at(-1)?.id ?? '')
@@ -207,7 +273,7 @@ function NewRevisionCard({ workOrderId, quote, onDone, onError }: {
 
   const valid = rows.length > 0 && rows.every(row =>
     row.description.trim().length > 0 && Number(row.quantity) > 0 && Number(row.unitPrice) >= 0
-    && row.quantity !== '' && row.unitPrice !== '')
+    && row.quantity !== '' && row.unitPrice !== '' && (row.discount === '' || Number(row.discount) >= 0))
 
   return <section className="card" style={{ marginTop: 22 }}>
     <h2>Nova revisão</h2>
@@ -232,6 +298,12 @@ function NewRevisionCard({ workOrderId, quote, onDone, onError }: {
           value={row.unitPrice} onChange={event => update(index, { unitPrice: event.target.value })} />
       </div>
       <div className="field">
+        <label htmlFor={`discount-${index}`}>Desconto {index + 1}</label>
+        <input id={`discount-${index}`} className="input" type="number" step="0.01" min="0" value={row.discount}
+          disabled={!canDiscount} title={canDiscount ? undefined : 'Seu perfil não pode conceder desconto'}
+          onChange={event => update(index, { discount: event.target.value })} />
+      </div>
+      <div className="field">
         <label htmlFor={`remove-${index}`}>&nbsp;</label>
         <button id={`remove-${index}`} type="button" className="btn secondary"
           onClick={() => setRows(rows.filter((_, position) => position !== index))}>
@@ -241,7 +313,7 @@ function NewRevisionCard({ workOrderId, quote, onDone, onError }: {
     </div>)}
     <div className="form-actions">
       <button type="button" className="btn secondary" onClick={() =>
-        setRows([...rows, { quoteItemId: null, description: '', quantity: '1', unitPrice: '' }])}>
+        setRows([...rows, { quoteItemId: null, description: '', quantity: '1', unitPrice: '', discount: '' }])}>
         Adicionar item
       </button>
       <button type="button" className="btn" disabled={!valid || create.isPending} onClick={async () => {
@@ -252,6 +324,8 @@ function NewRevisionCard({ workOrderId, quote, onDone, onError }: {
             description: row.description.trim(),
             quantity: Number(row.quantity),
             unitPrice: Number(row.unitPrice),
+            // Desconto só vai quando existe: sem ele, a condição comercial é a mesma de antes (DR-0013).
+            ...(Number(row.discount) > 0 ? { discount: Number(row.discount) } : {}),
           })))
         } catch (error) {
           onError(error instanceof Error ? error.message : 'Falha ao criar a revisão')

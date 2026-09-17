@@ -169,6 +169,7 @@ export function WorkOrderDetailPage() {
     <WorkflowActions order={o} />
     <div className="detail-grid">
       <div>
+        <DiagnosisCard order={o} />
         <section className="card">
           <h2>Serviços da OS</h2>
           {o.services.length === 0 ? <div className="state">Nenhum serviço vinculado.</div> : o.services.map(s => <div className="service-row" key={s.id}>
@@ -285,6 +286,39 @@ function WorkflowActions({ order }: { order: WorkOrder }) {
         <ConfirmAction label="Registrar entrega" tone="primary" question="Registrar a entrega do veículo ao cliente?"
                        onConfirm={() => run(() => workflowApi.deliver(order.id))} />}
     </div>
+  </section>
+}
+
+/** Diagnóstico técnico; editável só em etapa operacional, como no backend (DR-0013). */
+function DiagnosisCard({ order }: { order: WorkOrder }) {
+  const client = useQueryClient()
+  const [editing, setEditing] = useState(false)
+  const [text, setText] = useState(order.diagnosis ?? '')
+  const [error, setError] = useState('')
+  const save = useMutation({
+    mutationFn: () => workflowApi.diagnosis(order.id, text.trim()),
+    onSuccess: async () => { setEditing(false); await client.invalidateQueries({ queryKey: queryKeys.workOrders }) },
+  })
+  const editable = OPERATIONAL_STAGES.includes(order.status)
+  return <section className="card" style={{ marginBottom: 22 }} aria-label="Diagnóstico">
+    <h2>Diagnóstico</h2>
+    {error && <div role="alert" className="notice error">{error}</div>}
+    {editing
+      ? <>
+        <div className="field"><label>Diagnóstico técnico<textarea className="textarea" value={text} onChange={e => setText(e.target.value)} /></label></div>
+        <div className="form-actions">
+          <button type="button" className="btn secondary" onClick={() => { setText(order.diagnosis ?? ''); setEditing(false) }}>Cancelar</button>
+          <button type="button" className="btn" disabled={text.trim().length < 3 || save.isPending} onClick={async () => {
+            setError('')
+            try { await save.mutateAsync() } catch (e) { setError(e instanceof Error ? e.message : 'Falha ao salvar o diagnóstico') }
+          }}>Salvar diagnóstico</button>
+        </div>
+      </>
+      : <>
+        <p className={order.diagnosis ? undefined : 'muted'}>{order.diagnosis ?? 'Nenhum diagnóstico registrado.'}</p>
+        {editable && <button type="button" className="btn secondary" onClick={() => { setText(order.diagnosis ?? ''); setEditing(true) }}>
+          {order.diagnosis ? 'Editar diagnóstico' : 'Registrar diagnóstico'}</button>}
+      </>}
   </section>
 }
 

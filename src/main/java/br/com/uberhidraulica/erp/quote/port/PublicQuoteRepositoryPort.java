@@ -28,4 +28,6 @@ public interface PublicQuoteRepositoryPort {
     Optional<DecisionSubmission> findSubmission(UUID publicQuoteAccessId, String requestId);
 
     void save(DecisionSubmission submission);
+
+    void saveInternal(br.com.uberhidraulica.erp.quote.domain.InternalDecisionSubmission submission);
 }

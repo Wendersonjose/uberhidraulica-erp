@@ -20,7 +20,8 @@ public class QuoteExceptionHandler {
             "QUOTE_ITEM_REVISION_STALE",
             "IDEMPOTENCY_KEY_REUSED",
             "CONCURRENT_MODIFICATION",
-            "PUBLIC_QUOTE_ACCESS_ALREADY_REVOKED");
+            "PUBLIC_QUOTE_ACCESS_ALREADY_REVOKED",
+            "QUOTE_REVISION_NOT_PRESENTED");
 
     /** Link inexistente e link revogado respondem igual: confirmar a diferença entregaria informação. */
     private static final Set<String> NOT_FOUND = Set.of(
@@ -31,6 +32,7 @@ public class QuoteExceptionHandler {
     @ExceptionHandler(QuoteException.class)
     ResponseEntity<ErrorResponse> domain(QuoteException exception) {
         HttpStatus status = "PUBLIC_QUOTE_EXPIRED".equals(exception.code()) ? HttpStatus.GONE
+                : "QUOTE_DISCOUNT_NOT_ALLOWED".equals(exception.code()) ? HttpStatus.FORBIDDEN
                 : NOT_FOUND.contains(exception.code()) || exception.code().endsWith("NOT_FOUND") ? HttpStatus.NOT_FOUND
                 : CONFLICTS.contains(exception.code()) ? HttpStatus.CONFLICT
                 : HttpStatus.BAD_REQUEST;

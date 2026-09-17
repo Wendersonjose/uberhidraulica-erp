@@ -16,19 +16,21 @@ public class JpaWorkOrderRepositoryAdapter implements WorkOrderRepositoryPort {
     private final WorkOrderProductJpaRepository productItems;
     private final WorkflowStatusJpaRepository statuses;
     private final WorkOrderStatusHistoryJpaRepository history;
+    private final StatusAutomationJpaRepository automations;
 
     JpaWorkOrderRepositoryAdapter(WorkOrderJpaRepository orders, WorkOrderServiceJpaRepository items, WorkOrderProductJpaRepository productItems,
-                                  WorkflowStatusJpaRepository statuses, WorkOrderStatusHistoryJpaRepository history) {
-        this.orders = orders; this.items = items; this.productItems = productItems; this.statuses = statuses; this.history = history;
+                                  WorkflowStatusJpaRepository statuses, WorkOrderStatusHistoryJpaRepository history,
+                                  StatusAutomationJpaRepository automations) {
+        this.orders = orders; this.items = items; this.productItems = productItems; this.statuses = statuses; this.history = history; this.automations = automations;
     }
 
     @Override
     public WorkOrder save(WorkOrder w) {
         WorkOrderEntity e = new WorkOrderEntity();
         e.id = w.id(); e.number = w.number(); e.customerId = w.customerId(); e.vehicleId = w.vehicleId(); e.entryMileage = w.entryMileage();
-        e.openedAt = w.openedAt(); e.statusId = w.status().id(); e.complaint = w.complaint(); e.notes = w.notes();
+        e.openedAt = w.openedAt(); e.statusId = w.status().id(); e.complaint = w.complaint(); e.notes = w.notes(); e.diagnosis = w.diagnosis();
         var l = w.lifecycle();
-        e.executionStartedAt = l.executionStartedAt(); e.finishedAt = l.finishedAt(); e.finishedBy = l.finishedBy();
+        e.diagnosedAt = l.diagnosedAt(); e.diagnosedBy = l.diagnosedBy(); e.executionStartedAt = l.executionStartedAt(); e.finishedAt = l.finishedAt(); e.finishedBy = l.finishedBy();
         e.deliveredAt = l.deliveredAt(); e.deliveredBy = l.deliveredBy(); e.cancelledAt = l.cancelledAt(); e.cancelledBy = l.cancelledBy();
         e.cancellationReason = l.cancellationReason(); e.createdAt = w.createdAt(); e.updatedAt = w.updatedAt();
         return map(orders.saveAndFlush(e), statusMap());
@@ -70,6 +72,20 @@ public class JpaWorkOrderRepositoryAdapter implements WorkOrderRepositoryPort {
                 .map(e -> new WorkOrder.StatusChange(e.id, e.workOrderId, e.fromStatusId, e.toStatusId, e.changedAt, e.changedBy, e.reason, e.automatic)).toList();
     }
 
+    @Override
+    public Map<String, Boolean> automations() {
+        Map<String, Boolean> result = new LinkedHashMap<>();
+        automations.findAllByOrderByEventAsc().forEach(a -> result.put(a.event, a.enabled));
+        return result;
+    }
+
+    @Override
+    public void setAutomation(String event, boolean enabled, java.time.Instant now) {
+        var e = automations.findById(event).orElseThrow();
+        e.enabled = enabled; e.updatedAt = now;
+        automations.saveAndFlush(e);
+    }
+
     @Override public List<WorkflowStatus> statuses() { return statuses.findAllByOrderByPositionAscNameAsc().stream().map(this::map).toList(); }
     @Override public Optional<WorkflowStatus> findStatus(UUID id) { return statuses.findById(id).map(this::map); }
     @Override public long countOrdersInStatus(UUID statusId) { return orders.countByStatusId(statusId); }
@@ -92,8 +108,8 @@ public class JpaWorkOrderRepositoryAdapter implements WorkOrderRepositoryPort {
     }
 
     private WorkOrder map(WorkOrderEntity e, Map<UUID, WorkflowStatus> statusById) {
-        var lifecycle = new WorkOrder.Lifecycle(e.executionStartedAt, e.finishedAt, e.finishedBy, e.deliveredAt, e.deliveredBy, e.cancelledAt, e.cancelledBy, e.cancellationReason);
-        return new WorkOrder(e.id, e.number, e.customerId, e.vehicleId, e.entryMileage, e.openedAt, statusById.get(e.statusId), e.complaint, e.notes, lifecycle,
+        var lifecycle = new WorkOrder.Lifecycle(e.diagnosedAt, e.diagnosedBy, e.executionStartedAt, e.finishedAt, e.finishedBy, e.deliveredAt, e.deliveredBy, e.cancelledAt, e.cancelledBy, e.cancellationReason);
+        return new WorkOrder(e.id, e.number, e.customerId, e.vehicleId, e.entryMileage, e.openedAt, statusById.get(e.statusId), e.complaint, e.notes, e.diagnosis, lifecycle,
                 e.createdAt, e.updatedAt,
                 items.findByWorkOrderIdOrderByAddedAtAscIdAsc(e.id).stream().map(this::map).toList(),
                 productItems.findByWorkOrderIdOrderByAddedAtAscIdAsc(e.id).stream().map(this::map).toList());

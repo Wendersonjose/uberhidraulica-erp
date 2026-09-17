@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -45,6 +46,14 @@ public class WorkflowStatusController {
         return application.reorder(request.statusIds()).stream().map(WorkOrderController.StatusResponse::from).toList();
     }
 
+    @GetMapping("/automations") Map<String, Boolean> automations() { return application.automations(); }
+
+    @PutMapping("/automations/{event}")
+    Map<String, Boolean> setAutomation(@PathVariable String event, @Valid @RequestBody AutomationRequest request) {
+        return application.setAutomation(event, request.enabled());
+    }
+
+    public record AutomationRequest(@NotNull Boolean enabled) {}
     public record CreateRequest(@NotBlank @Size(max = 60) String name, @NotNull WorkflowStatus.Stage stage) {}
     public record RenameRequest(@NotBlank @Size(max = 60) String name) {}
     public record ReorderRequest(@NotEmpty List<UUID> statusIds) {}

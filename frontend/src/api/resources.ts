@@ -9,7 +9,7 @@ export const productsApi = {
 
 export type QuoteItemInput = {
   quoteItemId?: string | null; workOrderServiceId?: string | null
-  description: string; quantity: number; unitPrice: number
+  description: string; quantity: number; unitPrice: number; discount?: number
 }
 const quotesBase = (workOrderId: string) => `/api/work-orders/${workOrderId}/quotes`
 export const quotesApi = {
@@ -20,6 +20,8 @@ export const quotesApi = {
     post<Quote>(`${quotesBase(workOrderId)}/${quoteId}/revisions`, { items }),
   present: (workOrderId: string, quoteId: string, revisionId: string) =>
     post<Quote>(`${quotesBase(workOrderId)}/${quoteId}/revisions/${revisionId}/present`, {}),
+  decide: (workOrderId: string, quoteId: string, revisionId: string, body: { contactChannel: string; authorizedBy: string | null; notes: string | null; decisions: { itemReference: string; decision: 'APPROVE' | 'REJECT' }[] }) =>
+    post<Quote>(`${quotesBase(workOrderId)}/${quoteId}/revisions/${revisionId}/decisions`, body),
 }
 
 export const publicQuotesApi = {
@@ -121,4 +123,7 @@ export const workflowApi = {
   reactivateStatus: (id: string) => post<WorkflowStatus>(`/api/work-order-statuses/${id}/reactivate`, {}),
   makeDefault: (id: string) => post<WorkflowStatus>(`/api/work-order-statuses/${id}/make-default`, {}),
   reorder: (statusIds: string[]) => put<WorkflowStatus[]>('/api/work-order-statuses/order', { statusIds }),
+  diagnosis: (id: string, diagnosis: string) => put<WorkOrder>(`/api/work-orders/${id}/diagnosis`, { diagnosis }),
+  automations: () => api<Record<string, boolean>>('/api/work-order-statuses/automations'),
+  setAutomation: (event: string, enabled: boolean) => put<Record<string, boolean>>(`/api/work-order-statuses/automations/${event}`, { enabled }),
 }

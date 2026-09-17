@@ -10,6 +10,7 @@ interface WorkOrderJpaRepository extends JpaRepository<WorkOrderEntity,UUID>{
     long countByStatusId(UUID statusId);
     @Lock(LockModeType.PESSIMISTIC_WRITE) @Query("select w from WorkOrderEntity w where w.id = :id") Optional<WorkOrderEntity> lockById(@Param("id") UUID id);
 }
+interface StatusAutomationJpaRepository extends JpaRepository<StatusAutomationEntity,String>{List<StatusAutomationEntity> findAllByOrderByEventAsc();}
 interface WorkflowStatusJpaRepository extends JpaRepository<WorkflowStatusEntity,UUID>{List<WorkflowStatusEntity> findAllByOrderByPositionAscNameAsc();}
 interface WorkOrderStatusHistoryJpaRepository extends JpaRepository<WorkOrderStatusHistoryEntity,UUID>{List<WorkOrderStatusHistoryEntity> findByWorkOrderIdOrderByChangedAtAscIdAsc(UUID workOrderId);}
 interface WorkOrderServiceJpaRepository extends JpaRepository<WorkOrderServiceEntity,UUID>{List<WorkOrderServiceEntity> findByWorkOrderIdOrderByAddedAtAscIdAsc(UUID id);}

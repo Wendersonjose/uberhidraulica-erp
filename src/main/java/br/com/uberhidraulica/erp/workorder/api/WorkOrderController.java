@@ -43,6 +43,7 @@ public class WorkOrderController {
         return Response.from(application.updateDetails(id, r.entryMileage(), r.complaint(), r.notes()));
     }
 
+    @PutMapping("/{id}/diagnosis") Response diagnosis(@PathVariable UUID id, @Valid @RequestBody DiagnosisRequest r) { return Response.from(application.registerDiagnosis(id, r.diagnosis())); }
     @PostMapping("/{id}/status") Response move(@PathVariable UUID id, @Valid @RequestBody MoveRequest r) { return Response.from(application.move(id, r.statusId(), r.reason())); }
     @PostMapping("/{id}/start-execution") Response startExecution(@PathVariable UUID id) { return Response.from(application.startExecution(id)); }
     @PostMapping("/{id}/finish") Response finish(@PathVariable UUID id) { return Response.from(application.finish(id)); }
@@ -82,6 +83,7 @@ public class WorkOrderController {
     public record OpenRequest(@NotNull UUID customerId, @NotNull UUID vehicleId, @PositiveOrZero Long entryMileage,
                               @NotBlank @Size(max = 2000) String complaint, @Size(max = 2000) String notes) {}
     public record UpdateRequest(@PositiveOrZero Long entryMileage, @NotBlank @Size(max = 2000) String complaint, @Size(max = 2000) String notes) {}
+    public record DiagnosisRequest(@NotBlank @Size(max = 4000) String diagnosis) {}
     public record MoveRequest(@NotNull UUID statusId, @Size(max = 500) String reason) {}
     public record CancelRequest(@NotBlank @Size(max = 500) String reason) {}
     public record AddServiceRequest(@NotNull UUID serviceId, @DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal price) {}
@@ -91,20 +93,20 @@ public class WorkOrderController {
         static StatusResponse from(WorkflowStatus s) { return new StatusResponse(s.id(), s.name(), s.stage(), s.position(), s.active(), s.stageDefault()); }
     }
 
-    public record LifecycleResponse(Instant executionStartedAt, Instant finishedAt, UUID finishedBy, Instant deliveredAt, UUID deliveredBy,
+    public record LifecycleResponse(Instant diagnosedAt, UUID diagnosedBy, Instant executionStartedAt, Instant finishedAt, UUID finishedBy, Instant deliveredAt, UUID deliveredBy,
                                     Instant cancelledAt, UUID cancelledBy, String cancellationReason) {
         static LifecycleResponse from(WorkOrder.Lifecycle l) {
-            return new LifecycleResponse(l.executionStartedAt(), l.finishedAt(), l.finishedBy(), l.deliveredAt(), l.deliveredBy(), l.cancelledAt(), l.cancelledBy(), l.cancellationReason());
+            return new LifecycleResponse(l.diagnosedAt(), l.diagnosedBy(), l.executionStartedAt(), l.finishedAt(), l.finishedBy(), l.deliveredAt(), l.deliveredBy(), l.cancelledAt(), l.cancelledBy(), l.cancellationReason());
         }
     }
 
     /** `status` continua sendo a etapa (ex.: `ABERTA`) para compatibilidade; `statusInfo` traz a coluna configurada. */
     public record Response(UUID id, Long number, UUID customerId, UUID vehicleId, Long entryMileage, Instant openedAt, WorkflowStatus.Stage status,
-                           StatusResponse statusInfo, String complaint, String notes, LifecycleResponse lifecycle,
+                           StatusResponse statusInfo, String complaint, String notes, String diagnosis, LifecycleResponse lifecycle,
                            List<ServiceResponse> services, List<ProductResponse> products) {
         static Response from(WorkOrder w) {
             return new Response(w.id(), w.number(), w.customerId(), w.vehicleId(), w.entryMileage(), w.openedAt(), w.stage(), StatusResponse.from(w.status()),
-                    w.complaint(), w.notes(), LifecycleResponse.from(w.lifecycle()),
+                    w.complaint(), w.notes(), w.diagnosis(), LifecycleResponse.from(w.lifecycle()),
                     w.services().stream().map(ServiceResponse::from).toList(), w.products().stream().map(ProductResponse::from).toList());
         }
     }

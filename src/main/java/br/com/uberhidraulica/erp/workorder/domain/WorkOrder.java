@@ -14,17 +14,21 @@ import static br.com.uberhidraulica.erp.workorder.domain.WorkflowStatus.Stage;
  * fica restrita às etapas operacionais.</p>
  */
 public record WorkOrder(UUID id, Long number, UUID customerId, UUID vehicleId, Long entryMileage, Instant openedAt,
-                        WorkflowStatus status, String complaint, String notes, Lifecycle lifecycle,
+                        WorkflowStatus status, String complaint, String notes, String diagnosis, Lifecycle lifecycle,
                         Instant createdAt, Instant updatedAt, List<ServiceItem> services, List<ProductItem> products) {
     public WorkOrder {
         if (id == null || customerId == null || vehicleId == null || openedAt == null || status == null) throw invalid("Dados obrigatórios ausentes");
         if (entryMileage != null && entryMileage < 0) throw invalid("Quilometragem de entrada inválida");
         complaint = optional(complaint, "Defeito/reclamação", 2000);
         notes = optional(notes, "Observações", 2000);
+        diagnosis = optional(diagnosis, "Diagnóstico", 4000);
         lifecycle = lifecycle == null ? Lifecycle.EMPTY : lifecycle;
         services = services == null ? List.of() : List.copyOf(services);
         products = products == null ? List.of() : List.copyOf(products);
     }
+
+    private static final Set<Stage> AUTOMATION_STAGES =
+            EnumSet.of(Stage.ABERTA, Stage.EM_DIAGNOSTICO, Stage.AGUARDANDO_APROVACAO, Stage.APROVADA, Stage.REPROVADA);
 
     public Stage stage() { return status.stage(); }
 
@@ -32,14 +36,32 @@ public record WorkOrder(UUID id, Long number, UUID customerId, UUID vehicleId, L
                                  WorkflowStatus initial, Instant now) {
         if (initial.stage() != Stage.ABERTA) throw invalid("Status inicial deve pertencer à etapa ABERTA");
         requireComplaint(complaint);
-        return new WorkOrder(UUID.randomUUID(), null, customerId, vehicleId, mileage, now, initial, complaint, notes,
+        return new WorkOrder(UUID.randomUUID(), null, customerId, vehicleId, mileage, now, initial, complaint, notes, null,
                 Lifecycle.EMPTY, now, now, List.of(), List.of());
     }
 
     public WorkOrder updateDetails(Long mileage, String newComplaint, String newNotes, Instant now) {
         requireOperational();
         requireComplaint(newComplaint);
-        return new WorkOrder(id, number, customerId, vehicleId, mileage, openedAt, status, newComplaint, newNotes, lifecycle, createdAt, now, services, products);
+        return new WorkOrder(id, number, customerId, vehicleId, mileage, openedAt, status, newComplaint, newNotes, diagnosis, lifecycle, createdAt, now, services, products);
+    }
+
+    /** Registra ou altera o diagnóstico técnico; o primeiro registro fica com instante e autor. */
+    public WorkOrder registerDiagnosis(String text, UUID by, Instant now) {
+        requireOperational();
+        String normalized = optional(text, "Diagnóstico", 4000);
+        if (normalized == null) throw invalid("Diagnóstico é obrigatório");
+        Lifecycle updated = lifecycle.diagnosedAt() == null ? lifecycle.withDiagnosed(now, by) : lifecycle;
+        return new WorkOrder(id, number, customerId, vehicleId, entryMileage, openedAt, status, complaint, notes, normalized, updated, createdAt, now, services, products);
+    }
+
+    /**
+     * Transição disparada por regra automática (diagnóstico ou orçamento). Só atua nas etapas anteriores à
+     * execução, para nunca tirar uma OS de execução ou de encerramento (DR-0013).
+     */
+    public Optional<WorkOrder> automaticMoveTo(WorkflowStatus target, Instant now) {
+        if (!AUTOMATION_STAGES.contains(stage()) || target.id().equals(status.id()) || !target.active()) return Optional.empty();
+        return Optional.of(withStatus(target, lifecycle, now));
     }
 
     /** Movimentação manual no Kanban, entre status ativos das etapas operacionais. */
@@ -93,7 +115,7 @@ public record WorkOrder(UUID id, Long number, UUID customerId, UUID vehicleId, L
     }
 
     private WorkOrder withStatus(WorkflowStatus target, Lifecycle newLifecycle, Instant now) {
-        return new WorkOrder(id, number, customerId, vehicleId, entryMileage, openedAt, target, complaint, notes, newLifecycle, createdAt, now, services, products);
+        return new WorkOrder(id, number, customerId, vehicleId, entryMileage, openedAt, target, complaint, notes, diagnosis, newLifecycle, createdAt, now, services, products);
     }
 
     private static void requireActive(WorkflowStatus target) {
@@ -110,14 +132,15 @@ public record WorkOrder(UUID id, Long number, UUID customerId, UUID vehicleId, L
     }
 
     /** Instantes e autores das ações que encerram etapas; nulos enquanto a ação não ocorreu. */
-    public record Lifecycle(Instant executionStartedAt, Instant finishedAt, UUID finishedBy, Instant deliveredAt, UUID deliveredBy,
-                            Instant cancelledAt, UUID cancelledBy, String cancellationReason) {
-        public static final Lifecycle EMPTY = new Lifecycle(null, null, null, null, null, null, null, null);
+    public record Lifecycle(Instant diagnosedAt, UUID diagnosedBy, Instant executionStartedAt, Instant finishedAt, UUID finishedBy,
+                            Instant deliveredAt, UUID deliveredBy, Instant cancelledAt, UUID cancelledBy, String cancellationReason) {
+        public static final Lifecycle EMPTY = new Lifecycle(null, null, null, null, null, null, null, null, null, null);
 
-        Lifecycle withExecutionStarted(Instant at) { return new Lifecycle(at, finishedAt, finishedBy, deliveredAt, deliveredBy, cancelledAt, cancelledBy, cancellationReason); }
-        Lifecycle withFinished(Instant at, UUID by) { return new Lifecycle(executionStartedAt, at, by, deliveredAt, deliveredBy, cancelledAt, cancelledBy, cancellationReason); }
-        Lifecycle withDelivered(Instant at, UUID by) { return new Lifecycle(executionStartedAt, finishedAt, finishedBy, at, by, cancelledAt, cancelledBy, cancellationReason); }
-        Lifecycle withCancelled(Instant at, UUID by, String reason) { return new Lifecycle(executionStartedAt, finishedAt, finishedBy, deliveredAt, deliveredBy, at, by, reason); }
+        Lifecycle withDiagnosed(Instant at, UUID by) { return new Lifecycle(at, by, executionStartedAt, finishedAt, finishedBy, deliveredAt, deliveredBy, cancelledAt, cancelledBy, cancellationReason); }
+        Lifecycle withExecutionStarted(Instant at) { return new Lifecycle(diagnosedAt, diagnosedBy, at, finishedAt, finishedBy, deliveredAt, deliveredBy, cancelledAt, cancelledBy, cancellationReason); }
+        Lifecycle withFinished(Instant at, UUID by) { return new Lifecycle(diagnosedAt, diagnosedBy, executionStartedAt, at, by, deliveredAt, deliveredBy, cancelledAt, cancelledBy, cancellationReason); }
+        Lifecycle withDelivered(Instant at, UUID by) { return new Lifecycle(diagnosedAt, diagnosedBy, executionStartedAt, finishedAt, finishedBy, at, by, cancelledAt, cancelledBy, cancellationReason); }
+        Lifecycle withCancelled(Instant at, UUID by, String reason) { return new Lifecycle(diagnosedAt, diagnosedBy, executionStartedAt, finishedAt, finishedBy, deliveredAt, deliveredBy, at, by, reason); }
     }
 
     /** Mudança de status registrada no histórico da OS. */

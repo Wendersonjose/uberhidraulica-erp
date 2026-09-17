@@ -74,6 +74,7 @@ public class JpaQuoteRepositoryAdapter implements QuoteRepositoryPort {
         entity.description = revision.description();
         entity.quantity = revision.quantity();
         entity.unitPrice = revision.unitPrice();
+        entity.discountAmount = revision.discountAmount();
         entity.totalPrice = revision.totalPrice();
         entity.revisionReason = revision.revisionReason();
         entity.createdAt = revision.createdAt();
@@ -163,7 +164,7 @@ public class JpaQuoteRepositoryAdapter implements QuoteRepositoryPort {
 
     private QuoteItemRevision map(QuoteItemRevisionEntity entity) {
         return new QuoteItemRevision(entity.id, entity.quoteId, entity.quoteItemId, entity.revisionSequence,
-                entity.description, entity.quantity, entity.unitPrice, entity.totalPrice, entity.revisionReason,
+                entity.description, entity.quantity, entity.unitPrice, entity.discountAmount, entity.totalPrice, entity.revisionReason,
                 entity.createdAt, entity.createdBy);
     }
 }

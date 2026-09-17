@@ -1,6 +1,8 @@
 package br.com.uberhidraulica.erp.quote.application;
 
 import br.com.uberhidraulica.erp.iam.CurrentUser;
+import br.com.uberhidraulica.erp.iam.IamAuthorization;
+import br.com.uberhidraulica.erp.workorder.WorkOrderCommercialEvents;
 import br.com.uberhidraulica.erp.quote.domain.*;
 import br.com.uberhidraulica.erp.quote.port.QuoteRepositoryPort;
 import br.com.uberhidraulica.erp.workorder.WorkOrderQuery;
@@ -21,19 +23,26 @@ public class QuoteApplicationService {
     private final QuoteRepositoryPort repository;
     private final WorkOrderQuery workOrders;
     private final CurrentUser currentUser;
+    private final IamAuthorization authorization;
+    private final WorkOrderCommercialEvents workOrderEvents;
     private final Clock clock;
 
     public QuoteApplicationService(QuoteRepositoryPort repository, WorkOrderQuery workOrders,
-                                   CurrentUser currentUser, Clock clock) {
+                                   CurrentUser currentUser, IamAuthorization authorization,
+                                   WorkOrderCommercialEvents workOrderEvents, Clock clock) {
         this.repository = repository;
         this.workOrders = workOrders;
         this.currentUser = currentUser;
+        this.authorization = authorization;
+        this.workOrderEvents = workOrderEvents;
         this.clock = clock;
     }
 
     /** Condição comercial pedida para um item em uma nova apresentação. */
     public record ItemSpec(UUID quoteItemId, UUID workOrderServiceId, String description,
-                           BigDecimal quantity, BigDecimal unitPrice, String revisionReason) {}
+                           BigDecimal quantity, BigDecimal unitPrice, BigDecimal discount, String revisionReason) {}
+
+    public static final String DISCOUNT_PERMISSION = "QUOTE_DISCOUNT";
 
     @Transactional
     public Quote open(UUID workOrderId) {
@@ -78,6 +87,10 @@ public class QuoteApplicationService {
         Quote quote = get(workOrderId, quoteId);
         Instant now = Instant.now(clock);
         UUID author = currentUser.requireId();
+        // Desconto só "quando permitido" (cartão Trello, DR-0013): a permissão é conferida no backend.
+        if (specs.stream().anyMatch(spec -> spec.discount() != null && spec.discount().signum() > 0)
+                && !authorization.hasPermission(author, DISCOUNT_PERMISSION))
+            throw new QuoteException("QUOTE_DISCOUNT_NOT_ALLOWED", "Seu perfil não pode conceder desconto em orçamento");
 
         List<QuoteRevision.Entry> entries = new ArrayList<>();
         Set<UUID> touchedItems = new HashSet<>();
@@ -100,7 +113,7 @@ public class QuoteApplicationService {
         QuoteItem item = repository.createItem(
                 QuoteItem.create(quote.id(), spec.workOrderServiceId(), now, author));
         return repository.createItemRevision(QuoteItemRevision.first(quote.id(), item.id(), spec.description(),
-                spec.quantity(), spec.unitPrice(), spec.revisionReason(), now, author)).id();
+                spec.quantity(), spec.unitPrice(), spec.discount(), spec.revisionReason(), now, author)).id();
     }
 
     private UUID revisionForExistingItem(Quote quote, ItemSpec spec, Set<UUID> touchedItems, Instant now, UUID author) {
@@ -110,8 +123,8 @@ public class QuoteApplicationService {
         QuoteItem item = quote.item(spec.quoteItemId())
                 .orElseThrow(() -> new QuoteException("QUOTE_ITEM_NOT_FOUND", "Item comercial não encontrado"));
         QuoteItemRevision current = item.latestRevision();
-        if (current.sameCommercialTerms(spec.description(), spec.quantity(), spec.unitPrice())) return current.id();
-        return repository.createItemRevision(current.next(spec.description(), spec.quantity(), spec.unitPrice(),
+        if (current.sameCommercialTerms(spec.description(), spec.quantity(), spec.unitPrice(), spec.discount())) return current.id();
+        return repository.createItemRevision(current.next(spec.description(), spec.quantity(), spec.unitPrice(), spec.discount(),
                 spec.revisionReason(), now, author)).id();
     }
 
@@ -134,6 +147,7 @@ public class QuoteApplicationService {
         if (!repository.touch(quote.id(), quote.version()) || !repository.present(presented, revision.version()))
             throw new QuoteException("QUOTE_REVISION_CONCURRENTLY_MODIFIED",
                     "A revisão foi alterada por outra operação; recarregue o orçamento");
+        workOrderEvents.quotePresented(workOrderId);
         return get(workOrderId, quoteId);
     }
 

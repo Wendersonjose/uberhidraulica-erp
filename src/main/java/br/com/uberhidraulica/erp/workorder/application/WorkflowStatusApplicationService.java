@@ -69,6 +69,17 @@ public class WorkflowStatusApplicationService {
         return repository.statuses();
     }
 
+    @Transactional(readOnly = true)
+    public Map<String, Boolean> automations() { return repository.automations(); }
+
+    @Transactional
+    public Map<String, Boolean> setAutomation(String event, boolean enabled) {
+        if (!repository.automations().containsKey(event))
+            throw new WorkOrderException("AUTOMATION_NOT_FOUND", "Regra automática não encontrada");
+        repository.setAutomation(event, enabled, clock.instant());
+        return repository.automations();
+    }
+
     private WorkflowStatus find(UUID id) {
         return repository.findStatus(id).orElseThrow(() -> new WorkOrderException("STATUS_NOT_FOUND", "Status não encontrado"));
     }

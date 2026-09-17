@@ -31,7 +31,7 @@ public class QuoteController {
 
     @PostMapping
     ResponseEntity<Response> open(@PathVariable UUID workOrderId) {
-        Response response = Response.from(application.open(workOrderId), application.now());
+        Response response = respond(application.open(workOrderId));
         return ResponseEntity
                 .created(URI.create("/api/work-orders/" + workOrderId + "/quotes/" + response.id()))
                 .body(response);
@@ -39,13 +39,12 @@ public class QuoteController {
 
     @GetMapping
     List<Response> list(@PathVariable UUID workOrderId) {
-        Instant now = application.now();
-        return application.listByWorkOrder(workOrderId).stream().map(quote -> Response.from(quote, now)).toList();
+        return application.listByWorkOrder(workOrderId).stream().map(this::respond).toList();
     }
 
     @GetMapping("/{quoteId}")
     Response get(@PathVariable UUID workOrderId, @PathVariable UUID quoteId) {
-        return Response.from(application.get(workOrderId, quoteId), application.now());
+        return respond(application.get(workOrderId, quoteId));
     }
 
     @GetMapping("/{quoteId}/history")
@@ -58,16 +57,35 @@ public class QuoteController {
                                             @Valid @RequestBody RevisionRequest request) {
         Quote quote = application.createRevision(workOrderId, quoteId, request.items().stream()
                 .map(item -> new QuoteApplicationService.ItemSpec(item.quoteItemId(), item.workOrderServiceId(),
-                        item.description(), item.quantity(), item.unitPrice(), item.revisionReason()))
+                        item.description(), item.quantity(), item.unitPrice(), item.discount(), item.revisionReason()))
                 .toList());
-        return ResponseEntity.status(HttpStatus.CREATED).body(Response.from(quote, application.now()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(respond(quote));
     }
 
     @PostMapping("/{quoteId}/revisions/{revisionId}/present")
     @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'QUOTE_PRESENT')")
     Response present(@PathVariable UUID workOrderId, @PathVariable UUID quoteId, @PathVariable UUID revisionId) {
-        return Response.from(application.present(workOrderId, quoteId, revisionId), application.now());
+        return respond(application.present(workOrderId, quoteId, revisionId));
     }
+
+    /**
+     * Registra a decisão que o cliente deu fora do link (pessoalmente, telefone, mensagem). Exige
+     * {@code QUOTE_PRESENT}: quem pode fazer a proposta chegar ao cliente é quem registra a resposta dele.
+     */
+    @PostMapping("/{quoteId}/revisions/{revisionId}/decisions")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'QUOTE_PRESENT')")
+    Response registerDecision(@PathVariable UUID workOrderId, @PathVariable UUID quoteId, @PathVariable UUID revisionId,
+                              @Valid @RequestBody InternalDecisionRequest request) {
+        var quote = publicQuotes.registerInternal(application.get(workOrderId, quoteId), revisionId, request.contactChannel(),
+                request.authorizedBy(), request.notes(), request.decisions().stream()
+                        .map(d -> new br.com.uberhidraulica.erp.quote.application.PublicQuoteService.ItemDecision(d.itemReference(), d.decision()))
+                        .toList());
+        return respond(quote);
+    }
+
+    public record InternalDecisionRequest(@NotBlank @Size(max = 16) String contactChannel, @Size(max = 200) String authorizedBy,
+                                          @Size(max = 500) String notes, @NotEmpty @Valid List<InternalItemDecision> decisions) {}
+    public record InternalItemDecision(@NotNull UUID itemReference, @NotNull DecisionType decision) {}
 
     /**
      * Emite o link público de uma apresentação. O token bruto aparece <b>uma única vez</b>, aqui.
@@ -120,6 +138,10 @@ public class QuoteController {
         }
     }
 
+    private Response respond(Quote quote) {
+        return Response.from(quote, application.now(), publicQuotes.decisions(quote));
+    }
+
     public record RevisionRequest(@NotEmpty @Valid List<ItemRequest> items) {}
 
     /**
@@ -133,16 +155,17 @@ public class QuoteController {
                               @NotBlank @Size(max = 1000) String description,
                               @NotNull @DecimalMin(value = "0.0000", inclusive = false) @Digits(integer = 15, fraction = 4) BigDecimal quantity,
                               @NotNull @DecimalMin("0.0000") @Digits(integer = 15, fraction = 4) BigDecimal unitPrice,
+                              @DecimalMin("0.00") @Digits(integer = 15, fraction = 2) BigDecimal discount,
                               @Size(max = 50) String revisionReason) {}
 
     /** {@code availableTotal} é a soma dos totais de item já arredondados que o cliente ainda pode aceitar. */
     public record Response(UUID id, UUID workOrderId, Instant createdAt, UUID createdBy,
                            BigDecimal availableTotal, List<RevisionResponse> revisions, List<ItemResponse> items) {
-        static Response from(Quote quote, Instant now) {
+        static Response from(Quote quote, Instant now, java.util.Map<UUID, DecisionType> decisions) {
             return new Response(quote.id(), quote.workOrderId(), quote.createdAt(), quote.createdBy(),
                     quote.availableTotal(now),
                     quote.revisions().stream().map(revision -> RevisionResponse.from(quote, revision, now)).toList(),
-                    quote.items().stream().map(item -> ItemResponse.from(quote, item, now)).toList());
+                    quote.items().stream().map(item -> ItemResponse.from(quote, item, now, decisions)).toList());
         }
     }
 
@@ -163,23 +186,23 @@ public class QuoteController {
 
     public record ItemResponse(UUID id, UUID workOrderServiceId, Instant createdAt,
                                List<ItemRevisionResponse> revisions) {
-        static ItemResponse from(Quote quote, QuoteItem item, Instant now) {
+        static ItemResponse from(Quote quote, QuoteItem item, Instant now, java.util.Map<UUID, DecisionType> decisions) {
             return new ItemResponse(item.id(), item.workOrderServiceId(), item.createdAt(),
                     item.revisions().stream()
-                            .map(revision -> ItemRevisionResponse.from(quote, revision, now)).toList());
+                            .map(revision -> ItemRevisionResponse.from(quote, revision, now, decisions.get(revision.id()))).toList());
         }
     }
 
     /** {@code availability} é derivado a cada leitura: nenhuma coluna guarda obsolescência. */
     public record ItemRevisionResponse(UUID id, int revisionSequence, String description, BigDecimal quantity,
-                                       BigDecimal unitPrice, BigDecimal totalPrice, String revisionReason,
-                                       boolean presented, DecisionAvailability availability, Instant createdAt,
-                                       UUID createdBy) {
-        static ItemRevisionResponse from(Quote quote, QuoteItemRevision revision, Instant now) {
+                                       BigDecimal unitPrice, BigDecimal discountAmount, BigDecimal grossTotal, BigDecimal totalPrice,
+                                       String revisionReason, boolean presented, DecisionAvailability availability,
+                                       DecisionType decision, Instant createdAt, UUID createdBy) {
+        static ItemRevisionResponse from(Quote quote, QuoteItemRevision revision, Instant now, DecisionType decision) {
             return new ItemRevisionResponse(revision.id(), revision.revisionSequence(), revision.description(),
-                    revision.quantity(), revision.unitPrice(), revision.totalPrice(), revision.revisionReason(),
-                    quote.presentedSomewhere(revision.id()), quote.availability(revision, now),
-                    revision.createdAt(), revision.createdBy());
+                    revision.quantity(), revision.unitPrice(), revision.discountAmount(), revision.grossTotal(), revision.totalPrice(),
+                    revision.revisionReason(), quote.presentedSomewhere(revision.id()), quote.availability(revision, now),
+                    decision, revision.createdAt(), revision.createdBy());
         }
     }
 

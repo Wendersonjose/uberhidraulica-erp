@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { workflowApi } from '../../api/resources'
 import { queryKeys } from '../../api/queryKeys'
-import { STAGE_LABELS, STAGES, type Stage, type WorkflowStatus } from '../../api/types'
+import { AUTOMATION_LABELS, STAGE_LABELS, STAGES, type Stage, type WorkflowStatus } from '../../api/types'
 import { Badge, PageHeader, State } from '../../components/ui'
 import { ConfirmAction } from '../../components/controls'
 
@@ -69,7 +69,29 @@ export function WorkflowStatusesPage() {
         </table>
       </div>
     </State>
+    <AutomationsCard />
   </>
+}
+
+/** Regras automáticas ligadas ao diagnóstico e ao orçamento; abertura, execução e encerramento são fixas. */
+function AutomationsCard() {
+  const client = useQueryClient()
+  const automations = useQuery({ queryKey: queryKeys.automations, queryFn: workflowApi.automations })
+  const [error, setError] = useState('')
+  return <section className="card" style={{ marginTop: 16 }} aria-label="Regras automáticas">
+    <h2>Regras automáticas</h2>
+    <p className="muted">Movem a OS para o status padrão da etapa, somente antes da execução. Abertura, início da execução, finalização, entrega e cancelamento são sempre automáticos.</p>
+    {error && <div role="alert" className="notice error">{error}</div>}
+    <State loading={automations.isLoading} error={automations.error} empty={!Object.keys(automations.data ?? {}).length}>
+      <ul className="history-list">{Object.entries(automations.data ?? {}).map(([event, enabled]) => <li key={event}>
+        <label><input type="checkbox" checked={enabled} onChange={async e => {
+          setError('')
+          try { await workflowApi.setAutomation(event, e.target.checked); await client.invalidateQueries({ queryKey: queryKeys.automations }) }
+          catch (err) { setError(err instanceof Error ? err.message : 'Falha ao alterar a regra') }
+        }} /> {AUTOMATION_LABELS[event] ?? event}</label>
+      </li>)}</ul>
+    </State>
+  </section>
 }
 
 function RenameField({ status, onSave }: { status: WorkflowStatus; onSave: (name: string) => Promise<void> }) {
