@@ -86,7 +86,7 @@ class Task0008PublicQuoteDecisionIntegrationTest {
         jdbc.update("delete from workorder.work_order_product");
         jdbc.update("delete from workorder.work_order_service");
         jdbc.update("delete from workorder.work_order");
-        jdbc.update("delete from crm.vehicle");
+        jdbc.update("delete from crm.vehicle_ownership");jdbc.update("delete from crm.vehicle");
         jdbc.update("delete from crm.customer");
         session = openSession();
     }
@@ -478,7 +478,7 @@ class Task0008PublicQuoteDecisionIntegrationTest {
     private Scenario presentedQuote(String document, String plate) throws Exception {
         String customer = JsonPath.read(mvc.perform(authorized(post("/api/customers"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"personType\":\"PF\",\"name\":\"Cliente Publico\",\"document\":\"" + document + "\"}"))
+                        .content("{\"personType\":\"PF\",\"name\":\"Cliente Publico\",\"phone\":\"34999990000\",\"document\":\"" + document + "\"}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
         String vehicle = JsonPath.read(mvc.perform(authorized(post("/api/vehicles"))
                         .contentType(MediaType.APPLICATION_JSON)

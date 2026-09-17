@@ -1,4 +1,4 @@
-export type Session={id:string;name:string;email:string;profileCode:string;state:string;mustChangePassword:boolean;permissions:string[]};export type Customer={id:string;personType:'PF'|'PJ';name:string;document:string;status:'ACTIVE'|'INACTIVE';createdAt:string;updatedAt:string};export type Vehicle={id:string;customerId:string;plate:string;manufacturer:string;model:string;modelYear:number;mileage:number|null;steeringGearManufacturer:string|null};export type Service={id:string;name:string;description:string;category:string|null;basePrice:number;defaultWarrantyDays:number;active:boolean};export type WorkOrderService={id:string;serviceId:string;name:string;description:string;basePrice:number;warrantyDays:number;addedAt:string};export type WorkOrder={id:string;number:number;customerId:string;vehicleId:string;entryMileage:number;openedAt:string;status:'ABERTA';services:WorkOrderService[];products:WorkOrderProduct[]}
+export type Session={id:string;name:string;email:string;profileCode:string;state:string;mustChangePassword:boolean;permissions:string[]};export type Service={id:string;name:string;description:string;category:string|null;basePrice:number;defaultWarrantyDays:number;active:boolean};export type WorkOrderService={id:string;serviceId:string;name:string;description:string;basePrice:number;warrantyDays:number;addedAt:string};export type WorkOrder={id:string;number:number;customerId:string;vehicleId:string;entryMileage:number;openedAt:string;status:'ABERTA';services:WorkOrderService[];products:WorkOrderProduct[]}
 
 export type ProductType = 'PART' | 'SUPPLY' | 'COMPONENT' | 'KIT' | 'INTERNAL_USE_MATERIAL'
 export type ProductUnit = 'UNIDADE' | 'LITRO' | 'METRO' | 'QUILOGRAMA'
@@ -60,3 +60,21 @@ export type IssuedQuoteAccess = { accessId: string; quoteRevisionId: string; tok
 export const PUBLIC_STATUS_LABELS: Record<PublicDecisionStatus, string> = {
   PENDING_APPROVAL: 'Aguardando sua decisão', APPROVED: 'Aprovado', REJECTED: 'Recusado',
 }
+
+export type Address = {
+  zipCode: string | null; street: string | null; number: string | null; complement: string | null
+  district: string | null; city: string | null; state: string | null
+}
+export type Customer = {
+  id: string; personType: 'PF' | 'PJ'; name: string; document: string | null
+  phone?: string | null; email?: string | null; address?: Address | null
+  status: 'ACTIVE' | 'INACTIVE'; createdAt: string; updatedAt: string
+}
+export type Vehicle = {
+  id: string; customerId: string; plate: string; manufacturer: string; model: string
+  modelYear: number | null; mileage: number | null; steeringGearManufacturer: string | null
+  color?: string | null; notes?: string | null; active?: boolean; createdAt?: string; updatedAt?: string
+}
+export type Page<T> = { items: T[]; totalItems: number; page: number; size: number; totalPages: number }
+export type VehicleListItem = { vehicle: Vehicle; customerName: string }
+export type VehicleOwnership = { id: string; customerId: string; customerName: string; startedAt: string; endedAt: string | null }

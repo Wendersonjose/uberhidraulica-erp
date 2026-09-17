@@ -77,7 +77,7 @@ class Task0007QuoteVersioningIntegrationTest {
         jdbc.update("delete from workorder.work_order_product");
         jdbc.update("delete from workorder.work_order_service");
         jdbc.update("delete from workorder.work_order");
-        jdbc.update("delete from crm.vehicle");
+        jdbc.update("delete from crm.vehicle_ownership");jdbc.update("delete from crm.vehicle");
         jdbc.update("delete from crm.customer");
         jdbc.update("delete from servicecatalog.service");
         session = openSession();
@@ -523,7 +523,7 @@ class Task0007QuoteVersioningIntegrationTest {
     private String openWorkOrder(String document, String plate) throws Exception {
         String customer = JsonPath.read(mvc.perform(authorized(post("/api/customers"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"personType\":\"PF\",\"name\":\"Cliente Orçamento\",\"document\":\"" + document + "\"}"))
+                        .content("{\"personType\":\"PF\",\"name\":\"Cliente Orçamento\",\"phone\":\"34999990000\",\"document\":\"" + document + "\"}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
         String vehicle = JsonPath.read(mvc.perform(authorized(post("/api/vehicles"))
                         .contentType(MediaType.APPLICATION_JSON)

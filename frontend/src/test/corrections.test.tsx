@@ -20,12 +20,23 @@ const service: Service = { id: 's2', name: 'Segundo serviço', description: 'Des
 function json(body: unknown, status = 200) {
   return new Response(status === 204 ? null : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
-type Handler = (init?: RequestInit) => Response | Promise<Response>
+type Handler = (init?: RequestInit, url?: URL) => Response | Promise<Response>
 type Routes = Record<string, Handler>
 function mockHttp(overrides: Routes = {}, initial: Session | null = session) {
   let current = initial
   const routes: Routes = {
     'GET /api/customers': () => json(customers),
+    // Reproduz a busca do backend sobre a lista simulada, para que sobrescrever a lista afete a tela.
+    'GET /api/customers/search': async (_, url) => {
+      const base = await routes['GET /api/customers']()
+      if (!base.ok) return base
+      const all: Customer[] = await base.json()
+      const q = (url?.searchParams.get('q') ?? '').toLowerCase()
+      const numeric = /[a-z]/i.test(q) ? '' : q.replace(/\D/g, '')
+      const items = all.filter(c => !q || c.name.toLowerCase().includes(q) || (!!numeric && (c.document ?? '').includes(numeric)))
+      return json({ items, totalItems: items.length, page: 0, size: 20, totalPages: items.length ? 1 : 0 })
+    },
+    'GET /api/vehicles/search': () => json({ items: [], totalItems: 0, page: 0, size: 20, totalPages: 0 }),
     'GET /api/customers/c1': () => json(customers[0]),
     'GET /api/customers/c2': () => json(customers[1]),
     'GET /api/customers/c1/vehicles': () => json([vehicle]),
@@ -43,8 +54,9 @@ function mockHttp(overrides: Routes = {}, initial: Session | null = session) {
   }
   const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     if (String(input) === '/api/iam/csrf') return json({ headerName: 'X-DYNAMIC', parameterName: 'csrf', token: 'fixture' })
-    const handler = routes[(init?.method || 'GET') + ' ' + String(input)]
-    return handler ? handler(init) : json({ message: 'Rota não simulada' }, 500)
+    const method = init?.method || 'GET', url = new URL(String(input), 'http://localhost')
+    const handler = routes[method + ' ' + String(input)] ?? routes[method + ' ' + url.pathname]
+    return handler ? handler(init, url) : json({ message: 'Rota não simulada' }, 500)
   })
   return { fetch, routes }
 }
@@ -91,11 +103,13 @@ test.each([
   await userEvent.type(input, 'temporário')
   await userEvent.clear(input)
   if (search) await userEvent.type(input, search)
-  for (const customer of customers) {
-    if (expected.includes(customer.name)) expect(screen.getByRole('cell', { name: customer.name })).toBeInTheDocument()
-    else expect(screen.queryByRole('cell', { name: customer.name })).not.toBeInTheDocument()
-  }
-  if (!expected.length) expect(screen.getByText('Nenhum registro encontrado.')).toBeInTheDocument()
+  await waitFor(() => {
+    for (const customer of customers) {
+      if (expected.includes(customer.name)) expect(screen.getByRole('cell', { name: customer.name })).toBeInTheDocument()
+      else expect(screen.queryByRole('cell', { name: customer.name })).not.toBeInTheDocument()
+    }
+    if (!expected.length) expect(screen.getByText('Nenhum registro encontrado.')).toBeInTheDocument()
+  })
 })
 
 test('REV-FE-002 401 durante uso encerra sessão e permite login sem reload', async () => {
@@ -310,13 +324,13 @@ test.each(['', '0'])('REV-FE-005/006 cadastro veículo km "%s" atualiza veículo
   await userEvent.type(screen.getByLabelText('Placa *'), 'AAA1A11')
   await userEvent.type(screen.getByLabelText('Marca/Fabricante *'), 'Marca')
   await userEvent.type(screen.getByLabelText('Modelo *'), 'Modelo')
-  await userEvent.type(screen.getByLabelText('Ano modelo *'), '2020')
+  await userEvent.type(screen.getByLabelText('Ano modelo'), '2020')
   if (mileage) await userEvent.type(screen.getByLabelText('Quilometragem'), mileage)
   await userEvent.click(screen.getByRole('button', { name: 'Salvar veículo' }))
   await screen.findByRole('heading', { name: 'Veículos' })
   expect(posted(fetch, '/api/vehicles')).toEqual({
     customerId: 'c1', plate: 'AAA1A11', manufacturer: 'Marca', model: 'Modelo', modelYear: 2020,
-    mileage: mileage === '' ? null : 0, steeringGearManufacturer: null,
+    mileage: mileage === '' ? null : 0, steeringGearManufacturer: null, color: null, notes: null,
   })
   await userEvent.click(screen.getByRole('link', { name: 'Ordens de serviço' }))
   await userEvent.click(screen.getByRole('link', { name: 'Abrir nova OS' }))

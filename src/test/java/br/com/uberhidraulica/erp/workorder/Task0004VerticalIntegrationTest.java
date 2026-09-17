@@ -27,7 +27,7 @@ class Task0004VerticalIntegrationTest {
     @DynamicPropertySource static void bootstrap(DynamicPropertyRegistry p){p.add("IAM_BOOTSTRAP_OWNER_NAME",()->"Owner Vertical");p.add("IAM_BOOTSTRAP_OWNER_EMAIL",()->"owner-vertical@example.test");p.add("IAM_BOOTSTRAP_OWNER_PASSWORD",()->"vertical-bootstrap-password");}
     @Autowired MockMvc mvc; @Autowired JdbcTemplate jdbc;
 
-    @BeforeEach void clean(){jdbc.update("delete from workorder.work_order_product");jdbc.update("delete from workorder.work_order_service");jdbc.update("delete from workorder.work_order");jdbc.update("delete from crm.vehicle");jdbc.update("delete from crm.customer");jdbc.update("delete from servicecatalog.service");jdbc.update("delete from productcatalog.product");}
+    @BeforeEach void clean(){jdbc.update("delete from workorder.work_order_product");jdbc.update("delete from workorder.work_order_service");jdbc.update("delete from workorder.work_order");jdbc.update("delete from crm.vehicle_ownership");jdbc.update("delete from crm.vehicle");jdbc.update("delete from crm.customer");jdbc.update("delete from servicecatalog.service");jdbc.update("delete from productcatalog.product");}
 
     @Test void requiresAuthenticationAndCsrf() throws Exception {
         mvc.perform(get("/api/customers")).andExpect(status().isUnauthorized());
@@ -38,9 +38,10 @@ class Task0004VerticalIntegrationTest {
     @Test void createsPfAndPjNormalizesListsUpdatesAndKeepsGlobalUniqueness() throws Exception {
         String pfId=createCustomer(pf("123.456.789-01"));
         mvc.perform(get("/api/customers/{id}",pfId).with(user("operator"))).andExpect(status().isOk()).andExpect(jsonPath("$.document").value("12345678901")).andExpect(jsonPath("$.status").value("ACTIVE"));
-        String pjId=createCustomer("{\"personType\":\"PJ\",\"name\":\"Hidráulica Teste Ltda\",\"document\":\"12.345.678/0001-90\"}");
+        String pjId=createCustomer("{\"personType\":\"PJ\",\"name\":\"Hidráulica Teste Ltda\",\"phone\":\"3432100000\",\"document\":\"12.345.678/0001-90\"}");
         mvc.perform(get("/api/customers").with(user("operator"))).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2));
-        mvc.perform(put("/api/customers/{id}",pfId).with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON).content("{\"personType\":\"PF\",\"name\":\"Cliente Inativo\",\"document\":\"12345678901\",\"status\":\"INACTIVE\"}" )).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("INACTIVE"));
+        mvc.perform(put("/api/customers/{id}",pfId).with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON).content("{\"personType\":\"PF\",\"name\":\"Cliente Inativo\",\"document\":\"12345678901\",\"phone\":\"34999990000\"}" )).andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Cliente Inativo"));
+        mvc.perform(post("/api/customers/{id}/inactivate",pfId).with(user("operator")).with(csrf())).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("INACTIVE"));
         mvc.perform(post("/api/customers").with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(pf("123-456-789-01"))).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CUSTOMER_DOCUMENT_ALREADY_EXISTS"));
         mvc.perform(post("/api/customers").with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(pf("123ABC45678901"))).andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_CUSTOMER"));
         assertThat(jdbc.queryForObject("select count(*) from crm.customer where document='12345678901'",Long.class)).isEqualTo(1);
@@ -64,7 +65,7 @@ class Task0004VerticalIntegrationTest {
     }
 
     @Test void verticalCustomerVehicleServiceWorkOrderAndQueryUsesRealPostgres() throws Exception {
-        String customer=createCustomer("{\"personType\":\"PJ\",\"name\":\"Oficina Cliente Ltda\",\"document\":\"98765432000199\"}");
+        String customer=createCustomer("{\"personType\":\"PJ\",\"name\":\"Oficina Cliente Ltda\",\"phone\":\"3432100000\",\"document\":\"98765432000199\"}");
         String vehicle=createVehicle(customer,"QWE-4R56");String service=createService();
         MvcResult opened=mvc.perform(post("/api/work-orders").with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(order(customer,vehicle,88000))).andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("ABERTA")).andExpect(jsonPath("$.number").isNumber()).andExpect(jsonPath("$.services.length()").value(0)).andReturn();
         String orderId=JsonPath.read(opened.getResponse().getContentAsString(),"$.id");
@@ -81,7 +82,7 @@ class Task0004VerticalIntegrationTest {
         assertThatThrownBy(()->jdbc.update("insert into crm.vehicle values (?,?, 'ABC1234','Maker','Model',2020,0,null,now(),now())",UUID.randomUUID(),UUID.randomUUID())).hasMessageContaining("vehicle_customer_id_fkey");
         UUID vehicle=UUID.randomUUID();jdbc.update("insert into crm.vehicle values (?,?,'ABC1234','Maker','Model',2020,0,null,now(),now())",vehicle,customer);
         UUID another=UUID.randomUUID();jdbc.update("insert into crm.customer values (?,'PF','Another','44444444444','ACTIVE',now(),now())",another);
-        assertThatThrownBy(()->jdbc.update("insert into workorder.work_order(id,customer_id,vehicle_id,entry_mileage,opened_at,status,created_at,updated_at) values (?,?,?,0,now(),'ABERTA',now(),now())",UUID.randomUUID(),another,vehicle)).hasMessageContaining("fk_work_order_vehicle_customer");
+        assertThatThrownBy(()->jdbc.update("insert into workorder.work_order(id,customer_id,vehicle_id,entry_mileage,opened_at,status,created_at,updated_at) values (?,?,?,0,now(),'ABERTA',now(),now())",UUID.randomUUID(),another,UUID.randomUUID())).hasMessageContaining("fk_work_order_vehicle");
         assertThatThrownBy(()->jdbc.update("insert into workorder.work_order(id,customer_id,vehicle_id,entry_mileage,opened_at,status,created_at,updated_at) values (?,?,?,-1,now(),'ABERTA',now(),now())",UUID.randomUUID(),customer,vehicle)).hasMessageContaining("ck_work_order_entry_mileage");
         assertThatThrownBy(()->jdbc.update("insert into workorder.work_order(id,customer_id,vehicle_id,entry_mileage,opened_at,status,created_at,updated_at) values (?,?,?,0,now(),'FUTURO',now(),now())",UUID.randomUUID(),customer,vehicle)).hasMessageContaining("ck_work_order_status_initial");
     }
@@ -89,7 +90,7 @@ class Task0004VerticalIntegrationTest {
     private String createCustomer(String json)throws Exception{return JsonPath.read(mvc.perform(post("/api/customers").with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(json)).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(),"$.id");}
     private String createVehicle(String customer,String plate)throws Exception{return JsonPath.read(mvc.perform(post("/api/vehicles").with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(vehicle(customer,plate))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(),"$.id");}
     private String createService()throws Exception{return JsonPath.read(mvc.perform(post("/api/services").with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Alinhamento hidráulico\",\"description\":\"Serviço de teste\",\"basePrice\":\"250.00\"}" )).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(),"$.id");}
-    private static String pf(String doc){return "{\"personType\":\"PF\",\"name\":\"Cliente Teste\",\"document\":\""+doc+"\"}";}
+    private static String pf(String doc){return "{\"personType\":\"PF\",\"name\":\"Cliente Teste\",\"phone\":\"34999990000\",\"document\":\""+doc+"\"}";}
     private static String vehicle(String customer,String plate){return "{\"customerId\":\""+customer+"\",\"plate\":\""+plate+"\",\"manufacturer\":\"Ford\",\"model\":\"Cargo\",\"modelYear\":2022,\"mileage\":12000,\"steeringGearManufacturer\":\"TRW\"}";}
     private static String order(String customer,String vehicle,long km){return "{\"customerId\":\""+customer+"\",\"vehicleId\":\""+vehicle+"\",\"entryMileage\":"+km+"}";}
 }

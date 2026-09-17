@@ -50,7 +50,7 @@ class Task0006ProductItemIntegrationTest {
         jdbc.update("delete from workorder.work_order_product");
         jdbc.update("delete from workorder.work_order_service");
         jdbc.update("delete from workorder.work_order");
-        jdbc.update("delete from crm.vehicle");
+        jdbc.update("delete from crm.vehicle_ownership");jdbc.update("delete from crm.vehicle");
         jdbc.update("delete from crm.customer");
         jdbc.update("delete from productcatalog.product");
     }
@@ -189,7 +189,7 @@ class Task0006ProductItemIntegrationTest {
     private String openWorkOrder() throws Exception {
         String customer = JsonPath.read(mvc.perform(post("/api/customers").with(user("operator")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"personType\":\"PF\",\"name\":\"Cliente Item\",\"document\":\"55566677788\"}"))
+                .content("{\"personType\":\"PF\",\"name\":\"Cliente Item\",\"phone\":\"34999990000\",\"document\":\"55566677788\"}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
         String vehicle = JsonPath.read(mvc.perform(post("/api/vehicles").with(user("operator")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)

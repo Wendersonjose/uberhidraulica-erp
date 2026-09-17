@@ -26,7 +26,12 @@ public class WorkOrderApplicationService implements WorkOrderQuery {
         return repository.save(WorkOrder.open(customerId,vehicleId,mileage,Instant.now()));
     }
     @Transactional(readOnly=true) public WorkOrder get(UUID id){return repository.findById(id).orElseThrow(()->new WorkOrderException("WORK_ORDER_NOT_FOUND","Ordem de Serviço não encontrada"));}
-    @Transactional(readOnly=true) public List<WorkOrder> list(){return repository.findAll();}
+    /** Lista geral ou histórico filtrado por cliente ou por veículo; o filtro por veículo prevalece quando ambos vierem. */
+    @Transactional(readOnly=true) public List<WorkOrder> list(UUID customerId,UUID vehicleId){
+        if(vehicleId!=null) return repository.findByVehicleId(vehicleId).stream().filter(w->customerId==null||w.customerId().equals(customerId)).toList();
+        if(customerId!=null) return repository.findByCustomerId(customerId);
+        return repository.findAll();
+    }
     @Transactional public WorkOrder addService(UUID id,UUID serviceId){
         get(id);
         var service=catalog.service(serviceId).orElseThrow(()->new WorkOrderException("SERVICE_NOT_FOUND","Serviço não encontrado"));

@@ -1,5 +1,13 @@
 export const queryKeys = {
   workOrders: ['work-orders'] as const,
+  workOrdersFiltered: (filter: { customerId?: string; vehicleId?: string }) => ['work-orders', 'filtered', filter] as const,
+  customers: ['customers'] as const,
+  customer: (id: string) => ['customers', id] as const,
+  customerSearch: (params: object) => ['customers', 'search', params] as const,
+  vehicles: ['vehicles'] as const,
+  vehicle: (id: string) => ['vehicles', id] as const,
+  vehicleSearch: (params: object) => ['vehicles', 'search', params] as const,
+  vehicleOwnership: (id: string) => ['vehicles', id, 'ownership'] as const,
   customerVehicles: (customerId: string) => ['customers', customerId, 'vehicles'] as const,
   products: ['products'] as const,
   product: (id: string) => ['products', id] as const,

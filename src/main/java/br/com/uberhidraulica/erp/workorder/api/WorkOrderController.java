@@ -14,7 +14,7 @@ public class WorkOrderController {
  private final WorkOrderApplicationService application; public WorkOrderController(WorkOrderApplicationService application){this.application=application;}
  @PostMapping ResponseEntity<Response> open(@Valid @RequestBody OpenRequest r){var x=Response.from(application.open(r.customerId(),r.vehicleId(),r.entryMileage()));return ResponseEntity.created(URI.create("/api/work-orders/"+x.id())).body(x);}
  @GetMapping("/{id}") Response get(@PathVariable UUID id){return Response.from(application.get(id));}
- @GetMapping List<Response> list(){return application.list().stream().map(Response::from).toList();}
+ @GetMapping List<Response> list(@RequestParam(required=false) UUID customerId,@RequestParam(required=false) UUID vehicleId){return application.list(customerId,vehicleId).stream().map(Response::from).toList();}
  @PostMapping("/{id}/services") ResponseEntity<Response> add(@PathVariable UUID id,@Valid @RequestBody AddServiceRequest r){return ResponseEntity.status(HttpStatus.CREATED).body(Response.from(application.addService(id,r.serviceId())));}
  @PostMapping("/{id}/products") ResponseEntity<Response> addProduct(@PathVariable UUID id,@Valid @RequestBody AddProductRequest r){return ResponseEntity.status(HttpStatus.CREATED).body(Response.from(application.addProduct(id,r.productId(),r.quantity())));}
  public record OpenRequest(@NotNull UUID customerId,@NotNull UUID vehicleId,@NotNull @PositiveOrZero Long entryMileage){}

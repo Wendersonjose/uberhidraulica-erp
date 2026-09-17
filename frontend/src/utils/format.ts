@@ -3,3 +3,12 @@ export const digits=(value:string)=>value.replace(/\D/g,'');export function form
 const UNIT_SUFFIX: Record<string, string> = { UNIDADE: 'un', LITRO: 'L', METRO: 'm', QUILOGRAMA: 'kg' }
 export const formatQuantity = (value: number, unit: string) =>
   `${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 3 }).format(value)} ${UNIT_SUFFIX[unit] ?? unit}`
+
+export function formatPhone(value: string | null | undefined) {
+  if (!value) return '—'
+  const d = digits(value)
+  if (d.length === 11) return d.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3')
+  if (d.length === 10) return d.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3')
+  return d
+}
+export const formatZipCode = (value: string) => digits(value).replace(/(\d{5})(\d{3})/, '$1-$2')
