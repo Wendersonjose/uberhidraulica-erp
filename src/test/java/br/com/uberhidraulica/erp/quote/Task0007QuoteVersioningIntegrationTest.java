@@ -76,7 +76,7 @@ class Task0007QuoteVersioningIntegrationTest {
         jdbc.update("delete from workshop.quote");
         jdbc.update("delete from workorder.work_order_product");
         jdbc.update("delete from workorder.work_order_service");
-        jdbc.update("delete from workorder.work_order");
+        jdbc.update("delete from workorder.work_order_status_history");jdbc.update("delete from workorder.work_order");
         jdbc.update("delete from crm.vehicle_ownership");jdbc.update("delete from crm.vehicle");
         jdbc.update("delete from crm.customer");
         jdbc.update("delete from servicecatalog.service");
@@ -533,7 +533,7 @@ class Task0007QuoteVersioningIntegrationTest {
         return JsonPath.read(mvc.perform(authorized(post("/api/work-orders"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"customerId\":\"" + customer + "\",\"vehicleId\":\"" + vehicle
-                                + "\",\"entryMileage\":5000}"))
+                                + "\",\"entryMileage\":5000,\"complaint\":\"Ruído na direção\"}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
     }
 

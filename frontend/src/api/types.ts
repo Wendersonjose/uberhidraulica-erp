@@ -1,4 +1,4 @@
-export type Session={id:string;name:string;email:string;profileCode:string;state:string;mustChangePassword:boolean;permissions:string[]};export type WorkOrder={id:string;number:number;customerId:string;vehicleId:string;entryMileage:number;openedAt:string;status:'ABERTA';services:WorkOrderService[];products:WorkOrderProduct[]}
+export type Session={id:string;name:string;email:string;profileCode:string;state:string;mustChangePassword:boolean;permissions:string[]};
 
 export type ProductType = 'PART' | 'SUPPLY' | 'COMPONENT' | 'KIT' | 'INTERNAL_USE_MATERIAL'
 export type ProductUnit = 'UNIDADE' | 'LITRO' | 'METRO' | 'QUILOGRAMA'
@@ -99,3 +99,29 @@ export type PriceSuggestion = { serviceId: string; vehicleId: string | null; pri
 export const PRICE_SOURCE_LABELS: Record<string, string> = {
   VEHICLE: 'preço do veículo', GROUP: 'preço do grupo', BASE: 'preço base', MANUAL: 'informado manualmente', NONE: 'sem preço definido',
 }
+
+export type Stage = 'ABERTA' | 'EM_DIAGNOSTICO' | 'AGUARDANDO_APROVACAO' | 'APROVADA' | 'REPROVADA' | 'EM_EXECUCAO' | 'FINALIZADA' | 'ENTREGUE' | 'CANCELADA'
+export const STAGES: Stage[] = ['ABERTA', 'EM_DIAGNOSTICO', 'AGUARDANDO_APROVACAO', 'APROVADA', 'REPROVADA', 'EM_EXECUCAO', 'FINALIZADA', 'ENTREGUE', 'CANCELADA']
+export const STAGE_LABELS: Record<Stage, string> = {
+  ABERTA: 'Aberta', EM_DIAGNOSTICO: 'Em diagnóstico', AGUARDANDO_APROVACAO: 'Aguardando aprovação', APROVADA: 'Aprovada',
+  REPROVADA: 'Reprovada', EM_EXECUCAO: 'Em execução', FINALIZADA: 'Finalizada', ENTREGUE: 'Entregue', CANCELADA: 'Cancelada',
+}
+/** Etapas em que a OS aceita movimentação manual e novos itens; espelha a regra do backend (DR-0012). */
+export const OPERATIONAL_STAGES: Stage[] = ['ABERTA', 'EM_DIAGNOSTICO', 'AGUARDANDO_APROVACAO', 'APROVADA', 'REPROVADA', 'EM_EXECUCAO']
+export type WorkflowStatus = { id: string; name: string; stage: Stage; position: number; active: boolean; stageDefault: boolean }
+export type WorkOrderLifecycle = {
+  executionStartedAt: string | null; finishedAt: string | null; finishedBy: string | null; deliveredAt: string | null
+  deliveredBy: string | null; cancelledAt: string | null; cancelledBy: string | null; cancellationReason: string | null
+}
+export type WorkOrder = {
+  id: string; number: number; customerId: string; vehicleId: string; entryMileage: number | null; openedAt: string
+  status: Stage; statusInfo?: WorkflowStatus; complaint?: string | null; notes?: string | null; lifecycle?: WorkOrderLifecycle
+  services: WorkOrderService[]; products: WorkOrderProduct[]
+}
+export type StatusChange = {
+  id: string; fromStatusId: string | null; fromStatusName: string | null; toStatusId: string; toStatusName: string
+  changedAt: string; changedBy: string | null; reason: string | null; automatic: boolean
+}
+export type BoardCard = { id: string; number: number; openedAt: string; complaint: string | null; customerName: string | null; vehicleLabel: string | null }
+export type BoardColumn = { status: WorkflowStatus; orders: BoardCard[] }
+export type StatusUsage = { status: WorkflowStatus; orderCount: number }

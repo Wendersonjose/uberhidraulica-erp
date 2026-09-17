@@ -49,7 +49,7 @@ class Task0011ServiceCatalogIntegrationTest {
     void clean() {
         jdbc.update("delete from workorder.work_order_product");
         jdbc.update("delete from workorder.work_order_service");
-        jdbc.update("delete from workorder.work_order");
+        jdbc.update("delete from workorder.work_order_status_history");jdbc.update("delete from workorder.work_order");
         jdbc.update("delete from servicecatalog.service_price");
         jdbc.update("delete from servicecatalog.vehicle_group_member");
         jdbc.update("delete from servicecatalog.vehicle_group");
@@ -219,7 +219,7 @@ class Task0011ServiceCatalogIntegrationTest {
     }
 
     private String openOrder(String customer, String vehicle) throws Exception {
-        return id(send(post("/api/work-orders"), "{\"customerId\":\"" + customer + "\",\"vehicleId\":\"" + vehicle + "\",\"entryMileage\":1000}")
+        return id(send(post("/api/work-orders"), "{\"customerId\":\"" + customer + "\",\"vehicleId\":\"" + vehicle + "\",\"entryMileage\":1000,\"complaint\":\"Ruído na direção\"}")
                 .andExpect(status().isCreated()));
     }
 

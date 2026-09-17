@@ -1,5 +1,9 @@
 export const queryKeys = {
   workOrders: ['work-orders'] as const,
+  workOrder: (id: string) => ['work-orders', id] as const,
+  board: (closedDays: number) => ['work-orders', 'board', closedDays] as const,
+  statusHistory: (id: string) => ['work-orders', id, 'history'] as const,
+  workflowStatuses: ['work-order-statuses'] as const,
   workOrdersFiltered: (filter: { customerId?: string; vehicleId?: string }) => ['work-orders', 'filtered', filter] as const,
   customers: ['customers'] as const,
   customer: (id: string) => ['customers', id] as const,

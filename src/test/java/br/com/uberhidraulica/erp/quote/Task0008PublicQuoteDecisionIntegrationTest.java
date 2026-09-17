@@ -85,7 +85,7 @@ class Task0008PublicQuoteDecisionIntegrationTest {
         jdbc.update("delete from workshop.quote");
         jdbc.update("delete from workorder.work_order_product");
         jdbc.update("delete from workorder.work_order_service");
-        jdbc.update("delete from workorder.work_order");
+        jdbc.update("delete from workorder.work_order_status_history");jdbc.update("delete from workorder.work_order");
         jdbc.update("delete from crm.vehicle_ownership");jdbc.update("delete from crm.vehicle");
         jdbc.update("delete from crm.customer");
         session = openSession();
@@ -488,7 +488,7 @@ class Task0008PublicQuoteDecisionIntegrationTest {
         String workOrder = JsonPath.read(mvc.perform(authorized(post("/api/work-orders"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"customerId\":\"" + customer + "\",\"vehicleId\":\"" + vehicle
-                                + "\",\"entryMileage\":1000}"))
+                                + "\",\"entryMileage\":1000,\"complaint\":\"Ruído na direção\"}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
         String quote = JsonPath.read(mvc.perform(authorized(post("/api/work-orders/{w}/quotes", workOrder)))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");

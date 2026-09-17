@@ -15,6 +15,7 @@ const customers: Customer[] = [
 ]
 const vehicle: Vehicle = { id: 'v1', customerId: 'c1', manufacturer: 'Marca', model: 'Modelo', plate: 'AAA1A11', modelYear: 2020, mileage: null, steeringGearManufacturer: null }
 const secondVehicle: Vehicle = { ...vehicle, id: 'v2', customerId: 'c2', model: 'Segundo', plate: 'BBB2B22' }
+const openStatus = { id: 'st1', name: 'Aberta', stage: 'ABERTA' as const, position: 10, active: true, stageDefault: true }
 const order: WorkOrder = { id: 'o1', number: 1, customerId: 'c1', vehicleId: 'v1', entryMileage: 0, openedAt: '2026-09-10T10:00:00Z', status: 'ABERTA', services: [], products: [] }
 const service: Service = { id: 's2', name: 'Segundo serviço', description: 'Descrição do catálogo', basePrice: 999, defaultWarrantyDays: 90, active: true, category: null }
 function json(body: unknown, status = 200) {
@@ -46,6 +47,9 @@ function mockHttp(overrides: Routes = {}, initial: Session | null = session) {
     'GET /api/products': () => json([]),
     'GET /api/work-orders': () => json([]),
     'GET /api/work-orders/o1': () => json(order),
+    'GET /api/work-orders/o1/status-history': () => json([]),
+    'GET /api/work-orders/board': () => json([{ status: openStatus, orders: [] }]),
+    'GET /api/work-order-statuses': () => json([{ status: openStatus, orderCount: 0 }]),
     'GET /api/iam/session': () => current ? json(current) : json({}, 401),
     'POST /api/iam/auth/login': () => { current = session; return json(current) },
     'POST /api/iam/auth/logout': () => { current = null; return json(null, 204) },
@@ -116,13 +120,13 @@ test('REV-FE-002 401 durante uso encerra sessão e permite login sem reload', as
   const { fetch, routes } = mockHttp()
   const client = renderAt('/clientes')
   await screen.findByRole('cell', { name: 'Maria Silva' })
-  routes['GET /api/work-orders'] = () => json({}, 401)
+  routes['GET /api/work-orders/board'] = () => json({}, 401)
   await userEvent.click(screen.getByRole('link', { name: 'Ordens de serviço' }))
   await screen.findByRole('heading', { name: 'Entrar' })
   expect(screen.getByTestId('location')).toHaveTextContent('/login')
   expect(client.getQueryData(['customers'])).toBeUndefined()
   expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
-  routes['GET /api/work-orders'] = () => json([])
+  routes['GET /api/work-orders/board'] = () => json([])
   await login()
   expect(fetch.mock.calls.filter(([path]) => path === '/api/iam/session')).toHaveLength(1)
 })
@@ -289,22 +293,22 @@ test.each(['0', '12345'])('REV-FE-005/006 cria OS pelo formulário com km %s e a
   let saved = false
   const { fetch } = mockHttp({
     'POST /api/work-orders': () => { saved = true; return json(created, 201) },
-    'GET /api/work-orders': () => json(saved ? [created] : []),
+    'GET /api/work-orders/board': () => json([{ status: openStatus, orders: saved ? [{ id: 'o1', number: 1, openedAt: created.openedAt, complaint: 'Ruído', customerName: 'Maria Silva', vehicleLabel: 'Marca Modelo • AAA1A11' }] : [] }]),
     'GET /api/work-orders/o1': () => json(created),
   })
-  const client = renderAt('/ordens-servico')
+  renderAt('/ordens-servico')
   await screen.findByText('Nenhum registro encontrado.')
-  expect(client.getQueryData(['work-orders'])).toEqual([])
   await userEvent.click(screen.getByRole('link', { name: 'Abrir nova OS' }))
   await selectCustomerAndVehicle()
-  await userEvent.type(screen.getByLabelText('Quilometragem de entrada *'), mileage)
+  await userEvent.type(screen.getByLabelText('Quilometragem de entrada'), mileage)
+  await userEvent.type(screen.getByLabelText('Defeito/reclamação relatada *'), 'Ruído')
   await userEvent.click(screen.getByRole('button', { name: 'Criar OS' }))
   await screen.findByRole('heading', { name: 'OS #1' })
   expect(screen.getByTestId('location')).toHaveTextContent('/ordens-servico/o1')
-  expect(posted(fetch, '/api/work-orders')).toEqual({ customerId: 'c1', vehicleId: 'v1', entryMileage: Number(mileage) })
+  expect(posted(fetch, '/api/work-orders')).toEqual({ customerId: 'c1', vehicleId: 'v1', entryMileage: Number(mileage), complaint: 'Ruído', notes: null })
   await userEvent.click(screen.getByRole('link', { name: 'Ordens de serviço' }))
   await screen.findByRole('link', { name: /OS #1/ })
-  expect(fetch.mock.calls.filter(([path, init]) => path === '/api/work-orders' && !init?.method)).toHaveLength(2)
+  expect(fetch.mock.calls.filter(([path, init]) => path === '/api/work-orders/board?closedDays=30' && !init?.method)).toHaveLength(2)
 })
 
 test.each(['', '0'])('REV-FE-005/006 cadastro veículo km "%s" atualiza veículos do cliente', async mileage => {
@@ -342,7 +346,8 @@ test('REV-FE-006 troca de cliente limpa vehicleId e carrega somente os novos ve�
   const { fetch } = mockHttp()
   renderAt('/ordens-servico/nova')
   await selectCustomerAndVehicle()
-  await userEvent.type(screen.getByLabelText('Quilometragem de entrada *'), '0')
+  await userEvent.type(screen.getByLabelText('Quilometragem de entrada'), '0')
+  await userEvent.type(screen.getByLabelText('Defeito/reclamação relatada *'), 'Ruído')
   await userEvent.selectOptions(screen.getByLabelText('Cliente'), 'c2')
   await screen.findByRole('option', { name: /BBB2B22/ })
   expect(screen.getByLabelText('Veículo')).toHaveValue('')
@@ -389,7 +394,8 @@ test('REV-FE-002 401 na mutação encerra sessão sem repetir POST', async () =>
   const { fetch } = mockHttp({ 'POST /api/work-orders': () => json({}, 401) })
   renderAt('/ordens-servico/nova')
   await selectCustomerAndVehicle()
-  await userEvent.type(screen.getByLabelText('Quilometragem de entrada *'), '0')
+  await userEvent.type(screen.getByLabelText('Quilometragem de entrada'), '0')
+  await userEvent.type(screen.getByLabelText('Defeito/reclamação relatada *'), 'Ruído')
   await userEvent.click(screen.getByRole('button', { name: 'Criar OS' }))
   await screen.findByRole('heading', { name: 'Entrar' })
   expect(fetch.mock.calls.filter(([path, init]) => path === '/api/work-orders' && init?.method === 'POST')).toHaveLength(1)
@@ -400,7 +406,8 @@ test('REV-FE-006 submit duplo não duplica abertura de OS pendente', async () =>
   const { fetch } = mockHttp({ 'POST /api/work-orders': () => delayed.promise })
   renderAt('/ordens-servico/nova')
   await selectCustomerAndVehicle()
-  await userEvent.type(screen.getByLabelText('Quilometragem de entrada *'), '0')
+  await userEvent.type(screen.getByLabelText('Quilometragem de entrada'), '0')
+  await userEvent.type(screen.getByLabelText('Defeito/reclamação relatada *'), 'Ruído')
   await userEvent.dblClick(screen.getByRole('button', { name: 'Criar OS' }))
   expect(screen.getByRole('button', { name: 'Criar OS' })).toBeDisabled()
   expect(fetch.mock.calls.filter(([path, init]) => path === '/api/work-orders' && init?.method === 'POST')).toHaveLength(1)

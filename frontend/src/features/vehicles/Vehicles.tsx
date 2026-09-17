@@ -218,7 +218,7 @@ export function VehicleDetailPage() {
                       empty={!orders.data?.length} emptyMessage="Nenhuma OS registrada para este veículo.">
             <ul className="history-list">{orders.data?.map(o => <li key={o.id}>
               <Link to={`/ordens-servico/${o.id}`}>OS #{o.number}</Link>
-              <span className="muted">{o.status} · {formatDate(o.openedAt)} · {formatMileage(o.entryMileage)}</span>
+              <span className="muted">{o.statusInfo?.name ?? o.status} · {formatDate(o.openedAt)}{o.entryMileage == null ? '' : ` · ${formatMileage(o.entryMileage)}`}</span>
             </li>)}</ul>
           </QueryState>
         </section>

@@ -49,7 +49,7 @@ class Task0006ProductItemIntegrationTest {
     void clean() {
         jdbc.update("delete from workorder.work_order_product");
         jdbc.update("delete from workorder.work_order_service");
-        jdbc.update("delete from workorder.work_order");
+        jdbc.update("delete from workorder.work_order_status_history");jdbc.update("delete from workorder.work_order");
         jdbc.update("delete from crm.vehicle_ownership");jdbc.update("delete from crm.vehicle");
         jdbc.update("delete from crm.customer");
         jdbc.update("delete from productcatalog.product");
@@ -198,7 +198,7 @@ class Task0006ProductItemIntegrationTest {
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
         return JsonPath.read(mvc.perform(post("/api/work-orders").with(user("operator")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"customerId\":\"" + customer + "\",\"vehicleId\":\"" + vehicle + "\",\"entryMileage\":9000}"))
+                .content("{\"customerId\":\"" + customer + "\",\"vehicleId\":\"" + vehicle + "\",\"entryMileage\":9000,\"complaint\":\"Ruído na direção\"}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
     }
 

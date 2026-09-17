@@ -25,6 +25,8 @@ function mock(overrides: Record<string, unknown> = {}, errors: Record<string, [u
   const routes: Record<string, unknown> = {
     'GET /api/work-orders/o1': order,
     'GET /api/work-orders': [order],
+    'GET /api/work-orders/o1/status-history': [],
+    'GET /api/work-order-statuses': [],
     'GET /api/services': [],
     'GET /api/products': [fluid, unpriced, inactive],
     'GET /api/customers/c1': { id: 'c1', name: 'Cliente Teste' },

@@ -49,7 +49,7 @@ class Task0009Task0010CrmIntegrationTest {
     void clean() {
         jdbc.update("delete from workorder.work_order_product");
         jdbc.update("delete from workorder.work_order_service");
-        jdbc.update("delete from workorder.work_order");
+        jdbc.update("delete from workorder.work_order_status_history");jdbc.update("delete from workorder.work_order");
         jdbc.update("delete from crm.vehicle_ownership");
         jdbc.update("delete from crm.vehicle");
         jdbc.update("delete from crm.customer");
@@ -206,7 +206,7 @@ class Task0009Task0010CrmIntegrationTest {
         String second = id(createCustomer(pf("Segundo Dono", null, "34999990002")));
         String vehicle = id(createVehicle(first, "TRF1A11"));
         String order = JsonPath.read(mvc.perform(post("/api/work-orders").with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"customerId\":\"" + first + "\",\"vehicleId\":\"" + vehicle + "\",\"entryMileage\":1000}"))
+                        .content("{\"customerId\":\"" + first + "\",\"vehicleId\":\"" + vehicle + "\",\"entryMileage\":1000,\"complaint\":\"Ruído na direção\"}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
 
         transfer(vehicle, second).andExpect(status().isOk()).andExpect(jsonPath("$.customerId").value(second));

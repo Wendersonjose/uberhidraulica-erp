@@ -27,7 +27,7 @@ class Task0004VerticalIntegrationTest {
     @DynamicPropertySource static void bootstrap(DynamicPropertyRegistry p){p.add("IAM_BOOTSTRAP_OWNER_NAME",()->"Owner Vertical");p.add("IAM_BOOTSTRAP_OWNER_EMAIL",()->"owner-vertical@example.test");p.add("IAM_BOOTSTRAP_OWNER_PASSWORD",()->"vertical-bootstrap-password");}
     @Autowired MockMvc mvc; @Autowired JdbcTemplate jdbc;
 
-    @BeforeEach void clean(){jdbc.update("delete from workorder.work_order_product");jdbc.update("delete from workorder.work_order_service");jdbc.update("delete from workorder.work_order");jdbc.update("delete from crm.vehicle_ownership");jdbc.update("delete from crm.vehicle");jdbc.update("delete from crm.customer");jdbc.update("delete from servicecatalog.service");jdbc.update("delete from productcatalog.product");}
+    @BeforeEach void clean(){jdbc.update("delete from workorder.work_order_product");jdbc.update("delete from workorder.work_order_service");jdbc.update("delete from workorder.work_order_status_history");jdbc.update("delete from workorder.work_order");jdbc.update("delete from crm.vehicle_ownership");jdbc.update("delete from crm.vehicle");jdbc.update("delete from crm.customer");jdbc.update("delete from servicecatalog.service");jdbc.update("delete from productcatalog.product");}
 
     @Test void requiresAuthenticationAndCsrf() throws Exception {
         mvc.perform(get("/api/customers")).andExpect(status().isUnauthorized());
@@ -82,9 +82,9 @@ class Task0004VerticalIntegrationTest {
         assertThatThrownBy(()->jdbc.update("insert into crm.vehicle values (?,?, 'ABC1234','Maker','Model',2020,0,null,now(),now())",UUID.randomUUID(),UUID.randomUUID())).hasMessageContaining("vehicle_customer_id_fkey");
         UUID vehicle=UUID.randomUUID();jdbc.update("insert into crm.vehicle values (?,?,'ABC1234','Maker','Model',2020,0,null,now(),now())",vehicle,customer);
         UUID another=UUID.randomUUID();jdbc.update("insert into crm.customer values (?,'PF','Another','44444444444','ACTIVE',now(),now())",another);
-        assertThatThrownBy(()->jdbc.update("insert into workorder.work_order(id,customer_id,vehicle_id,entry_mileage,opened_at,status,created_at,updated_at) values (?,?,?,0,now(),'ABERTA',now(),now())",UUID.randomUUID(),another,UUID.randomUUID())).hasMessageContaining("fk_work_order_vehicle");
-        assertThatThrownBy(()->jdbc.update("insert into workorder.work_order(id,customer_id,vehicle_id,entry_mileage,opened_at,status,created_at,updated_at) values (?,?,?,-1,now(),'ABERTA',now(),now())",UUID.randomUUID(),customer,vehicle)).hasMessageContaining("ck_work_order_entry_mileage");
-        assertThatThrownBy(()->jdbc.update("insert into workorder.work_order(id,customer_id,vehicle_id,entry_mileage,opened_at,status,created_at,updated_at) values (?,?,?,0,now(),'FUTURO',now(),now())",UUID.randomUUID(),customer,vehicle)).hasMessageContaining("ck_work_order_status_initial");
+        assertThatThrownBy(()->jdbc.update("insert into workorder.work_order(id,customer_id,vehicle_id,entry_mileage,opened_at,status_id,created_at,updated_at) values (?,?,?,0,now(),'20000000-0000-0000-0000-000000000001',now(),now())",UUID.randomUUID(),another,UUID.randomUUID())).hasMessageContaining("fk_work_order_vehicle");
+        assertThatThrownBy(()->jdbc.update("insert into workorder.work_order(id,customer_id,vehicle_id,entry_mileage,opened_at,status_id,created_at,updated_at) values (?,?,?,-1,now(),'20000000-0000-0000-0000-000000000001',now(),now())",UUID.randomUUID(),customer,vehicle)).hasMessageContaining("ck_work_order_entry_mileage");
+        assertThatThrownBy(()->jdbc.update("insert into workorder.work_order(id,customer_id,vehicle_id,entry_mileage,opened_at,status_id,created_at,updated_at) values (?,?,?,0,now(),?,now(),now())",UUID.randomUUID(),customer,vehicle,UUID.randomUUID())).hasMessageContaining("work_order_status_id_fkey");
     }
 
     private String createCustomer(String json)throws Exception{return JsonPath.read(mvc.perform(post("/api/customers").with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(json)).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(),"$.id");}
@@ -92,5 +92,5 @@ class Task0004VerticalIntegrationTest {
     private String createService()throws Exception{return JsonPath.read(mvc.perform(post("/api/services").with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Alinhamento hidráulico\",\"description\":\"Serviço de teste\",\"basePrice\":\"250.00\"}" )).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(),"$.id");}
     private static String pf(String doc){return "{\"personType\":\"PF\",\"name\":\"Cliente Teste\",\"phone\":\"34999990000\",\"document\":\""+doc+"\"}";}
     private static String vehicle(String customer,String plate){return "{\"customerId\":\""+customer+"\",\"plate\":\""+plate+"\",\"manufacturer\":\"Ford\",\"model\":\"Cargo\",\"modelYear\":2022,\"mileage\":12000,\"steeringGearManufacturer\":\"TRW\"}";}
-    private static String order(String customer,String vehicle,long km){return "{\"customerId\":\""+customer+"\",\"vehicleId\":\""+vehicle+"\",\"entryMileage\":"+km+"}";}
+    private static String order(String customer,String vehicle,long km){return "{\"customerId\":\""+customer+"\",\"vehicleId\":\""+vehicle+"\",\"entryMileage\":"+km+",\"complaint\":\"Direção pesada\"}";}
 }

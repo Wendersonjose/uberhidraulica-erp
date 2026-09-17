@@ -1,4 +1,4 @@
-import{api,post,publicApi}from'./http';import type{Customer,Vehicle,Service,WorkOrder,Product,Quote,PublicQuote,PublicQuoteAccess,IssuedQuoteAccess,Page,VehicleListItem,VehicleOwnership,ServiceCategory,VehicleGroup,GroupVehicle,ServicePrice,PriceSuggestion}from'./types';export const workOrdersApi={list:(filter:{customerId?:string;vehicleId?:string}={})=>api<WorkOrder[]>('/api/work-orders'+queryString(filter)),get:(id:string)=>api<WorkOrder>(`/api/work-orders/${id}`),create:(body:unknown)=>post<WorkOrder>('/api/work-orders',body),addService:(id:string,serviceId:string,price?:number)=>post<WorkOrder>(`/api/work-orders/${id}/services`,price===undefined?{serviceId}:{serviceId,price}),addProduct:(id:string,productId:string,quantity:number)=>post<WorkOrder>(`/api/work-orders/${id}/products`,{productId,quantity})}
+import{api,post,publicApi}from'./http';import type{Customer,Vehicle,Service,WorkOrder,Product,Quote,PublicQuote,PublicQuoteAccess,IssuedQuoteAccess,Page,VehicleListItem,VehicleOwnership,ServiceCategory,VehicleGroup,GroupVehicle,ServicePrice,PriceSuggestion,BoardColumn,StatusChange,StatusUsage,WorkflowStatus,Stage}from'./types';export const workOrdersApi={list:(filter:{customerId?:string;vehicleId?:string}={})=>api<WorkOrder[]>('/api/work-orders'+queryString(filter)),get:(id:string)=>api<WorkOrder>(`/api/work-orders/${id}`),create:(body:unknown)=>post<WorkOrder>('/api/work-orders',body),addService:(id:string,serviceId:string,price?:number)=>post<WorkOrder>(`/api/work-orders/${id}/services`,price===undefined?{serviceId}:{serviceId,price}),addProduct:(id:string,productId:string,quantity:number)=>post<WorkOrder>(`/api/work-orders/${id}/products`,{productId,quantity})}
 
 export const productsApi = {
   list: () => api<Product[]>('/api/products'),
@@ -103,4 +103,22 @@ export const vehicleGroupsApi = {
   vehicles: (id: string) => api<GroupVehicle[]>(`/api/vehicle-groups/${id}/vehicles`),
   assign: (id: string, vehicleId: string) => api<void>(`/api/vehicle-groups/${id}/vehicles/${vehicleId}`, { method: 'PUT' }),
   remove: (id: string, vehicleId: string) => api<void>(`/api/vehicle-groups/${id}/vehicles/${vehicleId}`, { method: 'DELETE' }),
+}
+
+export const workflowApi = {
+  board: (closedDays = 30) => api<BoardColumn[]>('/api/work-orders/board' + queryString({ closedDays })),
+  history: (id: string) => api<StatusChange[]>(`/api/work-orders/${id}/status-history`),
+  update: (id: string, body: { entryMileage: number | null; complaint: string; notes: string | null }) => put<WorkOrder>(`/api/work-orders/${id}`, body),
+  move: (id: string, statusId: string, reason?: string) => post<WorkOrder>(`/api/work-orders/${id}/status`, reason ? { statusId, reason } : { statusId }),
+  startExecution: (id: string) => post<WorkOrder>(`/api/work-orders/${id}/start-execution`, {}),
+  finish: (id: string) => post<WorkOrder>(`/api/work-orders/${id}/finish`, {}),
+  deliver: (id: string) => post<WorkOrder>(`/api/work-orders/${id}/deliver`, {}),
+  cancel: (id: string, reason: string) => post<WorkOrder>(`/api/work-orders/${id}/cancel`, { reason }),
+  statuses: () => api<StatusUsage[]>('/api/work-order-statuses'),
+  createStatus: (name: string, stage: Stage) => post<WorkflowStatus>('/api/work-order-statuses', { name, stage }),
+  renameStatus: (id: string, name: string) => put<WorkflowStatus>(`/api/work-order-statuses/${id}`, { name }),
+  inactivateStatus: (id: string) => post<WorkflowStatus>(`/api/work-order-statuses/${id}/inactivate`, {}),
+  reactivateStatus: (id: string) => post<WorkflowStatus>(`/api/work-order-statuses/${id}/reactivate`, {}),
+  makeDefault: (id: string) => post<WorkflowStatus>(`/api/work-order-statuses/${id}/make-default`, {}),
+  reorder: (statusIds: string[]) => put<WorkflowStatus[]>('/api/work-order-statuses/order', { statusIds }),
 }

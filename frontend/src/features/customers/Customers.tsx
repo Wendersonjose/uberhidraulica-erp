@@ -225,7 +225,7 @@ export function CustomerDetailPage() {
                       empty={!orders.data?.length} emptyMessage="Nenhuma OS registrada para este cliente.">
             <ul className="history-list">{orders.data?.map(o => <li key={o.id}>
               <Link to={`/ordens-servico/${o.id}`}>OS #{o.number}</Link>
-              <span className="muted">{o.status} · {formatDate(o.openedAt)}</span>
+              <span className="muted">{o.statusInfo?.name ?? o.status} · {formatDate(o.openedAt)}</span>
             </li>)}</ul>
           </QueryState>
         </section>
