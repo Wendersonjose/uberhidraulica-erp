@@ -1,7 +1,7 @@
 export type Session={id:string;name:string;email:string;profileCode:string;state:string;mustChangePassword:boolean;permissions:string[]};
 
 export type ProductType = 'PART' | 'SUPPLY' | 'COMPONENT' | 'KIT' | 'INTERNAL_USE_MATERIAL'
-export type ProductUnit = 'UNIDADE' | 'LITRO' | 'METRO' | 'QUILOGRAMA'
+export type ProductUnit = 'UNIDADE' | 'LITRO' | 'METRO' | 'QUILOGRAMA' | 'GALAO_5L' | 'BALDE_20L'
 export type Product = {
   id: string; description: string; internalCode: string | null; category: string | null
   type: ProductType; unit: ProductUnit; referenceCost: number | null; salePrice: number | null
@@ -13,6 +13,7 @@ export const PRODUCT_TYPE_LABELS: Record<ProductType, string> = {
 }
 export const PRODUCT_UNIT_LABELS: Record<ProductUnit, string> = {
   UNIDADE: 'Unidade', LITRO: 'Litro', METRO: 'Metro', QUILOGRAMA: 'Quilograma',
+  GALAO_5L: 'Galão de 5 L', BALDE_20L: 'Balde de 20 L',
 }
 export type WorkOrderProduct = {
   id: string; productId: string; description: string; internalCode: string | null
@@ -137,4 +138,24 @@ export const AUTOMATION_LABELS: Record<string, string> = {
   QUOTE_PRESENTED: 'Orçamento apresentado → Aguardando aprovação',
   QUOTE_APPROVED: 'Item do orçamento aprovado → Aprovada',
   QUOTE_REJECTED: 'Todos os itens reprovados → Reprovada',
+}
+
+export type StockLine = {
+  productId: string; description: string; internalCode: string | null; category: string | null; unit: string
+  quantity: number; minimumStock: number | null; averageCost: number | null; salePrice: number | null
+  active: boolean; belowMinimum: boolean
+}
+export type MovementType = 'ENTRY' | 'EXIT' | 'ADJUSTMENT_IN' | 'ADJUSTMENT_OUT' | 'WORK_ORDER_OUT' | 'WORK_ORDER_RETURN' | 'REVERSAL'
+export type StockMovement = {
+  id: string; productId: string; type: MovementType; quantity: number; unitCost: number | null
+  balanceAfter: number; averageCostAfter: number | null; reason: string | null; source: 'MANUAL' | 'WORK_ORDER'
+  workOrderId: string | null; reversesMovementId: string | null; occurredAt: string; recordedBy: string | null; incoming: boolean
+}
+export const MOVEMENT_LABELS: Record<MovementType, string> = {
+  ENTRY: 'Entrada', EXIT: 'Saída', ADJUSTMENT_IN: 'Ajuste positivo', ADJUSTMENT_OUT: 'Ajuste negativo',
+  WORK_ORDER_OUT: 'Baixa pela OS', WORK_ORDER_RETURN: 'Devolução da OS', REVERSAL: 'Estorno',
+}
+export type WriteOffMode = 'ITEM_LAUNCH' | 'WORK_ORDER_FINISH' | 'DISABLED'
+export const WRITE_OFF_LABELS: Record<WriteOffMode, string> = {
+  ITEM_LAUNCH: 'Ao lançar o item na OS', WORK_ORDER_FINISH: 'Ao finalizar a OS', DISABLED: 'Não movimentar estoque pela OS',
 }

@@ -4,6 +4,7 @@ import br.com.uberhidraulica.erp.crm.CustomerVehicleQuery;
 import br.com.uberhidraulica.erp.iam.CurrentUser;
 import br.com.uberhidraulica.erp.productcatalog.ProductCatalogQuery;
 import br.com.uberhidraulica.erp.servicecatalog.ServiceCatalogQuery;
+import br.com.uberhidraulica.erp.workorder.WorkOrderEvents;
 import br.com.uberhidraulica.erp.workorder.WorkOrderQuery;
 import br.com.uberhidraulica.erp.workorder.domain.*;
 import br.com.uberhidraulica.erp.workorder.domain.WorkflowStatus.Stage;
@@ -24,11 +25,14 @@ public class WorkOrderApplicationService implements WorkOrderQuery, br.com.uberh
     private final ServiceCatalogQuery catalog;
     private final ProductCatalogQuery products;
     private final CurrentUser currentUser;
+    private final org.springframework.context.ApplicationEventPublisher events;
     private final Clock clock;
 
     public WorkOrderApplicationService(WorkOrderRepositoryPort repository, CustomerVehicleQuery crm, ServiceCatalogQuery catalog,
-                                       ProductCatalogQuery products, CurrentUser currentUser) {
+                                       ProductCatalogQuery products, CurrentUser currentUser,
+                                       org.springframework.context.ApplicationEventPublisher events) {
         this.repository = repository; this.crm = crm; this.catalog = catalog; this.products = products; this.currentUser = currentUser;
+        this.events = events;
         this.clock = Clock.systemUTC();
     }
 
@@ -122,7 +126,10 @@ public class WorkOrderApplicationService implements WorkOrderQuery, br.com.uberh
     @Transactional
     public WorkOrder finish(UUID id) {
         WorkOrder current = locked(id);
-        return transition(current, current.finish(defaultStatus(Stage.FINALIZADA), currentUser.id().orElse(null), clock.instant()), null, true);
+        WorkOrder finished = transition(current, current.finish(defaultStatus(Stage.FINALIZADA), currentUser.id().orElse(null), clock.instant()), null, true);
+        events.publishEvent(new WorkOrderEvents.Finished(id, finished.products().stream()
+                .map(item -> new WorkOrderEvents.ProductLine(item.id(), item.productId(), item.quantity())).toList()));
+        return finished;
     }
 
     @Transactional
@@ -134,7 +141,9 @@ public class WorkOrderApplicationService implements WorkOrderQuery, br.com.uberh
     @Transactional
     public WorkOrder cancel(UUID id, String reason) {
         WorkOrder current = locked(id);
-        return transition(current, current.cancel(defaultStatus(Stage.CANCELADA), currentUser.id().orElse(null), reason, clock.instant()), reason, true);
+        WorkOrder cancelled = transition(current, current.cancel(defaultStatus(Stage.CANCELADA), currentUser.id().orElse(null), reason, clock.instant()), reason, true);
+        events.publishEvent(new WorkOrderEvents.Cancelled(id));
+        return cancelled;
     }
 
     @Transactional(readOnly = true)
@@ -232,6 +241,8 @@ public class WorkOrderApplicationService implements WorkOrderQuery, br.com.uberh
         var item = new WorkOrder.ProductItem(UUID.randomUUID(), product.id(), product.description(), product.internalCode(),
                 product.unit(), quantity, product.salePrice(), clock.instant());
         repository.addProduct(id, item);
+        // O Estoque decide se baixa agora; recusar por saldo desfaz o lançamento, que está na mesma transação.
+        events.publishEvent(new WorkOrderEvents.ProductLaunched(id, item.id(), product.id(), quantity));
         return get(id);
     }
 

@@ -51,7 +51,7 @@ const schema = z.object({
   internalCode: z.string().trim(),
   category: z.string().trim(),
   type: z.enum(['PART', 'SUPPLY', 'COMPONENT', 'KIT', 'INTERNAL_USE_MATERIAL']),
-  unit: z.enum(['UNIDADE', 'LITRO', 'METRO', 'QUILOGRAMA']),
+  unit: z.enum(['UNIDADE', 'LITRO', 'METRO', 'QUILOGRAMA', 'GALAO_5L', 'BALDE_20L']),
   referenceCost: optionalAmount,
   salePrice: optionalAmount,
   minimumStock: optionalAmount,

@@ -49,8 +49,16 @@ public class ProductCatalogApplicationService implements ProductCatalogQuery {
     @Override
     @Transactional(readOnly = true)
     public Optional<ProductReference> product(UUID id) {
-        return repository.findById(id).map(p -> new ProductReference(p.id(), p.description(), p.internalCode(),
-                p.unit().name(), p.salePrice(), p.active()));
+        return repository.findById(id).map(ProductCatalogApplicationService::reference);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProductReference> products() { return repository.findAll().stream().map(ProductCatalogApplicationService::reference).toList(); }
+
+    private static ProductReference reference(CatalogProduct p) {
+        return new ProductReference(p.id(), p.description(), p.internalCode(), p.unit().name(), p.salePrice(),
+                p.active(), p.category(), p.minimumStock());
     }
 
     /** A unicidade do código interno é garantida pelo índice do PostgreSQL, não por leitura prévia. */

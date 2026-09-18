@@ -47,6 +47,9 @@ class Task0006ProductItemIntegrationTest {
 
     @BeforeEach
     void clean() {
+        // O saldo e a movimentacao referenciam o produto: precisam sair antes do catalogo (TASK-0014).
+        jdbc.update("delete from inventory.stock_movement");
+        jdbc.update("delete from inventory.stock_balance");
         jdbc.update("delete from workorder.work_order_product");
         jdbc.update("delete from workorder.work_order_service");
         jdbc.update("delete from workorder.work_order_status_history");jdbc.update("delete from workorder.work_order");
@@ -70,6 +73,7 @@ class Task0006ProductItemIntegrationTest {
     void launchesProductOnWorkOrderAndKeepsSnapshotAfterCatalogChange() throws Exception {
         String order = openWorkOrder();
         String product = createProduct("Óleo ATF Dexron III", "ATF-D3", "LITRO", "42.90");
+        stockUp(product, "10");
 
         mvc.perform(addProduct(order, product, "2.500")).andExpect(status().isCreated())
                 .andExpect(jsonPath("$.products.length()").value(1))
@@ -98,6 +102,8 @@ class Task0006ProductItemIntegrationTest {
         String order = openWorkOrder();
         String first = createProduct("Retentor", "RET-1", "UNIDADE", "35.00");
         String second = createProduct("Mangueira", null, "METRO", "18.75");
+        stockUp(first, "5");
+        stockUp(second, "5");
 
         mvc.perform(addProduct(order, first, "2")).andExpect(status().isCreated());
         mvc.perform(addProduct(order, second, "1.750")).andExpect(status().isCreated())
@@ -175,6 +181,21 @@ class Task0006ProductItemIntegrationTest {
                         + " quantity, unit_price, added_at)"
                         + " values (?, ?, ?, ?, null, ?, cast(? as numeric), cast(? as numeric), now())",
                 UUID.randomUUID(), orderId, productId, description, unit, quantity, unitPrice);
+    }
+
+    /**
+     * Da saldo ao produto antes do lancamento.
+     *
+     * <p>Desde a TASK-0014 o modo padrao de baixa e {@code ITEM_LAUNCH}: lancar item fisico desconta
+     * o estoque e, sem saldo, o lancamento e recusado com {@code 409 INSUFFICIENT_STOCK}. Estes
+     * testes tratam do retrato do item na OS e da ordem de inclusao, nao de estoque — dar saldo
+     * mantem o assunto deles intacto e ainda exercita a configuracao padrao de producao.</p>
+     */
+    private void stockUp(String product, String quantity) throws Exception {
+        mvc.perform(post("/api/inventory/products/{id}/entries", product).with(user("operator")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"quantity\":\"" + quantity + "\",\"reason\":\"Saldo inicial do teste\"}"))
+                .andExpect(status().isCreated());
     }
 
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder addProduct(String order, String product, String quantity) {

@@ -13,7 +13,10 @@ import java.util.UUID;
 public interface ProductCatalogQuery {
     Optional<ProductReference> product(UUID id);
 
+    /** Catálogo inteiro, para quem precisa cruzar com dados próprios (saldo de estoque, por exemplo). */
+    java.util.List<ProductReference> products();
+
     /** {@code salePrice} é nulo enquanto o produto não tiver preço de venda definido. */
     record ProductReference(UUID id, String description, String internalCode, String unit,
-                            BigDecimal salePrice, boolean active) {}
+                            BigDecimal salePrice, boolean active, String category, BigDecimal minimumStock) {}
 }

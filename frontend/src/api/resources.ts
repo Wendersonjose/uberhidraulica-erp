@@ -1,4 +1,4 @@
-import{api,post,publicApi}from'./http';import type{Customer,Vehicle,Service,WorkOrder,Product,Quote,PublicQuote,PublicQuoteAccess,IssuedQuoteAccess,Page,VehicleListItem,VehicleOwnership,ServiceCategory,VehicleGroup,GroupVehicle,ServicePrice,PriceSuggestion,BoardColumn,StatusChange,StatusUsage,WorkflowStatus,Stage}from'./types';export const workOrdersApi={list:(filter:{customerId?:string;vehicleId?:string}={})=>api<WorkOrder[]>('/api/work-orders'+queryString(filter)),get:(id:string)=>api<WorkOrder>(`/api/work-orders/${id}`),create:(body:unknown)=>post<WorkOrder>('/api/work-orders',body),addService:(id:string,serviceId:string,price?:number)=>post<WorkOrder>(`/api/work-orders/${id}/services`,price===undefined?{serviceId}:{serviceId,price}),addProduct:(id:string,productId:string,quantity:number)=>post<WorkOrder>(`/api/work-orders/${id}/products`,{productId,quantity})}
+import{api,post,publicApi}from'./http';import type{Customer,Vehicle,Service,WorkOrder,Product,Quote,PublicQuote,PublicQuoteAccess,IssuedQuoteAccess,Page,VehicleListItem,VehicleOwnership,ServiceCategory,VehicleGroup,GroupVehicle,ServicePrice,PriceSuggestion,BoardColumn,StatusChange,StatusUsage,WorkflowStatus,Stage,StockLine,StockMovement,WriteOffMode}from'./types';export const workOrdersApi={list:(filter:{customerId?:string;vehicleId?:string}={})=>api<WorkOrder[]>('/api/work-orders'+queryString(filter)),get:(id:string)=>api<WorkOrder>(`/api/work-orders/${id}`),create:(body:unknown)=>post<WorkOrder>('/api/work-orders',body),addService:(id:string,serviceId:string,price?:number)=>post<WorkOrder>(`/api/work-orders/${id}/services`,price===undefined?{serviceId}:{serviceId,price}),addProduct:(id:string,productId:string,quantity:number)=>post<WorkOrder>(`/api/work-orders/${id}/products`,{productId,quantity})}
 
 export const productsApi = {
   list: () => api<Product[]>('/api/products'),
@@ -126,4 +126,20 @@ export const workflowApi = {
   diagnosis: (id: string, diagnosis: string) => put<WorkOrder>(`/api/work-orders/${id}/diagnosis`, { diagnosis }),
   automations: () => api<Record<string, boolean>>('/api/work-order-statuses/automations'),
   setAutomation: (event: string, enabled: boolean) => put<Record<string, boolean>>(`/api/work-order-statuses/automations/${event}`, { enabled }),
+}
+
+export type StockSearchParams = { q?: string; category?: string; active?: boolean; belowMinimum?: boolean; page?: number; size?: number }
+export const inventoryApi = {
+  stock: (params: StockSearchParams) => api<Page<StockLine>>('/api/inventory/stock' + queryString(params)),
+  movements: (productId: string, page = 0, size = 20) =>
+    api<Page<StockMovement>>(`/api/inventory/products/${productId}/movements` + queryString({ page, size })),
+  entry: (productId: string, body: { quantity: number; unitCost: number | null; reason: string | null }) =>
+    post<StockMovement>(`/api/inventory/products/${productId}/entries`, body),
+  exit: (productId: string, body: { quantity: number; reason: string }) =>
+    post<StockMovement>(`/api/inventory/products/${productId}/exits`, body),
+  adjustment: (productId: string, body: { quantity: number; direction: 'IN' | 'OUT'; reason: string }) =>
+    post<StockMovement>(`/api/inventory/products/${productId}/adjustments`, body),
+  reverse: (movementId: string, reason: string) => post<StockMovement>(`/api/inventory/movements/${movementId}/reverse`, { reason }),
+  settings: () => api<Record<string, string>>('/api/inventory/settings'),
+  setWriteOff: (mode: WriteOffMode) => put<Record<string, string>>('/api/inventory/settings/write-off', { mode }),
 }
