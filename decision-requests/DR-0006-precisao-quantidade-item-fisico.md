@@ -68,11 +68,52 @@ Consequências concretas:
 Portanto o que resta aqui é uma decisão **operacional**, não de persistência: qual fracionamento a
 oficina realmente usa ao lançar item físico.
 
+## Evidência acrescentada em 2026-09-18 (TASK-0014)
+
+O estoque passou a existir, e com ele a movimentação — o item 2 da lista de risco acima deixou de ser
+hipotético. Três fatos novos:
+
+1. **O cartão "Entradas e ajustes de estoque" exige explicitamente que "Quantidades respeitam a
+   unidade cadastrada".** Isso confirma que existe uma regra de compatibilidade entre unidade e
+   quantidade, mas continua sem dizer qual é a granularidade. A parte da regra que já está garantida
+   por construção é a ausência de soma entre unidades: toda quantidade — de catálogo, de OS e de
+   movimentação — é expressa na unidade cadastrada do produto, e a API de movimentação não aceita
+   unidade própria. O que falta é exatamente a fração.
+
+2. **Duas unidades novas e inerentemente contáveis entraram no catálogo**: `GALAO_5L` e `BALDE_20L`
+   (`DR-0014`, a partir do cartão "Cadastro de produtos, peças e fluidos"). Meio balde de 20 litros é
+   um caso que a oficina precisa dizer se existe. Isso reforça a Opção C, sem decidi-la.
+
+3. A `DR-0014` chegou a registrar como decidido que "unidades contáveis são inteiras; as demais
+   aceitam três casas" — que é, literalmente, a **Opção C desta DR**. Uma DR de estoque não tem
+   autoridade para fechar a pergunta de outra DR ainda `OPEN`. A revisão `AG-15` de 2026-09-18
+   removeu essa afirmação da `DR-0014` e devolveu a pergunta para cá. O predicado
+   `ProductUnit.countable()`, que existia no código sem nenhum chamador — isto é, a regra estava
+   escrita mas não valia —, foi removido para não sugerir uma validação que não acontece.
+
+**Precisão provisória em vigor, registrada conforme exige esta DR:** o estoque persiste quantidade em
+`NUMERIC(15,3)` e aceita até três casas decimais para **qualquer** unidade, inclusive as contáveis.
+É a mesma escala do item físico da OS (`V7`), escolhida para não criar uma terceira precisão no
+sistema. Nada disso é definitivo.
+
+### O que muda conforme a decisão
+
+- **Opção A** (sempre inteiro): exige validação nova em catálogo, OS e estoque, e converte fluido
+  para a unidade-base. A escala da coluna serve; o que muda é a regra.
+- **Opção B** (três casas sempre): ratifica o que está implementado; nada muda no código.
+- **Opção C** (fração só nas contínuas): exige validação por unidade nos três pontos de entrada de
+  quantidade — catálogo (`minimumStock`), item físico da OS e movimentação de estoque. É a opção
+  recomendada e a única que ainda não pode ser implementada sem a decisão.
+
 ---
 
 ## Impacto e bloqueio
 
 Não bloqueia a TASK-0005. Bloqueia a definição final da quantidade de item físico em OS/orçamento, em compras e em estoque. Enquanto estiver `OPEN`, qualquer Task que introduza quantidade comercial ou movimentação deve registrar explicitamente a precisão adotada e tratá-la como provisória.
+
+Desde a TASK-0014 o bloqueio deixou de ser prospectivo: existe movimentação de estoque em produção
+com precisão provisória, e a `TASK-0014` registra isso como pendência aberta em vez de tratá-la como
+fechada.
 
 ## Pergunta final
 
