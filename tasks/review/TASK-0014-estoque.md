@@ -103,6 +103,25 @@
 
 Reserva e disponível; inventário rotativo; transferência entre locais; custo específico por compra vinculada à OS; permissão separada para ver custo (cartão de perfis e permissões).
 
+## Checkpoint PostgreSQL (2026-09-21)
+
+A última execução registrada antes deste checkpoint (2026-09-18) terminou com todos os testes de
+integração em erro por `Could not find a valid Docker environment` — Docker fechado, não falha
+funcional. Por isso os testes de concorrência ainda não tinham resultado verde registrado.
+
+Execução com Docker (Testcontainers, `postgres:18-alpine`), Docker fechado em seguida:
+
+| Gate | Resultado |
+| --- | --- |
+| `Task0014InventoryIntegrationTest` | 12 testes, 0 falhas, 0 erros — inclui as duas saídas simultâneas, as duas baixas simultâneas do mesmo item, a idempotência da finalização e a atomicidade |
+| `Task0006ProductItemIntegrationTest` (regressão F-05) | 5 testes, 0 falhas |
+| `ModularityTest` | 1 teste, 0 falhas |
+| Suíte backend completa (`mvn test`) | 137 testes, 0 falhas, 0 erros, 0 ignorados |
+| Frontend (`vitest`, `tsc --noEmit`, `oxlint`) | 94 testes verdes; tipos e lint sem apontamentos |
+
+Os gates técnicos para `DONE` estão cumpridos. A Task permanece em `REVIEW` apenas pelas pendências
+de decisão do Owner listadas abaixo e pela ausência de CI remoto.
+
 ## Pendências abertas ao fechar a Task
 
 Nenhuma delas impede a entrega; todas estão registradas como decisão pendente, não como regra:
@@ -121,3 +140,5 @@ Nenhuma delas impede a entrega; todas estão registradas como decisão pendente,
   de modo; acrescentados testes de concorrência, idempotência e atomicidade; `DR-0014` deixou de
   pré-decidir a `DR-0006`; criada a `DR-0016`; removido o predicado `ProductUnit.countable()`, que
   não tinha chamador.
+- 2026-09-21 — Checkpoint PostgreSQL: testes de integração e suíte backend completa executados contra
+  PostgreSQL real (137 testes verdes); resultados registrados acima.
