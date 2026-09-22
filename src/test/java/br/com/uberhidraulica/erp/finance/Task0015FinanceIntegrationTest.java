@@ -777,6 +777,124 @@ class Task0015FinanceIntegrationTest {
         return ids.get(ids.size() - 1);
     }
 
+    // ================================================================ revisão F4: mesma chave, outro conteúdo
+
+    @Test
+    void adjustmentKeyReusedWithDifferentAmountOrReasonIsRefused() throws Exception {
+        String receivable = finishedReceivable("500.00");
+        adjust(receivable, "f4-a", "DISCOUNT", "50.00", "Negociação").andExpect(status().isCreated());
+        adjust(receivable, "f4-a", "DISCOUNT", "50.00", " Negociação ").andExpect(status().isOk())
+                .andExpect(header().string("Idempotent-Replay", "true"));
+        adjust(receivable, "f4-a", "DISCOUNT", "60.00", "Negociação").andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REUSED"));
+        adjust(receivable, "f4-a", "DISCOUNT", "50.00", "Outro motivo").andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REUSED"));
+        adjust(receivable, "f4-a", "SURCHARGE", "50.00", "Negociação").andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REUSED"));
+        assertThat(count("finance.receivable_adjustment")).isEqualTo(1);
+    }
+
+    @Test
+    void dueDateKeyReusedWithSameDateButDifferentReasonIsRefused() throws Exception {
+        String receivable = finishedReceivable("300.00");
+        String date = today().plusDays(10).toString();
+        api.send(owner, put("/api/finance/receivables/" + receivable + "/due-date").header("Idempotency-Key", "f4-d"),
+                "{\"dueDate\":\"" + date + "\",\"reason\":\"Pedido do cliente\"}").andExpect(status().isOk());
+        api.send(owner, put("/api/finance/receivables/" + receivable + "/due-date").header("Idempotency-Key", "f4-d"),
+                "{\"dueDate\":\"" + date + "\",\"reason\":\"Outro motivo\"}").andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REUSED"));
+    }
+
+    @Test
+    void reversalKeysReusedWithSameTargetButDifferentReasonAreRefused() throws Exception {
+        String receivable = finishedReceivable("500.00");
+        String receipt = id(receipt(receivable, "f4-r0", "100.00", method("PIX")).andExpect(status().isCreated()));
+        reverse(receipt, "f4-r1", "Valor errado").andExpect(status().isCreated());
+        reverse(receipt, "f4-r1", "Valor errado").andExpect(status().isOk());
+        reverse(receipt, "f4-r1", "Outro motivo").andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REUSED"));
+
+        String adjustment = adjustmentId(adjust(receivable, "f4-r2", "DISCOUNT", "10.00", "Negociação").andExpect(status().isCreated()));
+        reverseAdjustment(adjustment, "f4-r3", "Lançado errado").andExpect(status().isCreated());
+        reverseAdjustment(adjustment, "f4-r3", "Outro motivo").andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REUSED"));
+
+        String payable = createPayable("f4-r4", "Frete", null, null);
+        String payment = id(payment(payable, "f4-r5", "10.00", method("PIX")).andExpect(status().isCreated()));
+        api.send(owner, post("/api/finance/payments/" + payment + "/reversal").header("Idempotency-Key", "f4-r6"), "{\"reason\":\"Pago errado\"}")
+                .andExpect(status().isCreated());
+        api.send(owner, post("/api/finance/payments/" + payment + "/reversal").header("Idempotency-Key", "f4-r6"), "{\"reason\":\"Outro\"}")
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REUSED"));
+    }
+
+    @Test
+    void receiptAndPaymentKeysReusedWithDifferentNotesAreRefused() throws Exception {
+        String receivable = finishedReceivable("500.00");
+        String pix = method("PIX");
+        String body = "{\"amount\":\"100.00\",\"paymentMethodId\":\"" + pix + "\",\"notes\":\"Sinal\"}";
+        api.send(owner, post("/api/finance/receivables/" + receivable + "/receipts").header("Idempotency-Key", "f4-n1"), body)
+                .andExpect(status().isCreated());
+        api.send(owner, post("/api/finance/receivables/" + receivable + "/receipts").header("Idempotency-Key", "f4-n1"), body)
+                .andExpect(status().isOk());
+        api.send(owner, post("/api/finance/receivables/" + receivable + "/receipts").header("Idempotency-Key", "f4-n1"),
+                body.replace("Sinal", "Parcela final")).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REUSED"));
+
+        String payable = createPayable("f4-n2", "Frete", null, null);
+        String paymentBody = "{\"amount\":\"10.00\",\"paymentMethodId\":\"" + pix + "\",\"notes\":\"Primeira parte\"}";
+        api.send(owner, post("/api/finance/payables/" + payable + "/payments").header("Idempotency-Key", "f4-n3"), paymentBody)
+                .andExpect(status().isCreated());
+        api.send(owner, post("/api/finance/payables/" + payable + "/payments").header("Idempotency-Key", "f4-n3"),
+                paymentBody.replace("Primeira parte", "Segunda parte")).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REUSED"));
+        assertThat(count("finance.receipt")).isEqualTo(1);
+        assertThat(count("finance.payable_payment")).isEqualTo(1);
+    }
+
+    @Test
+    void payableKeyReusedWithDifferentSupplierOrNotesIsRefused() throws Exception {
+        createPayable("f4-p", "Aluguel", "Imobiliária Central", "Setembro");
+        assertThat(createPayableStatus("f4-p", "Aluguel", "Imobiliária Central", "Setembro")).isEqualTo(200);
+        assertThat(createPayableStatus("f4-p", "Aluguel", "Outra imobiliária", "Setembro")).isEqualTo(409);
+        assertThat(createPayableStatus("f4-p", "Aluguel", "Imobiliária Central", "Outubro")).isEqualTo(409);
+        assertThat(createPayableStatus("f4-p", "Aluguel", null, "Setembro")).isEqualTo(409);
+        assertThat(count("finance.payable")).isEqualTo(1);
+    }
+
+    /** Pedido sem data gravado antes da meia-noite; o retry idêntico chega depois dela e ainda é o mesmo pedido. */
+    @Test
+    void retryOfAReceiptWithoutDateAfterMidnightReturnsTheOriginal() throws Exception {
+        String receivable = finishedReceivable("300.00");
+        String body = "{\"amount\":\"100.00\",\"paymentMethodId\":\"" + method("PIX") + "\"}";
+        String receipt = id(api.send(owner, post("/api/finance/receivables/" + receivable + "/receipts").header("Idempotency-Key", "f4-m"), body)
+                .andExpect(status().isCreated()));
+        // Reproduz o commit do primeiro pedido às 23:59 da véspera, no fuso da oficina.
+        jdbc.update("update finance.receipt set received_on = ?, recorded_at = ? where id = ?::uuid", java.sql.Date.valueOf(today().minusDays(1)),
+                java.sql.Timestamp.from(today().minusDays(1).atTime(23, 59).atZone(WORKSHOP).toInstant()), receipt);
+        api.send(owner, post("/api/finance/receivables/" + receivable + "/receipts").header("Idempotency-Key", "f4-m"), body)
+                .andExpect(status().isOk()).andExpect(header().string("Idempotent-Replay", "true")).andExpect(jsonPath("$.id").value(receipt))
+                .andExpect(jsonPath("$.effectiveOn").value(today().minusDays(1).toString()));
+        assertThat(count("finance.receipt")).isEqualTo(1);
+    }
+
+    private String createPayable(String key, String description, String supplier, String notes) throws Exception {
+        return id(api.send(owner, post("/api/finance/payables").header("Idempotency-Key", key), payableBody(description, supplier, notes))
+                .andExpect(status().isCreated()));
+    }
+
+    private int createPayableStatus(String key, String description, String supplier, String notes) throws Exception {
+        return api.send(owner, post("/api/finance/payables").header("Idempotency-Key", key), payableBody(description, supplier, notes))
+                .andReturn().getResponse().getStatus();
+    }
+
+    private String payableCategory;
+
+    private String payableBody(String description, String supplier, String notes) throws Exception {
+        if (payableCategory == null)
+            payableCategory = id(send(post("/api/finance/expense-categories"), "{\"name\":\"Categoria F4\"}").andExpect(status().isCreated()));
+        return "{\"description\":\"" + description + "\"," + (supplier == null ? "" : "\"supplier\":\"" + supplier + "\",")
+                + "\"categoryId\":\"" + payableCategory + "\",\"amount\":\"100.00\",\"dueDate\":\"" + today().plusDays(5) + "\""
+                + (notes == null ? "" : ",\"notes\":\"" + notes + "\"") + "}";
+    }
+
     // ================================================================ apoio
 
     private void insertReceivable(UUID id, UUID order, UUID quote) {

@@ -142,6 +142,44 @@ class FinanceDomainTest {
         assertThat(payable.status(TODAY)).isEqualTo(FinancialStatus.PARCIAL);
     }
 
+    // ------------------------------------------------------------------ revisão F4: identidade do pedido idempotente
+
+    @Test
+    void settlementIdentityIncludesNotesAndReconstructsTheOmittedDateFromTheOriginalInstant() {
+        UUID owner = UUID.randomUUID();
+        UUID method = UUID.randomUUID();
+        // Registrado às 23:59 de 22/09 no fuso da oficina (02:59 UTC de 23/09), sem data informada.
+        Instant beforeMidnight = Instant.parse("2026-09-23T02:59:00Z");
+        Settlement original = new Settlement(UUID.randomUUID(), owner, money("100.00"), method, "PIX", LocalDate.of(2026, 9, 22),
+                "  Sinal da obra ", beforeMidnight, USER, "k", null);
+        assertThat(original.notes()).isEqualTo("Sinal da obra");
+        // Retry da mesma requisição depois da meia-noite, ainda sem data: mesmo pedido.
+        assertThat(original.sameRequest(owner, money("100"), method, null, "Sinal da obra")).isTrue();
+        assertThat(original.sameRequest(owner, money("100.00"), method, LocalDate.of(2026, 9, 22), " Sinal da obra")).isTrue();
+        assertThat(original.sameRequest(owner, money("100.00"), method, LocalDate.of(2026, 9, 23), "Sinal da obra")).isFalse();
+        assertThat(original.sameRequest(owner, money("100.00"), method, null, "Outra observação")).isFalse();
+        assertThat(original.sameRequest(owner, money("100.00"), method, null, null)).isFalse();
+        assertThat(original.sameRequest(owner, money("100.01"), method, null, "Sinal da obra")).isFalse();
+        assertThat(original.sameRequest(owner, money("100.00"), UUID.randomUUID(), null, "Sinal da obra")).isFalse();
+        // Data explícita diferente do dia do registro: um retry sem data não é o mesmo pedido.
+        Settlement backdated = new Settlement(UUID.randomUUID(), owner, money("50.00"), method, "PIX", LocalDate.of(2026, 9, 20),
+                null, beforeMidnight, USER, "k2", null);
+        assertThat(backdated.sameRequest(owner, money("50.00"), method, null, null)).isFalse();
+        assertThat(backdated.sameRequest(owner, money("50.00"), method, LocalDate.of(2026, 9, 20), " ")).isTrue();
+    }
+
+    @Test
+    void payableIdentityIncludesSupplierAndNotes() {
+        UUID category = UUID.randomUUID();
+        Payable payable = new Payable(UUID.randomUUID(), "Aluguel", "Imobiliária", category, "Fixos", money("100.00"), TODAY,
+                "Setembro", NOW, USER, "k", null, null, null, List.of());
+        assertThat(payable.sameRequest(" Aluguel ", "Imobiliária", category, money("100"), TODAY, "Setembro ")).isTrue();
+        assertThat(payable.sameRequest("Aluguel", "Outra imobiliária", category, money("100.00"), TODAY, "Setembro")).isFalse();
+        assertThat(payable.sameRequest("Aluguel", null, category, money("100.00"), TODAY, "Setembro")).isFalse();
+        assertThat(payable.sameRequest("Aluguel", "Imobiliária", category, money("100.00"), TODAY, "Outubro")).isFalse();
+        assertThat(payable.sameRequest("Aluguel", "Imobiliária", category, money("100.00"), TODAY.plusDays(1), "Setembro")).isFalse();
+    }
+
     // ------------------------------------------------------------------ DR-0017: estorno de ajuste
 
     @Test
