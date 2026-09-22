@@ -1,12 +1,13 @@
 # DR-0015 — Financeiro: recebíveis da OS, recebimentos, contas a pagar e fluxo de caixa
 
 - Tipo: `FINANCIAL`
-- Status: `OPEN` — aguardando decisão do Owner; nenhuma linha de código do Financeiro existe
+- Status: `DECIDED`
 - Task: `TASK-0015`
 - Origem: `AG-06 — Financeiro`
 - Responsável pela decisão: proprietário do produto
 - Criada em: `2026-09-17`
 - Reescrita em: `2026-09-22`
+- Decidida em: `2026-09-22`, pelo Owner, após revisão das perguntas F-01 a F-13
 
 ## Por que esta DR foi reescrita
 
@@ -200,30 +201,72 @@ autenticado" é o risco maior.
 
 ---
 
-## 4. O que pode avançar sem esta DR
+## 4. Decisão final do Owner
 
-Somente especificação e o que não fixa regra financeira: estrutura do módulo `finance`, fronteiras
-Modulith, contrato de evento da OS (`WorkOrderEvents.Finished` / `Cancelled`, que já existem), tipos
-monetários conforme a `DR-0007`. **Nenhuma migration, entidade ou endpoint financeiro será criado
-antes da decisão**, porque o esquema depende de F-02, F-03, F-04, F-06 e F-09.
+- Data: `2026-09-22`
+- Decisão: `DECIDED`
 
-## 5. Decisão final do Owner
+| Pergunta | Escolha | Regra decidida |
+| --- | --- | --- |
+| F-01 | **A** | O recebível nasce automaticamente ao **finalizar** a OS, em aberto. Finalizar não é pagar. Entregar não cria outro recebível. |
+| F-02 | **B** | Valor = decisões comerciais **efetivas** do orçamento de faturamento (`billing_quote_id`), congeladas no instante da geração. Nunca o total bruto da OS. |
+| F-03 | **A** | Exatamente um recebível principal por OS, sem parcelas. Recebimento parcial contra o mesmo recebível. Parcelamento de cartão não é parcelamento do recebível. |
+| F-04 | **C** | Configuração `default_receivable_due_days`, inicial `0` (vencimento = data da finalização). Todo recebível tem vencimento. Ajuste individual auditável enquanto aberto. Conta a pagar: `due_date` obrigatório. |
+| F-05 | **A** | Recebimento ou pagamento maior que o saldo é recusado. Sem troco, crédito ou saldo avulso. Parcial permitido em receber e em pagar. |
+| F-06 | — | Desconto e acréscimo financeiros **manuais**, com valor, motivo, usuário, instante e permissão própria. Sem juros, multa ou correção automáticos. Valor ajustado nunca negativo. |
+| F-07 | — | Estorno sempre **total** do lançamento; motivo, usuário e instante do servidor obrigatórios; permissão própria; registro novo; um estorno por lançamento; reabre o saldo. Correção de valor, data ou forma = estorno + novo lançamento. Vale igual para pagamentos. |
+| F-08 | **A** | Com recebimento não estornado, a OS **não** é cancelada (conflito pedindo estorno prévio). Sem recebimentos, cancelar a OS cancela o recebível, preservando o histórico. |
+| F-09 | — | Catálogo configurável de formas (cadastrar, renomear, inativar; nunca excluir a usada; lançamento guarda snapshot do nome). Seed: `DINHEIRO`, `PIX`, `CARTAO_DEBITO`, `CARTAO_CREDITO`, `BOLETO`, `TRANSFERENCIA`, `OUTRO`. Sem parcelas de cartão, NSU, adquirente, taxa, antecipação ou conciliação. |
+| F-10 | **B** | `DINHEIRO` existe no catálogo, mas novo recebimento ou pagamento em dinheiro é recusado com conflito claro até existir sessão de caixa (Task própria). Sem exceção temporária. |
+| F-11 | — | Realizado = lançamentos não estornados pela data efetiva; previsto = saldo aberto pelo vencimento; nunca misturados. Sem competência e sem saldo inicial: a tela mostra **entradas, saídas e variação líquida**. `VENCIDO` derivado (`due_date < hoje` e saldo > 0), sem bloquear o cliente. |
+| F-12 | — | Fornecedor em texto livre. Categoria em lista plana configurável (cadastrar, inativar; nunca excluir com histórico). Fora: subcategoria, centro de custo, rateio, recorrência, parcelas de conta a pagar, contas bancárias, transferências, conciliação, adquirentes, taxas, vínculo contábil, plano de contas, fiscal, comissão, rentabilidade. |
+| F-13 | — | Permissões `FINANCE_VIEW`, `FINANCE_RECEIVE`, `FINANCE_REVERSE`, `FINANCE_ADJUST`, `FINANCE_PAYABLE`, `FINANCE_CONFIG`. `DONO` e `GERENTE_FINANCEIRO`: todas. `GERENTE_ADMINISTRATIVO`: `FINANCE_VIEW` e `FINANCE_RECEIVE`. Exceções individuais do IAM continuam. Toda mutação protegida no backend. |
 
-- Data: `-`
-- Decisão: `PENDENTE`
+### Seleção do orçamento de faturamento (F-02)
 
-| Pergunta | Escolha |
-| --- | --- |
-| F-01 | - |
-| F-02 | - |
-| F-03 | - |
-| F-04 | - |
-| F-05 | - |
-| F-06 | - |
-| F-07 | - |
-| F-08 | - |
-| F-09 | - |
-| F-10 | - |
-| F-11 | - |
-| F-12 | - |
-| F-13 | - |
+- Não vale: último orçamento criado, último apresentado, soma de orçamentos, total bruto como fallback.
+- Um candidato elegível → selecionado automaticamente. Dois ou mais → a finalização exige
+  `billingQuoteId` explícito. Nenhum → conflito de domínio; nada é inventado.
+- O orçamento escolhido tem de pertencer à OS finalizada.
+- Decisão pública e decisão interna valem como evidência comercial, cada uma pelas suas regras.
+- Alteração comercial posterior não reescreve o recebível.
+
+### Invariantes e idempotência exigidas
+
+Nunca: saldo negativo; pagamento maior que o saldo; apagar ou editar recebimento; apagar conta a
+pagar com histórico; receber duas vezes a mesma requisição por retry; dois recebíveis principais para
+a mesma OS; recebível com item rejeitado; recebível com orçamento de outra OS. Proteção por
+constraint/índice único onde o PostgreSQL puder, e por bloqueio de linha onde a invariante atravessa
+tabelas. Duplo clique, retry HTTP, timeout seguido de retry e requisições concorrentes são cobertos em
+geração do recebível, recebimento, estorno e pagamento.
+
+## 5. Interpretações técnicas registradas na formalização
+
+Pontos em que a decisão exigiu leitura do domínio já aprovado. Nenhum cria regra financeira nova;
+cada um é a leitura mais restritiva do que já está decidido.
+
+1. **"Decisão comercial efetiva" de um item** (F-02). Pelo domínio aprovado de aprovação parcial
+   (§§56–58), a condição comercial corrente de um item é a sua versão **apresentada e não substituída**;
+   aprovação de versão anterior "continua como fato histórico" e "não é transferida". Logo, entra no
+   valor somente o item cuja versão corrente tem decisão `APPROVE`. Versão corrente rejeitada ou ainda
+   sem decisão não entra; versão substituída não entra, mesmo que tenha sido aprovada.
+2. **Orçamento elegível** = orçamento da OS com ao menos um item nessas condições. Valor original =
+   soma dos totais já arredondados desses itens (`DR-0007`, soma dos arredondados). Aprovação com total
+   zero (desconto integral) gera recebível de valor zero, que nasce quitado — é o valor aprovado.
+3. **F-08 no fluxo atual.** Pela `DR-0012`, OS finalizada não pode ser cancelada, e o recebível só nasce
+   na finalização. Hoje, portanto, cancelar uma OS nunca encontra recebível. A regra F-08 é implementada
+   e testada no Financeiro mesmo assim, para valer no dia em que o fluxo da OS mudar.
+4. **Conta a pagar com pagamento não estornado** não pode ser cancelada — equivalência direta de F-08,
+   que a instrução de F-07 estende aos pagamentos.
+5. **Data efetiva** de recebimento e pagamento é informada pelo usuário, com hoje como padrão, e não pode
+   ser futura. "Hoje" é a data no fuso `America/Sao_Paulo`, o da oficina (`DR-0009`), também usado no
+   vencimento derivado de `default_receivable_due_days`.
+6. **Ajustes financeiros** só em recebível não cancelado; desconto limitado ao saldo em aberto, para que
+   o saldo nunca fique negativo; mudança de vencimento só com saldo em aberto e motivo obrigatório.
+7. **Correção de ajuste lançado por engano** não está coberta por F-06/F-07 e virou a `DR-0017`
+   (`OPEN`). Até lá, ajuste é imutável e não tem estorno; nada foi inventado.
+
+## 6. O que continua fora
+
+Tudo da seção 2, além de competência, saldo inicial, sessão de caixa (Task própria), parcelas de cartão
+e bloqueio de inadimplente.

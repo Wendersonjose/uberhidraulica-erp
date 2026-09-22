@@ -1,11 +1,12 @@
 # DR-0008 — Vínculo entre item de orçamento e item físico da OS
 
 - Tipo: `ARCHITECTURE`
-- Status: `OPEN`
+- Status: `DECIDED`
 - Task: `TASK-0007`
 - Origem: `AG-02 — Arquitetura` e `AG-04 — Catálogo & Estoque`
 - Responsável pela decisão: proprietário do produto, com AG-02
 - Criada em: `2026-09-15`
+- Decidida em: `2026-09-22`, pelo Owner — pré-requisito da origem comercial do recebível (`DR-0015`)
 
 ## Problema
 
@@ -53,6 +54,43 @@ Uma linha do orçamento sempre corresponde a, no máximo, um item físico lança
 
 ## Decisão final do Owner
 
-- Data: `-`
-- Opção escolhida: `-`
-- Decisão: `PENDENTE`
+- Data: `2026-09-22`
+- Opção escolhida: **A — `quote_item.work_order_product_id`**
+- Decisão: `DECIDED`
+
+Vínculo **opcional** do item comercial com o item físico específico da OS, simétrico ao vínculo que já
+existe com o serviço (`work_order_service_id`). Resposta à pergunta final: uma linha do orçamento
+corresponde a **no máximo um** item físico lançado na OS.
+
+### Regras
+
+1. Um `quote_item` representa no máximo um item físico da OS.
+2. O item físico pertence à **mesma OS** do orçamento.
+3. No mesmo orçamento, o mesmo item físico não é cobrado por dois `quote_item`.
+4. Orçamentos alternativos **diferentes** da mesma OS podem referenciar o mesmo item físico.
+5. Itens de texto livre continuam permitidos.
+6. Vínculos históricos continuam opcionais; dados antigos não são reescritos.
+
+### Proteção no banco (migration nova, `V17`; V1–V16 intactas)
+
+- `workshop.quote_item.work_order_product_id` — `NULL` permitido.
+- `workshop.quote_item.work_order_id` — cópia redundante e intencional da OS do orçamento, preenchida
+  **somente** quando há vínculo físico. Existe para habilitar as FKs compostas abaixo, no mesmo padrão
+  que a `V8` usa contra associação cross-quote. Linhas antigas ficam com `NULL` e não são tocadas.
+- `UNIQUE (id, work_order_id)` em `workshop.quote` e em `workorder.work_order_product`, alvos das FKs.
+- `FOREIGN KEY (quote_id, work_order_id) → workshop.quote(id, work_order_id)`: a OS declarada no item é
+  a OS do orçamento.
+- `FOREIGN KEY (work_order_product_id, work_order_id) → workorder.work_order_product(id, work_order_id)`:
+  o item físico pertence àquela mesma OS. As duas juntas tornam a associação cross-OS impossível no
+  PostgreSQL, mesmo com defeito no Java.
+- `CHECK ((work_order_product_id IS NULL) = (work_order_id IS NULL))`.
+- Índice único parcial `(quote_id, work_order_product_id) WHERE work_order_product_id IS NOT NULL`:
+  o mesmo item físico uma vez por orçamento; orçamentos diferentes podem repeti-lo.
+
+### Aplicação
+
+- O item comercial aceita `workOrderProductId` opcional ao ser criado; o vínculo é da identidade do
+  item (como o de serviço) e não muda entre versões comerciais.
+- Recusas, simétricas às do serviço: item físico inexistente ou de outra OS →
+  `404 WORK_ORDER_PRODUCT_NOT_FOUND`;
+  mesmo item físico duas vezes no orçamento → `409 QUOTE_ITEM_PRODUCT_ALREADY_LINKED`.
