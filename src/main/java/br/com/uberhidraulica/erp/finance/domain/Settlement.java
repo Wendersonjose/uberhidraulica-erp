@@ -37,9 +37,19 @@ public record Settlement(UUID id, UUID ownerId, BigDecimal amount, UUID paymentM
 
     public boolean active() { return reversal == null; }
 
-    /** Mesmo pedido que originou esta liquidação, para a resposta idempotente a um retry. */
-    public boolean sameRequest(UUID otherOwner, BigDecimal otherAmount, UUID otherMethod, LocalDate otherDate) {
+    /**
+     * Mesmo pedido que originou esta liquidação (revisão TASK-0015, F4): dono, valor, forma, data efetiva e
+     * observação normalizada.
+     *
+     * <p>Data omitida significa "hoje" <b>no instante do pedido original</b>, não no instante do retry: ela é
+     * reconstruída de {@code recordedAt} no fuso da oficina. Um retry depois da meia-noite da mesma requisição
+     * sem data continua sendo o mesmo pedido.</p>
+     *
+     * @param requestedDate data informada no retry, ou nulo quando omitida
+     */
+    public boolean sameRequest(UUID otherOwner, BigDecimal otherAmount, UUID otherMethod, LocalDate requestedDate, String otherNotes) {
+        LocalDate intended = requestedDate != null ? requestedDate : LocalDate.ofInstant(recordedAt, Money.WORKSHOP_ZONE);
         return ownerId.equals(otherOwner) && amount.compareTo(otherAmount) == 0 && paymentMethodId.equals(otherMethod)
-                && effectiveOn.equals(otherDate);
+                && effectiveOn.equals(intended) && java.util.Objects.equals(notes, Money.optionalText(otherNotes, "Observação", 500));
     }
 }

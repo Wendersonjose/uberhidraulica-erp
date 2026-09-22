@@ -41,7 +41,7 @@ public class PayableService {
         repository.lockIdempotencyKey(key);
         var previous = repository.findPayableByKey(key);
         if (previous.isPresent()) {
-            if (!previous.get().sameRequest(description, categoryId, value, dueDate)) throw Idempotency.reused();
+            if (!previous.get().sameRequest(description, supplier, categoryId, value, dueDate, notes)) throw Idempotency.reused();
             return new Recorded<>(previous.get(), true);
         }
         ExpenseCategory category = categoryId == null ? null : repository.expenseCategory(categoryId).orElse(null);
@@ -67,7 +67,7 @@ public class PayableService {
         Payable payable = lock(payableId);
         var previous = repository.findPaymentByKey(key);
         if (previous.isPresent()) {
-            if (!previous.get().sameRequest(payableId, value, paymentMethodId, effectiveOn)) throw Idempotency.reused();
+            if (!previous.get().sameRequest(payableId, value, paymentMethodId, paidOn, notes)) throw Idempotency.reused();
             return new Recorded<>(previous.get(), true);
         }
         PaymentMethod method = receivables.usableMethod(paymentMethodId);
@@ -92,7 +92,7 @@ public class PayableService {
         lock(found.ownerId());
         var previous = repository.paymentReversedWithKey(key);
         if (previous.isPresent()) {
-            if (!previous.get().equals(paymentId)) throw Idempotency.reused();
+            if (!previous.get().targetId().equals(paymentId) || !previous.get().reason().equals(normalized)) throw Idempotency.reused();
             return new Recorded<>(repository.findPayment(paymentId).orElseThrow(), true);
         }
         Settlement payment = repository.findPayment(paymentId).orElseThrow();

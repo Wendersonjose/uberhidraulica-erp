@@ -47,19 +47,19 @@ public interface FinanceRepositoryPort {
 
     void insertReceiptReversal(UUID receiptId, Settlement.Reversal reversal);
 
-    /** Recebimento cujo estorno usou esta chave, se houver. */
-    Optional<UUID> receiptReversedWithKey(String idempotencyKey);
+    /** Estorno de recebimento gravado com esta chave, se houver. */
+    Optional<KeyedReversal> receiptReversedWithKey(String idempotencyKey);
 
-    /** Recebível do ajuste que usou esta chave, se houver. */
-    Optional<UUID> receivableAdjustedWithKey(String idempotencyKey);
+    /** Ajuste gravado com esta chave, se houver. */
+    Optional<KeyedAdjustment> receivableAdjustedWithKey(String idempotencyKey);
 
     /** Recebível dono do ajuste, se o ajuste existir. */
     Optional<UUID> receivableOfAdjustment(UUID adjustmentId);
 
     void insertAdjustmentReversal(UUID adjustmentId, Settlement.Reversal reversal);
 
-    /** Ajuste cujo estorno usou esta chave, se houver. */
-    Optional<UUID> adjustmentReversedWithKey(String idempotencyKey);
+    /** Estorno de ajuste gravado com esta chave, se houver. */
+    Optional<KeyedReversal> adjustmentReversedWithKey(String idempotencyKey);
 
     /** Alteração de vencimento gravada com esta chave, se houver. */
     Optional<DueDateChangeRef> dueDateChangedWithKey(String idempotencyKey);
@@ -92,7 +92,7 @@ public interface FinanceRepositoryPort {
 
     void insertPaymentReversal(UUID paymentId, Settlement.Reversal reversal);
 
-    Optional<UUID> paymentReversedWithKey(String idempotencyKey);
+    Optional<KeyedReversal> paymentReversedWithKey(String idempotencyKey);
 
     PageResult<PayableSummary> listPayables(PayableFilter filter, LocalDate today, int page, int size);
 
@@ -143,5 +143,10 @@ public interface FinanceRepositoryPort {
 
     record DailyAmount(LocalDate date, BigDecimal amount) {}
 
-    record DueDateChangeRef(UUID receivableId, LocalDate newDueDate) {}
+    /** Identidade persistida dos pedidos idempotentes (revisão TASK-0015, F4). */
+    record DueDateChangeRef(UUID receivableId, LocalDate newDueDate, String reason) {}
+
+    record KeyedReversal(UUID targetId, String reason) {}
+
+    record KeyedAdjustment(UUID receivableId, Receivable.AdjustmentType type, BigDecimal amount, String reason) {}
 }

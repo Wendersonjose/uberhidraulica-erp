@@ -127,7 +127,7 @@ public class ReceivableService {
         Receivable receivable = lock(receivableId);
         var previous = repository.findReceiptByKey(key);
         if (previous.isPresent()) {
-            if (!previous.get().sameRequest(receivableId, value, paymentMethodId, effectiveOn)) throw Idempotency.reused();
+            if (!previous.get().sameRequest(receivableId, value, paymentMethodId, receivedOn, notes)) throw Idempotency.reused();
             return new Recorded<>(previous.get(), true);
         }
         PaymentMethod method = usableMethod(paymentMethodId);
@@ -152,7 +152,7 @@ public class ReceivableService {
         lock(found.ownerId());
         var previous = repository.receiptReversedWithKey(key);
         if (previous.isPresent()) {
-            if (!previous.get().equals(receiptId)) throw Idempotency.reused();
+            if (!previous.get().targetId().equals(receiptId) || !previous.get().reason().equals(normalized)) throw Idempotency.reused();
             return new Recorded<>(repository.findReceipt(receiptId).orElseThrow(), true);
         }
         Settlement receipt = repository.findReceipt(receiptId).orElseThrow();
@@ -172,11 +172,15 @@ public class ReceivableService {
     public Recorded<Receivable> adjust(UUID receivableId, Receivable.AdjustmentType type, BigDecimal amount, String reason, String idempotencyKey) {
         String key = Idempotency.require(idempotencyKey);
         if (type == null) throw new FinanceException("INVALID_FINANCE_ENTRY", "Tipo de ajuste é obrigatório");
+        BigDecimal value = Money.positive(amount, "Valor do ajuste");
+        String normalized = Money.requiredText(reason, "Motivo do ajuste", 500);
         repository.lockIdempotencyKey(key);
         Receivable receivable = lock(receivableId);
         var previous = repository.receivableAdjustedWithKey(key);
         if (previous.isPresent()) {
-            if (!previous.get().equals(receivableId)) throw Idempotency.reused();
+            var original = previous.get();
+            if (!original.receivableId().equals(receivableId) || original.type() != type || original.amount().compareTo(value) != 0
+                    || !original.reason().equals(normalized)) throw Idempotency.reused();
             return new Recorded<>(receivable, true);
         }
         Receivable.Adjustment adjustment = new Receivable.Adjustment(UUID.randomUUID(), type, amount, reason, clock.instant(),
@@ -197,7 +201,7 @@ public class ReceivableService {
         Receivable receivable = lock(receivableId);
         var previous = repository.adjustmentReversedWithKey(key);
         if (previous.isPresent()) {
-            if (!previous.get().equals(adjustmentId)) throw Idempotency.reused();
+            if (!previous.get().targetId().equals(adjustmentId) || !previous.get().reason().equals(normalized)) throw Idempotency.reused();
             return new Recorded<>(receivable, true);
         }
         receivable.checkAdjustmentReversal(adjustmentId);
@@ -219,8 +223,8 @@ public class ReceivableService {
         Receivable receivable = lock(receivableId);
         var previous = repository.dueDateChangedWithKey(key);
         if (previous.isPresent()) {
-            if (!previous.get().receivableId().equals(receivableId) || !previous.get().newDueDate().equals(newDueDate))
-                throw Idempotency.reused();
+            if (!previous.get().receivableId().equals(receivableId) || !previous.get().newDueDate().equals(newDueDate)
+                    || !previous.get().reason().equals(normalized)) throw Idempotency.reused();
             return new Recorded<>(receivable, true);
         }
         receivable.checkDueDateChange(newDueDate);

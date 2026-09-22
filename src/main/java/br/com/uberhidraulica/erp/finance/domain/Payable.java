@@ -35,10 +35,13 @@ public record Payable(UUID id, String description, String supplier, UUID categor
         return FinancialStatus.derive(cancelled(), paidAmount(), outstandingBalance(), dueDate, today);
     }
 
-    /** Mesmo pedido de criação, para a resposta idempotente a um retry. */
-    public boolean sameRequest(String otherDescription, UUID otherCategory, BigDecimal otherAmount, LocalDate otherDueDate) {
-        return description.equals(Money.requiredText(otherDescription, "Descrição", 200)) && categoryId.equals(otherCategory)
-                && amount.compareTo(otherAmount) == 0 && dueDate.equals(otherDueDate);
+    /** Mesmo pedido de criação: todos os dados persistidos que o usuário informou, normalizados (revisão F4). */
+    public boolean sameRequest(String otherDescription, String otherSupplier, UUID otherCategory, BigDecimal otherAmount,
+                               LocalDate otherDueDate, String otherNotes) {
+        return description.equals(Money.requiredText(otherDescription, "Descrição", 200))
+                && java.util.Objects.equals(supplier, Money.optionalText(otherSupplier, "Fornecedor", 200))
+                && categoryId.equals(otherCategory) && amount.compareTo(otherAmount) == 0 && dueDate.equals(otherDueDate)
+                && java.util.Objects.equals(notes, Money.optionalText(otherNotes, "Observação", 500));
     }
 
     public void checkPayment(BigDecimal value) {

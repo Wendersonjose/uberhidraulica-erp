@@ -184,9 +184,9 @@ class JdbcFinanceRepositoryAdapter implements FinanceRepositoryPort {
     }
 
     @Override
-    public Optional<UUID> receiptReversedWithKey(String key) {
-        return jdbc.query("select receipt_id from finance.receipt_reversal where idempotency_key = :key", Map.of("key", key),
-                (rs, i) -> uuid(rs, "receipt_id")).stream().findFirst();
+    public Optional<KeyedReversal> receiptReversedWithKey(String key) {
+        return jdbc.query("select receipt_id, reason from finance.receipt_reversal where idempotency_key = :key", Map.of("key", key),
+                (rs, i) -> new KeyedReversal(uuid(rs, "receipt_id"), rs.getString("reason"))).stream().findFirst();
     }
 
     /** Totais derivados por recebível, calculados a partir dos lançamentos a cada consulta. */
@@ -224,9 +224,11 @@ class JdbcFinanceRepositoryAdapter implements FinanceRepositoryPort {
     }
 
     @Override
-    public Optional<UUID> receivableAdjustedWithKey(String key) {
-        return jdbc.query("select receivable_id from finance.receivable_adjustment where idempotency_key = :key", Map.of("key", key),
-                (rs, i) -> uuid(rs, "receivable_id")).stream().findFirst();
+    public Optional<KeyedAdjustment> receivableAdjustedWithKey(String key) {
+        return jdbc.query("select receivable_id, adjustment_type, amount, reason from finance.receivable_adjustment where idempotency_key = :key",
+                Map.of("key", key), (rs, i) -> new KeyedAdjustment(uuid(rs, "receivable_id"),
+                        Receivable.AdjustmentType.valueOf(rs.getString("adjustment_type")), rs.getBigDecimal("amount"), rs.getString("reason")))
+                .stream().findFirst();
     }
 
     @Override
@@ -242,15 +244,16 @@ class JdbcFinanceRepositoryAdapter implements FinanceRepositoryPort {
     }
 
     @Override
-    public Optional<UUID> adjustmentReversedWithKey(String key) {
-        return jdbc.query("select adjustment_id from finance.receivable_adjustment_reversal where idempotency_key = :key", Map.of("key", key),
-                (rs, i) -> uuid(rs, "adjustment_id")).stream().findFirst();
+    public Optional<KeyedReversal> adjustmentReversedWithKey(String key) {
+        return jdbc.query("select adjustment_id, reason from finance.receivable_adjustment_reversal where idempotency_key = :key",
+                Map.of("key", key), (rs, i) -> new KeyedReversal(uuid(rs, "adjustment_id"), rs.getString("reason"))).stream().findFirst();
     }
 
     @Override
     public Optional<DueDateChangeRef> dueDateChangedWithKey(String key) {
-        return jdbc.query("select receivable_id, new_due_date from finance.receivable_due_date_change where idempotency_key = :key",
-                Map.of("key", key), (rs, i) -> new DueDateChangeRef(uuid(rs, "receivable_id"), date(rs, "new_due_date"))).stream().findFirst();
+        return jdbc.query("select receivable_id, new_due_date, reason from finance.receivable_due_date_change where idempotency_key = :key",
+                Map.of("key", key), (rs, i) -> new DueDateChangeRef(uuid(rs, "receivable_id"), date(rs, "new_due_date"), rs.getString("reason")))
+                .stream().findFirst();
     }
 
     @Override
@@ -328,9 +331,9 @@ class JdbcFinanceRepositoryAdapter implements FinanceRepositoryPort {
     }
 
     @Override
-    public Optional<UUID> paymentReversedWithKey(String key) {
-        return jdbc.query("select payment_id from finance.payable_payment_reversal where idempotency_key = :key", Map.of("key", key),
-                (rs, i) -> uuid(rs, "payment_id")).stream().findFirst();
+    public Optional<KeyedReversal> paymentReversedWithKey(String key) {
+        return jdbc.query("select payment_id, reason from finance.payable_payment_reversal where idempotency_key = :key", Map.of("key", key),
+                (rs, i) -> new KeyedReversal(uuid(rs, "payment_id"), rs.getString("reason"))).stream().findFirst();
     }
 
     private static final String PAYABLE_TOTALS = "with totals as (select p.*, c.name as category_name,"
