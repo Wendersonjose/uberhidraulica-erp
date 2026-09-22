@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { quotesApi, type QuoteItemInput } from '../../api/resources'
+import { quotesApi, workOrdersApi, type QuoteItemInput } from '../../api/resources'
 import { queryKeys } from '../../api/queryKeys'
 import { AVAILABILITY_LABELS, CONTACT_CHANNELS, QUOTE_DISCOUNT, QUOTE_PRESENT, type DecisionType, type Quote, type QuoteItemRevision } from '../../api/types'
 import { useAuth } from '../../auth/useAuth'
@@ -232,7 +232,10 @@ function InternalDecisionCard({ workOrderId, quote, onDone }: { workOrderId: str
   </section>
 }
 
-type Row = { quoteItemId: string | null; description: string; quantity: string; unitPrice: string; discount: string }
+type Row = {
+  quoteItemId: string | null; workOrderProductId: string | null
+  description: string; quantity: string; unitPrice: string; discount: string
+}
 
 /** Semeia a nova revisão com a última apresentação para que o complemento reaproveite versões. */
 function seedRows(quote: Quote): Row[] {
@@ -245,6 +248,7 @@ function seedRows(quote: Quote): Row[] {
     .filter((found): found is NonNullable<typeof found> => Boolean(found))
     .map(({ item, revision }) => ({
       quoteItemId: item.id,
+      workOrderProductId: item.workOrderProductId ?? null,
       description: revision.description,
       quantity: String(Number(revision.quantity)),
       unitPrice: String(Number(revision.unitPrice)),
@@ -263,6 +267,11 @@ function NewRevisionCard({ workOrderId, quote, canDiscount, onDone, onError }: {
     setRows(seedRows(quote))
   }
 
+  // DR-0008: um item comercial pode cobrar um item físico específico da OS, uma vez por orçamento.
+  const order = useQuery({ queryKey: ['work-orders', workOrderId], queryFn: () => workOrdersApi.get(workOrderId) })
+  const linked = new Set([...quote.items.map(item => item.workOrderProductId), ...rows.map(row => row.workOrderProductId)]
+    .filter(Boolean))
+  const chargeable = (order.data?.products ?? []).filter(product => !linked.has(product.id))
   const create = useMutation({
     mutationFn: (items: QuoteItemInput[]) => quotesApi.createRevision(workOrderId, quote.id, items),
     onSuccess: onDone,
@@ -313,14 +322,26 @@ function NewRevisionCard({ workOrderId, quote, canDiscount, onDone, onError }: {
     </div>)}
     <div className="form-actions">
       <button type="button" className="btn secondary" onClick={() =>
-        setRows([...rows, { quoteItemId: null, description: '', quantity: '1', unitPrice: '', discount: '' }])}>
+        setRows([...rows, { quoteItemId: null, workOrderProductId: null, description: '', quantity: '1', unitPrice: '', discount: '' }])}>
         Adicionar item
       </button>
+      {chargeable.length > 0 && <select aria-label="Cobrar item físico da OS" className="select" value=""
+        onChange={event => {
+          const product = chargeable.find(candidate => candidate.id === event.target.value)
+          if (product) setRows([...rows, {
+            quoteItemId: null, workOrderProductId: product.id, description: product.description,
+            quantity: String(Number(product.quantity)), unitPrice: String(Number(product.unitPrice)), discount: '',
+          }])
+        }}>
+        <option value="">Cobrar item físico da OS…</option>
+        {chargeable.map(product => <option key={product.id} value={product.id}>{product.description}</option>)}
+      </select>}
       <button type="button" className="btn" disabled={!valid || create.isPending} onClick={async () => {
         onError('')
         try {
           await create.mutateAsync(rows.map(row => ({
             quoteItemId: row.quoteItemId,
+            ...(row.quoteItemId === null && row.workOrderProductId ? { workOrderProductId: row.workOrderProductId } : {}),
             description: row.description.trim(),
             quantity: Number(row.quantity),
             unitPrice: Number(row.unitPrice),

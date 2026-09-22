@@ -17,7 +17,12 @@ public interface WorkOrderQuery {
     /** Serviços lançados na OS, na ordem de inclusão, já com o snapshot comercial da OS. */
     List<ServiceItemReference> serviceItems(UUID workOrderId);
 
+    /** Itens físicos lançados na OS, na ordem de inclusão (DR-0008: alvo do vínculo do item comercial). */
+    List<ProductItemReference> productItems(UUID workOrderId);
+
     record WorkOrderReference(UUID id, Long number, UUID customerId, UUID vehicleId) {}
 
     record ServiceItemReference(UUID id, UUID serviceId, String name, String description, BigDecimal basePrice) {}
+
+    record ProductItemReference(UUID id, UUID productId, String description, String unit, BigDecimal quantity, BigDecimal unitPrice) {}
 }

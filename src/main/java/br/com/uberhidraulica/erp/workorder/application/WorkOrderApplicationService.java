@@ -266,6 +266,14 @@ public class WorkOrderApplicationService implements WorkOrderQuery, br.com.uberh
                 .orElse(List.of());
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProductItemReference> productItems(UUID workOrderId) {
+        return repository.findById(workOrderId).map(w -> w.products().stream()
+                        .map(i -> new ProductItemReference(i.id(), i.productId(), i.description(), i.unit(), i.quantity(), i.unitPrice())).toList())
+                .orElse(List.of());
+    }
+
     static WorkOrderException notFound() { return new WorkOrderException("WORK_ORDER_NOT_FOUND", "Ordem de Serviço não encontrada"); }
 
     public record BoardColumn(WorkflowStatus status, List<WorkOrder> orders) {}

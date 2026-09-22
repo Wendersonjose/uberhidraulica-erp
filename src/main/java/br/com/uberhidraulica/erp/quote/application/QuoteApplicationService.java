@@ -39,7 +39,7 @@ public class QuoteApplicationService {
     }
 
     /** Condição comercial pedida para um item em uma nova apresentação. */
-    public record ItemSpec(UUID quoteItemId, UUID workOrderServiceId, String description,
+    public record ItemSpec(UUID quoteItemId, UUID workOrderServiceId, UUID workOrderProductId, String description,
                            BigDecimal quantity, BigDecimal unitPrice, BigDecimal discount, String revisionReason) {}
 
     public static final String DISCOUNT_PERMISSION = "QUOTE_DISCOUNT";
@@ -94,10 +94,12 @@ public class QuoteApplicationService {
 
         List<QuoteRevision.Entry> entries = new ArrayList<>();
         Set<UUID> touchedItems = new HashSet<>();
+        Set<UUID> linkedProducts = new HashSet<>();
+        quote.items().stream().map(QuoteItem::workOrderProductId).filter(java.util.Objects::nonNull).forEach(linkedProducts::add);
         int displayOrder = 1;
         for (ItemSpec spec : specs) {
             UUID itemRevisionId = spec.quoteItemId() == null
-                    ? createItemWithFirstRevision(quote, spec, now, author)
+                    ? createItemWithFirstRevision(quote, spec, linkedProducts, now, author)
                     : revisionForExistingItem(quote, spec, touchedItems, now, author);
             entries.add(new QuoteRevision.Entry(itemRevisionId, displayOrder++));
         }
@@ -105,13 +107,22 @@ public class QuoteApplicationService {
         return get(workOrderId, quoteId);
     }
 
-    private UUID createItemWithFirstRevision(Quote quote, ItemSpec spec, Instant now, UUID author) {
+    private UUID createItemWithFirstRevision(Quote quote, ItemSpec spec, Set<UUID> linkedProducts, Instant now, UUID author) {
         if (spec.workOrderServiceId() != null && workOrders.serviceItems(quote.workOrderId()).stream()
                 .noneMatch(item -> item.id().equals(spec.workOrderServiceId())))
             throw new QuoteException("WORK_ORDER_SERVICE_NOT_FOUND",
                     "Serviço informado não pertence à Ordem de Serviço deste orçamento");
+        if (spec.workOrderProductId() != null) {
+            if (workOrders.productItems(quote.workOrderId()).stream().noneMatch(item -> item.id().equals(spec.workOrderProductId())))
+                throw new QuoteException("WORK_ORDER_PRODUCT_NOT_FOUND",
+                        "Item físico informado não pertence à Ordem de Serviço deste orçamento");
+            // DR-0008: o mesmo item físico uma vez por orçamento. O índice único é a autoridade no caso concorrente.
+            if (!linkedProducts.add(spec.workOrderProductId()))
+                throw new QuoteException("QUOTE_ITEM_PRODUCT_ALREADY_LINKED",
+                        "Este item físico já é cobrado por outro item deste orçamento");
+        }
         QuoteItem item = repository.createItem(
-                QuoteItem.create(quote.id(), spec.workOrderServiceId(), now, author));
+                QuoteItem.create(quote.id(), spec.workOrderServiceId(), spec.workOrderProductId(), now, author));
         return repository.createItemRevision(QuoteItemRevision.first(quote.id(), item.id(), spec.description(),
                 spec.quantity(), spec.unitPrice(), spec.discount(), spec.revisionReason(), now, author)).id();
     }

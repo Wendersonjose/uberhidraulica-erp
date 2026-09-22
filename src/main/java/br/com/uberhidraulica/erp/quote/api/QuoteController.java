@@ -56,7 +56,7 @@ public class QuoteController {
     ResponseEntity<Response> createRevision(@PathVariable UUID workOrderId, @PathVariable UUID quoteId,
                                             @Valid @RequestBody RevisionRequest request) {
         Quote quote = application.createRevision(workOrderId, quoteId, request.items().stream()
-                .map(item -> new QuoteApplicationService.ItemSpec(item.quoteItemId(), item.workOrderServiceId(),
+                .map(item -> new QuoteApplicationService.ItemSpec(item.quoteItemId(), item.workOrderServiceId(), item.workOrderProductId(),
                         item.description(), item.quantity(), item.unitPrice(), item.discount(), item.revisionReason()))
                 .toList());
         return ResponseEntity.status(HttpStatus.CREATED).body(respond(quote));
@@ -152,6 +152,7 @@ public class QuoteController {
      */
     public record ItemRequest(UUID quoteItemId,
                               UUID workOrderServiceId,
+                              UUID workOrderProductId,
                               @NotBlank @Size(max = 1000) String description,
                               @NotNull @DecimalMin(value = "0.0000", inclusive = false) @Digits(integer = 15, fraction = 4) BigDecimal quantity,
                               @NotNull @DecimalMin("0.0000") @Digits(integer = 15, fraction = 4) BigDecimal unitPrice,
@@ -184,10 +185,10 @@ public class QuoteController {
 
     public record EntryResponse(UUID quoteItemRevisionId, int displayOrder) {}
 
-    public record ItemResponse(UUID id, UUID workOrderServiceId, Instant createdAt,
+    public record ItemResponse(UUID id, UUID workOrderServiceId, UUID workOrderProductId, Instant createdAt,
                                List<ItemRevisionResponse> revisions) {
         static ItemResponse from(Quote quote, QuoteItem item, Instant now, java.util.Map<UUID, DecisionType> decisions) {
-            return new ItemResponse(item.id(), item.workOrderServiceId(), item.createdAt(),
+            return new ItemResponse(item.id(), item.workOrderServiceId(), item.workOrderProductId(), item.createdAt(),
                     item.revisions().stream()
                             .map(revision -> ItemRevisionResponse.from(quote, revision, now, decisions.get(revision.id()))).toList());
         }

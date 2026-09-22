@@ -27,7 +27,7 @@ export type QuoteItemRevision = {
   availability: DecisionAvailability; createdAt: string; createdBy: string
 }
 export type QuoteItem = {
-  id: string; workOrderServiceId: string | null; createdAt: string; revisions: QuoteItemRevision[]
+  id: string; workOrderServiceId: string | null; workOrderProductId?: string | null; createdAt: string; revisions: QuoteItemRevision[]
 }
 export type QuoteRevisionEntry = { quoteItemRevisionId: string; displayOrder: number }
 export type QuoteRevision = {

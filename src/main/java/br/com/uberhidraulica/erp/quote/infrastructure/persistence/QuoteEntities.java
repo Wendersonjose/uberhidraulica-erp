@@ -39,6 +39,9 @@ class QuoteItemEntity {
     @Id UUID id;
     @Column(name = "quote_id", nullable = false) UUID quoteId;
     @Column(name = "work_order_service_id") UUID workOrderServiceId;
+    /** Redundante de propósito (V17): habilita as FKs compostas que impedem vínculo físico de outra OS. */
+    @Column(name = "work_order_id") UUID workOrderId;
+    @Column(name = "work_order_product_id") UUID workOrderProductId;
     @Column(name = "created_at", nullable = false) Instant createdAt;
     @Column(name = "created_by", nullable = false) UUID createdBy;
 }

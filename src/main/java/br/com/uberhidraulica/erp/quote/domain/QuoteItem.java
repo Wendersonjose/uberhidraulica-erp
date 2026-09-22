@@ -11,7 +11,7 @@ import java.util.UUID;
  * <p>O item não carrega preço nem descrição: essas condições pertencem às suas versões. Trocar o
  * preço apresentado não cria outro item, cria outra versão do mesmo item.</p>
  */
-public record QuoteItem(UUID id, UUID quoteId, UUID workOrderServiceId, Instant createdAt, UUID createdBy,
+public record QuoteItem(UUID id, UUID quoteId, UUID workOrderServiceId, UUID workOrderProductId, Instant createdAt, UUID createdBy,
                         List<QuoteItemRevision> revisions) {
 
     public QuoteItem {
@@ -21,8 +21,12 @@ public record QuoteItem(UUID id, UUID quoteId, UUID workOrderServiceId, Instant 
                 : revisions.stream().sorted(Comparator.comparingInt(QuoteItemRevision::revisionSequence)).toList();
     }
 
-    public static QuoteItem create(UUID quoteId, UUID workOrderServiceId, Instant now, UUID author) {
-        return new QuoteItem(UUID.randomUUID(), quoteId, workOrderServiceId, now, author, List.of());
+    /**
+     * {@code workOrderProductId} é o item físico específico da OS cobrado por este item (DR-0008): no máximo
+     * um, da mesma OS do orçamento. Como o vínculo de serviço, pertence à identidade e não muda entre versões.
+     */
+    public static QuoteItem create(UUID quoteId, UUID workOrderServiceId, UUID workOrderProductId, Instant now, UUID author) {
+        return new QuoteItem(UUID.randomUUID(), quoteId, workOrderServiceId, workOrderProductId, now, author, List.of());
     }
 
     public QuoteItemRevision latestRevision() {

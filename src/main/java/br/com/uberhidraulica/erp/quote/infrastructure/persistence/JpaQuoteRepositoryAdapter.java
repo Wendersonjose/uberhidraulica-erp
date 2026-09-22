@@ -58,9 +58,19 @@ public class JpaQuoteRepositoryAdapter implements QuoteRepositoryPort {
         entity.id = item.id();
         entity.quoteId = item.quoteId();
         entity.workOrderServiceId = item.workOrderServiceId();
+        entity.workOrderProductId = item.workOrderProductId();
+        if (item.workOrderProductId() != null)
+            entity.workOrderId = quotes.findById(item.quoteId()).orElseThrow().workOrderId;
         entity.createdAt = item.createdAt();
         entity.createdBy = item.createdBy();
-        items.saveAndFlush(entity);
+        try {
+            items.saveAndFlush(entity);
+        } catch (org.springframework.dao.DataIntegrityViolationException violation) {
+            if (String.valueOf(violation.getMostSpecificCause().getMessage()).contains("uq_quote_item_work_order_product"))
+                throw new br.com.uberhidraulica.erp.quote.domain.QuoteException("QUOTE_ITEM_PRODUCT_ALREADY_LINKED",
+                        "Este item físico já é cobrado por outro item deste orçamento");
+            throw violation;
+        }
         return item;
     }
 
@@ -140,7 +150,7 @@ public class JpaQuoteRepositoryAdapter implements QuoteRepositoryPort {
                 .toList();
 
         List<QuoteItem> quoteItems = items.findByQuoteIdOrderByCreatedAtAscIdAsc(entity.id).stream()
-                .map(item -> new QuoteItem(item.id, item.quoteId, item.workOrderServiceId, item.createdAt,
+                .map(item -> new QuoteItem(item.id, item.quoteId, item.workOrderServiceId, item.workOrderProductId, item.createdAt,
                         item.createdBy, revisionsByItem.getOrDefault(item.id, List.of())))
                 .sorted(Comparator
                         .comparingInt((QuoteItem item) -> displayOrder(item, displayOrderByItemRevision))

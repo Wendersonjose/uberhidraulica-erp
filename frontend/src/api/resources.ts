@@ -8,7 +8,7 @@ export const productsApi = {
 }
 
 export type QuoteItemInput = {
-  quoteItemId?: string | null; workOrderServiceId?: string | null
+  quoteItemId?: string | null; workOrderServiceId?: string | null; workOrderProductId?: string | null
   description: string; quantity: number; unitPrice: number; discount?: number
 }
 const quotesBase = (workOrderId: string) => `/api/work-orders/${workOrderId}/quotes`
