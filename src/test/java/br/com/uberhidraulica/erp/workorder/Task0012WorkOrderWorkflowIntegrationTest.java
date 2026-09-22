@@ -240,7 +240,15 @@ class Task0012WorkOrderWorkflowIntegrationTest {
         return send(post("/api/work-orders/" + order + "/status"), "{\"statusId\":\"" + statusId + "\"" + (reason == null ? "" : ",\"reason\":\"" + reason + "\"") + "}");
     }
 
-    private ResultActions action(String order, String action) throws Exception { return send(post("/api/work-orders/" + order + "/" + action), ""); }
+    private ResultActions action(String order, String action) throws Exception {
+        // Finalizar exige FINANCE_BILL (revisão TASK-0015, F3), que só uma sessão real do IAM carrega.
+        if (action.equals("finish")) {
+            var sessions = new br.com.uberhidraulica.erp.support.ApiSessions(mvc, "workflow-operational-password");
+            return sessions.send(sessions.owner("owner-workflow@example.test", "workflow-bootstrap-password"),
+                    post("/api/work-orders/" + order + "/finish"), "");
+        }
+        return send(post("/api/work-orders/" + order + "/" + action), "");
+    }
 
     private ResultActions history(String order) throws Exception {
         return mvc.perform(get("/api/work-orders/{id}/status-history", order).with(user("operator"))).andExpect(status().isOk());

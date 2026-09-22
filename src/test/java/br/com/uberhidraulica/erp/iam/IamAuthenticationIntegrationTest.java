@@ -54,7 +54,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ExtendWith(OutputCaptureExtension.class)
 class IamAuthenticationIntegrationTest {
     private static final java.util.List<String> FINANCE = java.util.List.of("FINANCE_VIEW", "FINANCE_RECEIVE", "FINANCE_REVERSE",
-            "FINANCE_ADJUST", "FINANCE_PAYABLE", "FINANCE_CONFIG");
+            "FINANCE_ADJUST", "FINANCE_PAYABLE", "FINANCE_CONFIG", "FINANCE_BILL");
 
     private static final String OWNER_EMAIL = "owner@example.test";
     private static final String OWNER_PASSWORD = "bootstrap-secret-for-test";
@@ -95,7 +95,7 @@ class IamAuthenticationIntegrationTest {
                 Stream.concat(br.com.uberhidraulica.erp.iam.domain.IamPermissions.ALL.stream(),
                         Stream.concat(Stream.of("QUOTE_PRESENT", "QUOTE_DISCOUNT"), FINANCE.stream())).toList());
         assertThat(authorizations.profilePermissions(ProfileCode.GERENTE_ADMINISTRATIVO))
-                .containsExactlyInAnyOrder("QUOTE_PRESENT", "QUOTE_DISCOUNT", "FINANCE_VIEW", "FINANCE_RECEIVE");
+                .containsExactlyInAnyOrder("QUOTE_PRESENT", "QUOTE_DISCOUNT", "FINANCE_VIEW", "FINANCE_RECEIVE", "FINANCE_BILL");
         // DR-0015, F-13: o Gerente Financeiro recebe todas as permissões do Financeiro e nada mais por padrão.
         assertThat(authorizations.profilePermissions(ProfileCode.GERENTE_FINANCEIRO)).containsExactlyInAnyOrderElementsOf(FINANCE);
         assertThat(jdbc.queryForObject("select count(*) from iam.audit_event where action='FIRST_OWNER_BOOTSTRAPPED'", Long.class)).isEqualTo(1);

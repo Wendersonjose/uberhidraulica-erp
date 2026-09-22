@@ -70,6 +70,7 @@ class Task0015FinanceIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired ReceivableService receivables;
     @Autowired TransactionTemplate transactions;
+    @Autowired javax.sql.DataSource dataSource;
 
     private ApiSessions api;
     private Session owner;
@@ -202,10 +203,12 @@ class Task0015FinanceIntegrationTest {
         String receivable = finishedReceivable("300.00");
         api.read(owner, "/api/finance/receivables/" + receivable).andExpect(jsonPath("$.dueDate").value(today().plusDays(10).toString()));
 
-        send(put("/api/finance/receivables/" + receivable + "/due-date"), "{\"dueDate\":\"" + today().minusDays(3) + "\",\"reason\":\"Acordo\"}")
+        api.send(owner, put("/api/finance/receivables/" + receivable + "/due-date").header("Idempotency-Key", "dd-a"),
+                        "{\"dueDate\":\"" + today().minusDays(3) + "\",\"reason\":\"Acordo\"}")
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("VENCIDO"))
                 .andExpect(jsonPath("$.dueDateChanges[0].previousDueDate").value(today().plusDays(10).toString()));
-        send(put("/api/finance/receivables/" + receivable + "/due-date"), "{\"dueDate\":\"" + today() + "\"}").andExpect(status().isBadRequest());
+        api.send(owner, put("/api/finance/receivables/" + receivable + "/due-date").header("Idempotency-Key", "dd-b"),
+                "{\"dueDate\":\"" + today() + "\"}").andExpect(status().isBadRequest());
     }
 
     // ================================================================ recebimento, estorno e ajustes
@@ -359,7 +362,7 @@ class Task0015FinanceIntegrationTest {
 
     @Test
     void paymentMethodsAreConfigurableAndReceiptsKeepTheNameUsed() throws Exception {
-        String custom = id(send(post("/api/finance/payment-methods"), "{\"name\":\"Crédito da casa\"}").andExpect(status().isCreated())
+        String custom = id(send(post("/api/finance/payment-methods"), "{\"name\":\"Crédito da casa\",\"cashSessionRequired\":false}").andExpect(status().isCreated())
                 .andExpect(jsonPath("$.code").value("CREDITO_DA_CASA")).andExpect(jsonPath("$.cashSessionRequired").value(false)));
         String receivable = finishedReceivable("100.00");
         receipt(receivable, "m-1", "10.00", custom).andExpect(status().isCreated());
@@ -445,6 +448,333 @@ class Task0015FinanceIntegrationTest {
         assertThatThrownBy(() -> jdbc.update("insert into finance.receipt (id, receivable_id, amount, payment_method_id, payment_method_name,"
                 + " received_on, recorded_at, recorded_by, idempotency_key) values (?, ?::uuid, 0, ?::uuid, 'PIX', current_date, now(), ?, 'z')",
                 UUID.randomUUID(), receivable, method("PIX"), UUID.randomUUID())).hasMessageContaining("ck_receipt_amount");
+    }
+
+    // ================================================================ revisão externa — F1: base comercial serializada
+
+    /** Transação de outra conexão, mantida aberta para simular uma operação concorrente no meio do caminho. */
+    private java.sql.Connection openConcurrentTransaction() throws Exception {
+        java.sql.Connection connection = dataSource.getConnection();
+        connection.setAutoCommit(false);
+        return connection;
+    }
+
+    private static void execute(java.sql.Connection connection, String sql, Object... args) throws Exception {
+        try (var statement = connection.prepareStatement(sql)) {
+            for (int i = 0; i < args.length; i++) statement.setObject(i + 1, args[i]);
+            statement.execute();
+        }
+    }
+
+    /** Dispara a finalização em outra thread; o resultado só chega depois que os bloqueios forem liberados. */
+    private Future<Integer> finishInBackground(ExecutorService pool, String order, String billingQuote) {
+        return pool.submit(() -> finish(order, billingQuote).andReturn().getResponse().getStatus());
+    }
+
+    private static void assertStillWaiting(Future<?> future) {
+        assertThatThrownBy(() -> future.get(1500, java.util.concurrent.TimeUnit.MILLISECONDS))
+                .isInstanceOf(java.util.concurrent.TimeoutException.class);
+    }
+
+    /** Revisão de A-v2 em rascunho, com o mesmo item comercial de A-v1 e outro preço; devolve o id da revisão. */
+    private String draftNextVersion(String order, String quote, String description, String price) throws Exception {
+        String content = api.read(owner, "/api/work-orders/" + order + "/quotes/" + quote).andReturn().getResponse().getContentAsString();
+        String itemId = JsonPath.<List<String>>read(content, "$.items[?(@.revisions[0].description == '" + description + "')].id").get(0);
+        String draft = revision(order, quote, "{\"quoteItemId\":\"" + itemId + "\",\"description\":\"" + description
+                + " v2\",\"quantity\":\"1\",\"unitPrice\":\"" + price + "\"}").andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        List<String> revisions = JsonPath.read(draft, "$.revisions[*].id");
+        return revisions.get(revisions.size() - 1);
+    }
+
+    @Test
+    void finalizationWaitsForAConcurrentPresentationAndNeverBillsTheSupersededVersion() throws Exception {
+        String order = openWorkOrder();
+        String quote = approvedQuote(order, "Retífica da bomba", "1000.00");
+        String nextRevision = draftNextVersion(order, quote, "Retífica da bomba", "1300.00");
+        start(order);
+
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try (java.sql.Connection presentation = openConcurrentTransaction()) {
+            // T2: apresenta A-v2 (mesmas escritas da apresentação real: versão do orçamento + revisão apresentada), sem commit.
+            execute(presentation, "update workshop.quote set version = version + 1 where id = ?::uuid", quote);
+            execute(presentation, "update workshop.quote_revision set status = 'PRESENTED', presented_at = now(),"
+                    + " valid_until = now() + interval '7 days', version = version + 1 where id = ?::uuid", nextRevision);
+
+            // T1: finalização carregaria A-v1 como corrente e aprovada, mas precisa esperar o bloqueio do orçamento.
+            Future<Integer> finishing = finishInBackground(pool, order, null);
+            assertStillWaiting(finishing);
+            presentation.commit();
+
+            // Depois do commit de T2, a finalização relê: A-v1 foi substituída e A-v2 não tem decisão.
+            assertThat(finishing.get(30, java.util.concurrent.TimeUnit.SECONDS)).isEqualTo(409);
+        } finally {
+            pool.shutdownNow();
+        }
+        assertThat(count("finance.receivable")).isZero();
+        assertThat(orderStatus(order)).isEqualTo("EM_EXECUCAO");
+    }
+
+    @Test
+    void presentationWaitsWhileAFinalizationHoldsTheCommercialBasis() throws Exception {
+        String order = openWorkOrder();
+        String quote = approvedQuote(order, "Troca de vedação", "500.00");
+        String nextRevision = draftNextVersion(order, quote, "Troca de vedação", "650.00");
+
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try (java.sql.Connection finalization = openConcurrentTransaction()) {
+            // T1: mesmo bloqueio que billingBasisForFinalization toma e mantém até o commit do recebível.
+            execute(finalization, "select id from workshop.quote where work_order_id = ?::uuid order by id for update", order);
+            Future<Integer> presenting = pool.submit(() -> send(post("/api/work-orders/" + order + "/quotes/" + quote + "/revisions/"
+                    + nextRevision + "/present"), "").andReturn().getResponse().getStatus());
+            assertStillWaiting(presenting);
+            finalization.commit();
+            assertThat(presenting.get(30, java.util.concurrent.TimeUnit.SECONDS)).isEqualTo(200);
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void finalizationWaitsForAConcurrentDecisionAndBillsWhatWasDecided() throws Exception {
+        String order = openWorkOrder();
+        String quote = openQuote(order);
+        String revision = presentedRevision(order, quote, item("Diagnóstico", "200.00") + "," + item("Troca de mangueira", "300.00"));
+        decide(order, quote, revision, "Diagnóstico", "APPROVE");
+        start(order);
+        String content = api.read(owner, "/api/work-orders/" + order + "/quotes/" + quote).andReturn().getResponse().getContentAsString();
+        String pending = JsonPath.<List<String>>read(content, "$.items[*].revisions[?(@.description == 'Troca de mangueira')].id").get(0);
+
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try (java.sql.Connection decision = openConcurrentTransaction()) {
+            approveInTransaction(decision, quote, revision, pending);
+            Future<Integer> finishing = finishInBackground(pool, order, null);
+            assertStillWaiting(finishing);
+            decision.commit();
+            assertThat(finishing.get(30, java.util.concurrent.TimeUnit.SECONDS)).isEqualTo(200);
+        } finally {
+            pool.shutdownNow();
+        }
+        api.read(owner, "/api/finance/work-orders/" + order + "/receivable").andExpect(jsonPath("$.originalAmount").value(500.00))
+                .andExpect(jsonPath("$.lines.length()").value(2));
+    }
+
+    @Test
+    void aSecondCandidateApprovedConcurrentlyForcesTheExplicitChoice() throws Exception {
+        String order = openWorkOrder();
+        approvedQuote(order, "Plano A", "800.00");
+        String planB = openQuote(order);
+        String revisionB = presentedRevision(order, planB, item("Plano B", "600.00"));
+        start(order);
+        String content = api.read(owner, "/api/work-orders/" + order + "/quotes/" + planB).andReturn().getResponse().getContentAsString();
+        String itemB = JsonPath.read(content, "$.items[0].revisions[0].id");
+
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try (java.sql.Connection decision = openConcurrentTransaction()) {
+            approveInTransaction(decision, planB, revisionB, itemB);
+            Future<String> finishing = pool.submit(() -> finish(order, null).andReturn().getResponse().getContentAsString());
+            assertThatThrownBy(() -> finishing.get(1500, java.util.concurrent.TimeUnit.MILLISECONDS))
+                    .isInstanceOf(java.util.concurrent.TimeoutException.class);
+            decision.commit();
+            assertThat((String) JsonPath.read(finishing.get(30, java.util.concurrent.TimeUnit.SECONDS), "$.code"))
+                    .isEqualTo("BILLING_QUOTE_SELECTION_REQUIRED");
+        } finally {
+            pool.shutdownNow();
+        }
+        assertThat(count("finance.receivable")).isZero();
+    }
+
+    @Test
+    void realConcurrentFinalizationAndPresentationNeverDeadlockOrLeakAServerError() throws Exception {
+        for (int round = 0; round < 4; round++) {
+            String order = openWorkOrder();
+            String quote = approvedQuote(order, "Serviço " + round, "400.00");
+            String nextRevision = draftNextVersion(order, quote, "Serviço " + round, "450.00");
+            start(order);
+            var results = inParallel(2, index -> index == 0
+                    ? finish(order, null).andReturn().getResponse().getStatus()
+                    : send(post("/api/work-orders/" + order + "/quotes/" + quote + "/revisions/" + nextRevision + "/present"), "")
+                            .andReturn().getResponse().getStatus());
+            assertThat(results).allMatch(code -> code == 200 || code == 409);
+            // Com recebível, ele nunca cobra A-v2 (sem decisão); se a apresentação venceu, não há recebível.
+            if (results.get(0) == 200)
+                api.read(owner, "/api/finance/work-orders/" + order + "/receivable").andExpect(jsonPath("$.originalAmount").value(400.00));
+        }
+    }
+
+    private void approveInTransaction(java.sql.Connection connection, String quote, String revision, String itemRevision) throws Exception {
+        UUID submission = UUID.randomUUID();
+        execute(connection, "update workshop.quote set version = version + 1 where id = ?::uuid", quote);
+        execute(connection, "insert into workshop.quote_decision_submission (id, quote_revision_id, quote_id, request_id, explicit_acceptance,"
+                + " occurred_at, created_at, channel, contact_channel, recorded_by) values (?, ?::uuid, ?::uuid, ?, true, now(), now(), 'INTERNAL',"
+                + " 'TELEFONE', ?)", submission, revision, quote, UUID.randomUUID().toString(), UUID.randomUUID());
+        execute(connection, "insert into workshop.quote_decision (id, submission_id, quote_revision_id, quote_item_revision_id, quote_id,"
+                + " decision_type, occurred_at) values (?, ?, ?::uuid, ?::uuid, ?::uuid, 'APPROVE', now())",
+                UUID.randomUUID(), submission, revision, itemRevision, quote);
+    }
+
+    // ================================================================ revisão externa — F2: forma que movimenta dinheiro
+
+    @Test
+    void customPaymentMethodThatMovesPhysicalCashIsRefusedAndItsNatureNeverChanges() throws Exception {
+        send(post("/api/finance/payment-methods"), "{\"name\":\"Sem classificação\"}").andExpect(status().isBadRequest());
+        String cash = id(send(post("/api/finance/payment-methods"), "{\"name\":\"Dinheiro balcão\",\"cashSessionRequired\":true}")
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.cashSessionRequired").value(true)));
+        String receivable = finishedReceivable("100.00");
+        receipt(receivable, "cash-1", "10.00", cash).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CASH_SESSION_REQUIRED"));
+
+        send(put("/api/finance/payment-methods/" + cash), "{\"name\":\"Balcão\",\"active\":false}").andExpect(status().isOk())
+                .andExpect(jsonPath("$.cashSessionRequired").value(true));
+        send(put("/api/finance/payment-methods/" + cash), "{\"name\":\"Balcão\",\"active\":true,\"cashSessionRequired\":false}")
+                .andExpect(status().isOk()).andExpect(jsonPath("$.cashSessionRequired").value(true));
+        receipt(receivable, "cash-2", "10.00", cash).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CASH_SESSION_REQUIRED"));
+        payment(id(api.send(owner, post("/api/finance/payables").header("Idempotency-Key", "cash-3"), "{\"description\":\"Frete\",\"categoryId\":\""
+                + id(send(post("/api/finance/expense-categories"), "{\"name\":\"Fretes\"}").andExpect(status().isCreated()))
+                + "\",\"amount\":\"50.00\",\"dueDate\":\"" + today() + "\"}").andExpect(status().isCreated())), "cash-4", "10.00", cash)
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CASH_SESSION_REQUIRED"));
+
+        assertThatThrownBy(() -> jdbc.update("update finance.payment_method set cash_session_required = false where id = ?::uuid", cash))
+                .hasMessageContaining("cash_session_required_immutable");
+    }
+
+    // ================================================================ revisão externa — F3: FINANCE_BILL
+
+    @Test
+    void finishingWithoutFinanceBillIsForbiddenAndNothingIsBilled() throws Exception {
+        String order = openWorkOrder();
+        approvedQuote(order, "Serviço", "250.00");
+        start(order);
+        Session denied = api.user(owner, "no-bill@example.test", "GERENTE_ADMINISTRATIVO");
+        UUID deniedId = jdbc.queryForObject("select id from iam.app_user where email = 'no-bill@example.test'", UUID.class);
+        send(put("/api/iam/users/" + deniedId + "/permission-exceptions/FINANCE_BILL"), "{\"resolution\":\"DENY\"}").andExpect(status().isNoContent());
+
+        api.send(denied, post("/api/work-orders/" + order + "/finish"), "").andExpect(status().isForbidden());
+        // Usuário autenticado sem identidade do IAM também não contorna a regra.
+        mvc.perform(post("/api/work-orders/" + order + "/finish")
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user("operator"))
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                .andExpect(status().isForbidden());
+        // Nem o caminho interno que gera o recebível aceita ator sem permissão, ou ator nenhum.
+        assertThatThrownBy(() -> transactions.executeWithoutResult(tx -> receivables.generateForFinishedWorkOrder(
+                UUID.fromString(order), null, java.time.Instant.now(), deniedId))).extracting("code").isEqualTo("FINANCE_BILL_REQUIRED");
+        assertThatThrownBy(() -> transactions.executeWithoutResult(tx -> receivables.generateForFinishedWorkOrder(
+                UUID.fromString(order), null, java.time.Instant.now(), null))).extracting("code").isEqualTo("FINANCE_BILL_REQUIRED");
+
+        assertThat(orderStatus(order)).isEqualTo("EM_EXECUCAO");
+        assertThat(count("finance.receivable")).isZero();
+
+        Session allowed = api.user(owner, "with-bill@example.test", "GERENTE_ADMINISTRATIVO");
+        api.send(allowed, post("/api/work-orders/" + order + "/finish"), "").andExpect(status().isOk()).andExpect(jsonPath("$.status").value("FINALIZADA"));
+        assertThat(count("finance.receivable")).isEqualTo(1);
+    }
+
+    // ================================================================ DR-0017: estorno de ajuste
+
+    @Test
+    void adjustmentReversalIsTotalUniqueIdempotentAndKeepsTheOriginal() throws Exception {
+        String receivable = finishedReceivable("1000.00");
+        String discount = adjustmentId(adjust(receivable, "ad-1", "DISCOUNT", "100.00", "Negociação").andExpect(status().isCreated()));
+        reverseAdjustment(discount, null, "Lançado errado").andExpect(status().isBadRequest());
+        reverseAdjustment(discount, "adr-1", "Lançado errado").andExpect(status().isCreated())
+                .andExpect(jsonPath("$.discountAmount").value(0)).andExpect(jsonPath("$.outstandingBalance").value(1000.00))
+                .andExpect(jsonPath("$.adjustments[0].amount").value(100.00)).andExpect(jsonPath("$.adjustments[0].reversed").value(true))
+                .andExpect(jsonPath("$.adjustments[0].reversal.reason").value("Lançado errado"));
+        reverseAdjustment(discount, "adr-1", "Lançado errado").andExpect(status().isOk()).andExpect(header().string("Idempotent-Replay", "true"));
+        reverseAdjustment(discount, "adr-2", "De novo").andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ADJUSTMENT_ALREADY_REVERSED"));
+        assertThat(count("finance.receivable_adjustment_reversal")).isEqualTo(1);
+        assertThat(count("finance.receivable_adjustment")).isEqualTo(1);
+
+        Session admin = api.user(owner, "admin-adjust@example.test", "GERENTE_ADMINISTRATIVO");
+        String other = adjustmentId(adjust(receivable, "ad-2", "DISCOUNT", "10.00", "Outro").andExpect(status().isCreated()));
+        api.send(admin, post("/api/finance/adjustments/" + other + "/reversal").header("Idempotency-Key", "adr-3"), "{\"reason\":\"x\"}")
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void surchargeReversalThatWouldLeaveReceiptsAboveTheAdjustedAmountIsRefused() throws Exception {
+        String receivable = finishedReceivable("500.00");
+        String surcharge = adjustmentId(adjust(receivable, "su-1", "SURCHARGE", "100.00", "Frete").andExpect(status().isCreated()));
+        String receipt = id(receipt(receivable, "su-2", "550.00", method("PIX")).andExpect(status().isCreated()));
+        reverseAdjustment(surcharge, "su-3", "Frete cobrado por engano").andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ADJUSTMENT_REVERSAL_EXCEEDS_RECEIVED"));
+        reverse(receipt, "su-4", "Recebido a maior").andExpect(status().isCreated());
+        receipt(receivable, "su-5", "500.00", method("PIX")).andExpect(status().isCreated());
+        reverseAdjustment(surcharge, "su-6", "Frete cobrado por engano").andExpect(status().isCreated())
+                .andExpect(jsonPath("$.adjustedAmount").value(500.00)).andExpect(jsonPath("$.status").value("QUITADO"));
+    }
+
+    @Test
+    void concurrentReversalsOfTheSameAdjustmentReverseOnce() throws Exception {
+        String receivable = finishedReceivable("300.00");
+        String discount = adjustmentId(adjust(receivable, "cc-1", "DISCOUNT", "50.00", "Negociação").andExpect(status().isCreated()));
+        var results = inParallel(2, index -> reverseAdjustment(discount, "cc-r-" + index, "Duplicado").andReturn().getResponse().getStatus());
+        assertThat(results).containsExactlyInAnyOrder(201, 409);
+        var retries = inParallel(3, index -> reverseAdjustment(discount, "cc-same", "Duplicado").andReturn().getResponse().getStatus());
+        assertThat(retries).allMatch(code -> code == 409);
+        assertThat(count("finance.receivable_adjustment_reversal")).isEqualTo(1);
+    }
+
+    // ================================================================ hardening: vencimento idempotente
+
+    @Test
+    void dueDateChangeRetryReturnsTheAppliedResultAndReusedKeyIsRefused() throws Exception {
+        String receivable = finishedReceivable("300.00");
+        String body = "{\"dueDate\":\"" + today().plusDays(15) + "\",\"reason\":\"Pedido do cliente\"}";
+        api.send(owner, put("/api/finance/receivables/" + receivable + "/due-date"), body).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REQUIRED"));
+        api.send(owner, put("/api/finance/receivables/" + receivable + "/due-date").header("Idempotency-Key", "due-1"), body)
+                .andExpect(status().isOk()).andExpect(header().string("Idempotent-Replay", "false"));
+        api.send(owner, put("/api/finance/receivables/" + receivable + "/due-date").header("Idempotency-Key", "due-1"), body)
+                .andExpect(status().isOk()).andExpect(header().string("Idempotent-Replay", "true"))
+                .andExpect(jsonPath("$.dueDate").value(today().plusDays(15).toString()))
+                .andExpect(jsonPath("$.dueDateChanges.length()").value(1));
+        api.send(owner, put("/api/finance/receivables/" + receivable + "/due-date").header("Idempotency-Key", "due-1"),
+                body.replace(today().plusDays(15).toString(), today().plusDays(20).toString()))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REUSED"));
+        assertThat(count("finance.receivable_due_date_change")).isEqualTo(1);
+    }
+
+    // ================================================================ recebível de valor zero (ratificado)
+
+    @Test
+    void approvedZeroTotalCreatesASettledReceivableWithoutArtificialReceiptOrCashFlow() throws Exception {
+        String receivable = finishedReceivable("0.00");
+        api.read(owner, "/api/finance/receivables/" + receivable).andExpect(jsonPath("$.status").value("QUITADO"))
+                .andExpect(jsonPath("$.originalAmount").value(0)).andExpect(jsonPath("$.lines.length()").value(1));
+        assertThat(count("finance.receipt")).isZero();
+        api.read(owner, "/api/finance/cash-flow?from=" + today() + "&to=" + today())
+                .andExpect(jsonPath("$.realized.inflows").value(0)).andExpect(jsonPath("$.forecast.inflows").value(0));
+    }
+
+    // ================================================================ constraints V19
+
+    @Test
+    void v19GuardsSingleAdjustmentReversalAndUniqueDueDateKeys() throws Exception {
+        String receivable = finishedReceivable("200.00");
+        UUID adjustment = UUID.fromString(adjustmentId(adjust(receivable, "v19-1", "DISCOUNT", "10.00", "Negociação").andExpect(status().isCreated())));
+        jdbc.update("insert into finance.receivable_adjustment_reversal (id, adjustment_id, reason, reversed_at, reversed_by, idempotency_key)"
+                + " values (?, ?, 'x', now(), ?, 'v19-a')", UUID.randomUUID(), adjustment, UUID.randomUUID());
+        assertThatThrownBy(() -> jdbc.update("insert into finance.receivable_adjustment_reversal (id, adjustment_id, reason, reversed_at,"
+                + " reversed_by, idempotency_key) values (?, ?, 'x', now(), ?, 'v19-b')", UUID.randomUUID(), adjustment, UUID.randomUUID()))
+                .hasMessageContaining("uq_receivable_adjustment_reversal_adjustment");
+        api.send(owner, put("/api/finance/receivables/" + receivable + "/due-date").header("Idempotency-Key", "v19-due"),
+                "{\"dueDate\":\"" + today().plusDays(3) + "\",\"reason\":\"Acordo\"}").andExpect(status().isOk());
+        assertThatThrownBy(() -> jdbc.update("insert into finance.receivable_due_date_change (id, receivable_id, previous_due_date, new_due_date,"
+                + " reason, changed_at, changed_by, idempotency_key) values (?, ?::uuid, current_date, current_date + 9, 'x', now(), ?, 'v19-due')",
+                UUID.randomUUID(), receivable, UUID.randomUUID())).hasMessageContaining("uq_receivable_due_date_change_idempotency_key");
+        assertThatThrownBy(() -> jdbc.update("insert into finance.receivable_due_date_change (id, receivable_id, previous_due_date, new_due_date,"
+                + " reason, changed_at, changed_by) values (?, ?::uuid, current_date, current_date + 9, 'x', now(), ?)",
+                UUID.randomUUID(), receivable, UUID.randomUUID())).hasMessageContaining("idempotency_key");
+    }
+
+    private ResultActions reverseAdjustment(String adjustment, String key, String reason) throws Exception {
+        var request = post("/api/finance/adjustments/" + adjustment + "/reversal");
+        if (key != null) request.header("Idempotency-Key", key);
+        return api.send(owner, request, "{\"reason\":\"" + reason + "\"}");
+    }
+
+    private static String adjustmentId(ResultActions result) throws Exception {
+        List<String> ids = JsonPath.read(result.andReturn().getResponse().getContentAsString(), "$.adjustments[*].id");
+        return ids.get(ids.size() - 1);
     }
 
     // ================================================================ apoio

@@ -54,6 +54,9 @@ class Task0014InventoryIntegrationTest {
     @Autowired br.com.uberhidraulica.erp.inventory.application.InventoryApplicationService inventory;
 
     private int sequence;
+    /** Finalizar exige FINANCE_BILL (revisão TASK-0015, F3): só uma sessão real do IAM tem permissão efetiva. */
+    private br.com.uberhidraulica.erp.support.ApiSessions.Session owner;
+    private br.com.uberhidraulica.erp.support.ApiSessions sessions;
 
     @BeforeEach
     void clean() {
@@ -69,6 +72,13 @@ class Task0014InventoryIntegrationTest {
         jdbc.update("delete from crm.customer");
         jdbc.update("delete from productcatalog.product");
         jdbc.update("update inventory.settings set value = 'ITEM_LAUNCH' where key = 'WORK_ORDER_WRITE_OFF'");
+        sessions = new br.com.uberhidraulica.erp.support.ApiSessions(mvc, "inventory-operational-password");
+        try { owner = sessions.owner("owner-inventory@example.test", "inventory-bootstrap-password"); }
+        catch (Exception failure) { throw new IllegalStateException(failure); }
+    }
+
+    private ResultActions finish(String order) throws Exception {
+        return sessions.send(owner, post("/api/work-orders/" + order + "/finish"), "");
     }
 
     @Test
@@ -231,13 +241,13 @@ class Task0014InventoryIntegrationTest {
         assertThat(balance(product)).isEqualByComparingTo("1.000");
 
         send(post("/api/work-orders/" + order + "/start-execution"), "").andExpect(status().isOk());
-        send(post("/api/work-orders/" + order + "/finish"), "").andExpect(status().isConflict())
+        finish(order).andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("INSUFFICIENT_STOCK"));
         assertThat((String) JsonPath.read(mvc.perform(get("/api/work-orders/{id}", order).with(user("operator")))
                 .andReturn().getResponse().getContentAsString(), "$.status")).isEqualTo("EM_EXECUCAO");
 
         entry(product, "1", "50.00").andExpect(status().isCreated());
-        send(post("/api/work-orders/" + order + "/finish"), "").andExpect(status().isOk());
+        finish(order).andExpect(status().isOk());
         assertThat(balance(product)).isEqualByComparingTo("0.000");
 
         send(put("/api/inventory/settings/write-off"), "{\"mode\":\"DISABLED\"}").andExpect(status().isOk());
@@ -342,7 +352,7 @@ class Task0014InventoryIntegrationTest {
 
         send(put("/api/inventory/settings/write-off"), "{\"mode\":\"WORK_ORDER_FINISH\"}").andExpect(status().isOk());
         send(post("/api/work-orders/" + order + "/start-execution"), "").andExpect(status().isOk());
-        send(post("/api/work-orders/" + order + "/finish"), "").andExpect(status().isOk());
+        finish(order).andExpect(status().isOk());
 
         assertThat(balance(product)).isEqualByComparingTo("3.000");
         assertThat(jdbc.queryForObject("select count(*) from inventory.stock_movement where movement_type = 'WORK_ORDER_OUT'", Long.class)).isEqualTo(1);
@@ -357,11 +367,11 @@ class Task0014InventoryIntegrationTest {
         String order = openWorkOrder();
         addProduct(order, product, "2").andExpect(status().isCreated());
         send(post("/api/work-orders/" + order + "/start-execution"), "").andExpect(status().isOk());
-        send(post("/api/work-orders/" + order + "/finish"), "").andExpect(status().isOk());
+        finish(order).andExpect(status().isOk());
         assertThat(balance(product)).isEqualByComparingTo("4.000");
 
         // A segunda finalizacao e recusada pelo proprio fluxo da OS; o estoque nao pode mudar de todo jeito.
-        send(post("/api/work-orders/" + order + "/finish"), "");
+        finish(order);
         assertThat(balance(product)).isEqualByComparingTo("4.000");
         assertThat(jdbc.queryForObject("select count(*) from inventory.stock_movement where movement_type = 'WORK_ORDER_OUT'", Long.class)).isEqualTo(1);
     }
@@ -382,7 +392,7 @@ class Task0014InventoryIntegrationTest {
         addProduct(order, scarce, "3").andExpect(status().isCreated());
 
         send(post("/api/work-orders/" + order + "/start-execution"), "").andExpect(status().isOk());
-        send(post("/api/work-orders/" + order + "/finish"), "").andExpect(status().isConflict())
+        finish(order).andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("INSUFFICIENT_STOCK"));
 
         assertThat(balance(plenty)).isEqualByComparingTo("10.000");
