@@ -96,6 +96,87 @@ class Task0014InventoryIntegrationTest {
                 .isEqualByComparingTo("20.000");
     }
 
+    /** DR-0014, caso C: saldo positivo com custo desconhecido não vira custo zero na primeira entrada com custo. */
+    @Test
+    void entryWithCostOverABalanceOfUnknownCostInitializesTheAverage() throws Exception {
+        String product = createProduct("Fluido legado", "LITRO", null);
+        entry(product, "10", null).andExpect(status().isCreated())
+                .andExpect(jsonPath("$.balanceAfter").value(10.000)).andExpect(jsonPath("$.averageCostAfter").doesNotExist());
+        entry(product, "10", "30.00").andExpect(status().isCreated())
+                .andExpect(jsonPath("$.balanceAfter").value(20.000)).andExpect(jsonPath("$.averageCostAfter").value(30.0000));
+        entry(product, "20", "10.00").andExpect(status().isCreated()).andExpect(jsonPath("$.averageCostAfter").value(20.0000));
+        assertThat(jdbc.queryForObject("select average_cost from inventory.stock_balance where product_id = ?::uuid",
+                java.math.BigDecimal.class, product)).isEqualByComparingTo("20.0000");
+    }
+
+    /** DR-0006, opção C, nos três pontos de entrada de quantidade: estoque mínimo, item da OS e movimentação. */
+    @Test
+    void countableUnitsAcceptOnlyIntegersAndContinuousUnitsUpToThreeDecimals() throws Exception {
+        send(post("/api/products"), "{\"description\":\"Retentor\",\"type\":\"PART\",\"unit\":\"UNIDADE\",\"minimumStock\":\"0.5\"}")
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_QUANTITY_FOR_UNIT"));
+        send(post("/api/products"), "{\"description\":\"Balde\",\"type\":\"SUPPLY\",\"unit\":\"BALDE_20L\",\"minimumStock\":\"2.25\"}")
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_QUANTITY_FOR_UNIT"));
+        String seal = createProduct("Retentor", "UNIDADE", "2.000");
+        String gallon = createProduct("Óleo em galão", "GALAO_5L", "3");
+        String hose = createProduct("Mangueira", "METRO", "2.750");
+        String grease = createProduct("Graxa", "QUILOGRAMA", null);
+
+        entry(seal, "0.5", "10.00").andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_QUANTITY_FOR_UNIT"));
+        entry(gallon, "1.5", "180.00").andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_QUANTITY_FOR_UNIT"));
+        entry(hose, "2.7505", "8.00").andExpect(status().isBadRequest());
+        entry(seal, "15", "10.00").andExpect(status().isCreated());
+        entry(gallon, "2", "180.00").andExpect(status().isCreated());
+        entry(hose, "2.750", "8.00").andExpect(status().isCreated());
+        entry(grease, "1.125", "40.00").andExpect(status().isCreated());
+        send(post("/api/inventory/products/" + seal + "/exits"), "{\"quantity\":\"1.5\",\"reason\":\"Uso\"}")
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_QUANTITY_FOR_UNIT"));
+        send(post("/api/inventory/products/" + gallon + "/adjustments"), "{\"quantity\":\"0.5\",\"direction\":\"IN\",\"reason\":\"Contagem\"}")
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_QUANTITY_FOR_UNIT"));
+
+        String order = openWorkOrder();
+        addProduct(order, seal, "0.5").andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_QUANTITY_FOR_UNIT"));
+        addProduct(order, gallon, "1.5").andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_QUANTITY_FOR_UNIT"));
+        addProduct(order, seal, "2").andExpect(status().isCreated());
+        addProduct(order, hose, "0.500").andExpect(status().isCreated());
+        assertThat(balance(seal)).isEqualByComparingTo("13.000");
+        assertThat(balance(gallon)).isEqualByComparingTo("2.000");
+        assertThat(balance(hose)).isEqualByComparingTo("2.250");
+        assertThat(jdbc.queryForObject("select count(*) from workorder.work_order_product", Long.class)).isEqualTo(2);
+    }
+
+    /** DR-0016, opção C: inativo recusa entrada e nova OS; saída, ajustes com motivo, estorno e devolução seguem. */
+    @Test
+    void inactiveProductRefusesEntryAndNewWorkOrderButAllowsCorrections() throws Exception {
+        String product = createProduct("Cilindro antigo", "UNIDADE", null);
+        entry(product, "5", "100.00").andExpect(status().isCreated());
+        String order = openWorkOrder();
+        addProduct(order, product, "2").andExpect(status().isCreated());
+        String entryToReverse = id(entry(product, "1", "100.00").andExpect(status().isCreated()));
+        send(put("/api/products/" + product), "{\"description\":\"Cilindro antigo\",\"type\":\"PART\",\"unit\":\"UNIDADE\","
+                + "\"salePrice\":\"100.00\",\"active\":false}").andExpect(status().isOk());
+
+        mvc.perform(get("/api/inventory/products/{id}/movements", product).with(user("operator")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalItems").value(3));
+        stock("active=false").andExpect(jsonPath("$.totalItems").value(1)).andExpect(jsonPath("$.items[0].quantity").value(4.000));
+
+        entry(product, "1", "100.00").andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("PRODUCT_INACTIVE"));
+        addProduct(openWorkOrder(), product, "1").andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("PRODUCT_INACTIVE"));
+        send(post("/api/inventory/products/" + product + "/adjustments"), "{\"quantity\":\"1\",\"direction\":\"IN\"}")
+                .andExpect(status().isBadRequest());
+
+        send(post("/api/inventory/products/" + product + "/exits"), "{\"quantity\":\"1\",\"reason\":\"Descarte\"}")
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.balanceAfter").value(3.000));
+        send(post("/api/inventory/products/" + product + "/adjustments"), "{\"quantity\":\"2\",\"direction\":\"IN\",\"reason\":\"Recontagem\"}")
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.balanceAfter").value(5.000));
+        send(post("/api/inventory/products/" + product + "/adjustments"), "{\"quantity\":\"1\",\"direction\":\"OUT\",\"reason\":\"Avaria\"}")
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.balanceAfter").value(4.000));
+        send(post("/api/inventory/movements/" + entryToReverse + "/reverse"), "{\"reason\":\"Entrada em duplicidade\"}")
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.balanceAfter").value(3.000));
+        send(post("/api/work-orders/" + order + "/cancel"), "{\"reason\":\"Cliente desistiu\"}").andExpect(status().isOk());
+        assertThat(balance(product)).isEqualByComparingTo("5.000");
+        assertThat(jdbc.queryForObject("select count(*) from inventory.stock_movement where movement_type = 'WORK_ORDER_RETURN'", Long.class)).isEqualTo(1);
+    }
+
     @Test
     void adjustmentsRequireReasonAndCorrectionIsAlwaysANewMovement() throws Exception {
         String product = createProduct("Retentor", "UNIDADE", null);

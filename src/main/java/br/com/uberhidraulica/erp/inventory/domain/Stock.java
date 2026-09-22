@@ -21,16 +21,24 @@ public record Stock(UUID productId, BigDecimal quantity, BigDecimal averageCost,
     public static Stock empty(UUID productId, Instant now) { return new Stock(productId, BigDecimal.ZERO, null, now); }
 
     /**
-     * Entrada com custo recalcula o custo médio ponderado; entrada sem custo preserva o médio atual,
-     * porque um custo desconhecido não é um custo zero.
+     * Entrada no saldo, com a política de custo médio da DR-0014:
+     *
+     * <ul>
+     *   <li>A — saldo zero e entrada com custo: o médio passa a ser o custo da entrada;</li>
+     *   <li>B — saldo positivo com médio conhecido e entrada com custo: média ponderada
+     *       {@code (saldo × médio + qtd × custo) ÷ novo saldo}, quatro casas, {@code HALF_UP};</li>
+     *   <li>C — saldo positivo com médio desconhecido e entrada com custo: o médio é inicializado com o
+     *       custo da entrada. É a política de inicialização do MVP para estoque legado ou sem custo
+     *       conhecido: o saldo anterior não vira custo zero, porque custo nulo é custo desconhecido;</li>
+     *   <li>D — entrada sem custo: o médio atual é mantido, inclusive quando é nulo.</li>
+     * </ul>
      */
     public Stock add(BigDecimal amount, BigDecimal unitCost, Instant now) {
         BigDecimal newQuantity = quantity.add(amount);
         if (unitCost == null) return new Stock(productId, newQuantity, averageCost, now);
-        BigDecimal currentValue = (averageCost == null ? BigDecimal.ZERO : averageCost).multiply(quantity);
-        BigDecimal incoming = unitCost.multiply(amount);
-        BigDecimal newAverage = newQuantity.signum() == 0 ? unitCost
-                : currentValue.add(incoming).divide(newQuantity, COST_SCALE, RoundingMode.HALF_UP);
+        if (quantity.signum() == 0 || averageCost == null) return new Stock(productId, newQuantity, unitCost, now);
+        BigDecimal newAverage = averageCost.multiply(quantity).add(unitCost.multiply(amount))
+                .divide(newQuantity, COST_SCALE, RoundingMode.HALF_UP);
         return new Stock(productId, newQuantity, newAverage, now);
     }
 

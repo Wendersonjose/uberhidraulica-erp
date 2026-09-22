@@ -1,11 +1,12 @@
 # DR-0016 — Produto inativo: quais operações de estoque permanecem permitidas
 
 - Tipo: `DOMAIN`
-- Status: `OPEN`
+- Status: `DECIDED`
 - Task: `TASK-0014`
 - Origem: `AG-15 — Revisor Técnico` (auditoria de decisões provisórias da sprint)
 - Responsável pela decisão: proprietário do produto
 - Criada em: `2026-09-18`
+- Decidida em: `2026-09-22`, pelo Owner, após revisão externa
 
 ## Problema
 
@@ -75,6 +76,27 @@ Produto inativo deve (A) recusar entrada e ajuste positivo, (B) recusar toda mov
 
 ## Decisão final do Owner
 
-- Data: `-`
-- Opção escolhida: `-`
-- Decisão: `PENDENTE`
+- Data: `2026-09-22`
+- Opção escolhida: **C — inativo bloqueia apenas a compra e a nova OS**
+- Decisão: `DECIDED`
+
+Inativar um produto impede novas entradas comerciais/compras e novos lançamentos em OS, mas não
+impede correção de inventário nem o encerramento do histórico existente.
+
+| Operação | Produto inativo |
+| --- | --- |
+| Consultar produto, histórico e saldo | permitido |
+| Incluir em nova OS | **recusado** (`409 PRODUCT_INACTIVE`) |
+| `ENTRY` | **recusado** (`409 PRODUCT_INACTIVE`) |
+| `EXIT` | permitido |
+| `ADJUSTMENT_IN` | permitido, com motivo obrigatório |
+| `ADJUSTMENT_OUT` | permitido, com motivo obrigatório |
+| `REVERSAL` | permitido |
+| `WORK_ORDER_RETURN` | permitido |
+
+A baixa de item já lançado em OS anterior à inativação (`WORK_ORDER_OUT` na finalização) também segue
+permitida, porque encerra histórico existente e não é lançamento novo.
+
+Mudança em relação ao comportamento anterior: `ADJUSTMENT_IN` em produto inativo, antes recusado,
+passou a ser aceito. Teste:
+`Task0014InventoryIntegrationTest.inactiveProductRefusesEntryAndNewWorkOrderButAllowsCorrections`.

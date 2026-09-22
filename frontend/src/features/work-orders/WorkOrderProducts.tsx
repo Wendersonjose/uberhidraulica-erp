@@ -4,7 +4,7 @@ import { productsApi, workOrdersApi } from '../../api/resources'
 import { queryKeys } from '../../api/queryKeys'
 import { PRODUCT_UNIT_LABELS, type ProductUnit, type WorkOrderProduct } from '../../api/types'
 import { QueryState } from '../../components/QueryState'
-import { formatBrl, formatQuantity } from '../../utils/format'
+import { formatBrl, formatQuantity, quantityFitsUnit, quantityRuleHint, quantityStep } from '../../utils/format'
 import { productsSubtotal } from './totals'
 
 const unitLabel = (unit: string) => PRODUCT_UNIT_LABELS[unit as ProductUnit] ?? unit
@@ -41,7 +41,8 @@ export function AddProductCard({ orderId, onError }: { orderId: string; onError:
   const available = catalog.data?.filter(product => product.active && product.salePrice !== null) || []
   const selected = available.find(product => product.id === productId)
   const amount = Number(quantity)
-  const validQuantity = quantity !== '' && Number.isFinite(amount) && amount > 0
+  const fitsUnit = quantityFitsUnit(quantity, selected?.unit)
+  const validQuantity = quantity !== '' && Number.isFinite(amount) && amount > 0 && fitsUnit
 
   const add = useMutation({
     mutationFn: () => workOrdersApi.addProduct(orderId, productId, amount),
@@ -72,8 +73,9 @@ export function AddProductCard({ orderId, onError }: { orderId: string; onError:
     </div>
     <div className="field" style={{ marginTop: 14 }}>
       <label htmlFor="quantity">Quantidade{selected ? ` (${unitLabel(selected.unit)})` : ''}</label>
-      <input id="quantity" className="input" type="number" step="0.001" min="0" value={quantity}
+      <input id="quantity" className="input" type="number" step={quantityStep(selected?.unit)} min="0" value={quantity}
         disabled={!selected || add.isPending} onChange={event => setQuantity(event.target.value)} />
+      {!fitsUnit && <span className="error-text">{quantityRuleHint(selected?.unit)}</span>}
     </div>
     <button style={{ width: '100%', marginTop: 14 }} className="btn"
       disabled={!selected || !validQuantity || add.isPending}

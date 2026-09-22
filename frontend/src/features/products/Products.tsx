@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { productsApi } from '../../api/resources'
@@ -9,7 +9,7 @@ import { queryKeys } from '../../api/queryKeys'
 import { PRODUCT_TYPE_LABELS, PRODUCT_UNIT_LABELS, type Product } from '../../api/types'
 import { Badge, Field, PageHeader, State } from '../../components/ui'
 import { QueryState } from '../../components/QueryState'
-import { formatBrl, formatQuantity } from '../../utils/format'
+import { formatBrl, formatQuantity, quantityFitsUnit, quantityStep } from '../../utils/format'
 
 export function ProductsPage() {
   const query = useQuery({ queryKey: queryKeys.products, queryFn: productsApi.list })
@@ -56,6 +56,8 @@ const schema = z.object({
   salePrice: optionalAmount,
   minimumStock: optionalAmount,
   active: z.enum(['true', 'false']),
+}).refine(values => values.minimumStock === null || quantityFitsUnit(String(values.minimumStock), values.unit), {
+  path: ['minimumStock'], message: 'Estoque mínimo deve respeitar a precisão da unidade',
 })
 type Form = z.infer<typeof schema>
 
@@ -109,8 +111,10 @@ function ProductForm({ title, productId, defaults }: {
   const navigate = useNavigate()
   const client = useQueryClient()
   const [apiError, setApiError] = useState('')
-  const { register, handleSubmit, formState: { errors, isSubmitting } } =
+  const { register, handleSubmit, control, formState: { errors, isSubmitting } } =
     useForm<z.input<typeof schema>, unknown, Form>({ resolver: zodResolver(schema), defaultValues: defaults })
+
+  const unit = useWatch({ control, name: 'unit' })
 
   const mutation = useMutation({
     mutationFn: (values: Form) => productId
@@ -156,7 +160,7 @@ function ProductForm({ title, productId, defaults }: {
           <input className="input" type="number" step="0.01" min="0" {...register('salePrice')} />
         </Field>
         <Field label="Estoque mínimo" error={errors.minimumStock?.message}>
-          <input className="input" type="number" step="0.001" min="0" {...register('minimumStock')} />
+          <input className="input" type="number" step={quantityStep(unit)} min="0" {...register('minimumStock')} />
         </Field>
         {productId && <Field label="Status">
           <select className="select" {...register('active')}>

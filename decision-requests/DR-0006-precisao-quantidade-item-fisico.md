@@ -1,11 +1,12 @@
 # DR-0006 — Precisão e fracionamento das quantidades de itens físicos
 
 - Tipo: `BUSINESS`
-- Status: `OPEN`
+- Status: `DECIDED`
 - Task: `TASK-0005`, `TASK-0006`
 - Origem: `AG-04 — Catálogo & Estoque`
 - Responsável pela decisão: proprietário do produto
 - Criada em: `2026-09-14`
+- Decidida em: `2026-09-22`, pelo Owner, após revisão externa sobre a branch `feature/autonomous-sprint-catalog`
 
 ## Problema
 
@@ -121,6 +122,33 @@ Quantidades de itens físicos devem ser sempre inteiras na unidade-base, sempre 
 
 ## Decisão final do Owner
 
-- Data: `-`
-- Opção escolhida: `-`
-- Decisão: `PENDENTE`
+- Data: `2026-09-22`
+- Opção escolhida: **C — precisão por unidade**
+- Decisão: `DECIDED`
+
+### Regra definitiva
+
+| Grupo | Unidades | Quantidade aceita | Válido | Inválido |
+| --- | --- | --- | --- | --- |
+| Contáveis | `UNIDADE`, `GALAO_5L`, `BALDE_20L` | somente inteira | `1`, `2`, `15` | `0.5 UNIDADE`, `1.5 GALAO_5L`, `2.25 BALDE_20L` |
+| Contínuas | `LITRO`, `METRO`, `QUILOGRAMA` | até três casas decimais | `0.500 LITRO`, `2.750 METRO`, `1.125 QUILOGRAMA` | `0.0001 LITRO` |
+
+Zeros à direita não contam como fração: `2.000 UNIDADE` é inteiro.
+
+- **Persistência:** `NUMERIC(15,3)` permanece. Nenhuma migration foi criada para esta decisão.
+- **Autoridade:** domínio/backend. O frontend ajusta o passo do campo e avisa antes do envio, mas não
+  decide nada.
+- **Pontos validados** (`INVALID_QUANTITY_FOR_UNIT`, `400`):
+  - estoque mínimo do catálogo, na criação e na atualização do produto;
+  - item físico lançado na OS;
+  - movimentação manual de estoque — entrada, saída e ajuste.
+- **Onde a regra não é reaplicada, de propósito:** baixa pela OS (herda a quantidade já validada no
+  lançamento do item), estorno e devolução (repetem a quantidade do movimento original) e leitura de
+  registros gravados antes da decisão. Revalidar esses casos travaria a correção de histórico legado.
+- **Implementação:** `ProductUnit.countable()` / `ProductUnit.accepts()` no domínio do catálogo e o
+  contrato público `ProductQuantityRule`, usado pela OS e pelo Estoque sem conhecer o enum interno.
+- **Testes:** `ProductQuantityRuleTest` (unitário) e
+  `Task0014InventoryIntegrationTest.countableUnitsAcceptOnlyIntegersAndContinuousUnitsUpToThreeDecimals`
+  (PostgreSQL).
+
+A quantidade do item de orçamento (`NUMERIC(19,4)`, `DR-0007`) não foi alterada por esta decisão.

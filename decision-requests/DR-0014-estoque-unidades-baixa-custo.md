@@ -1,12 +1,13 @@
 # DR-0014 — Estoque: unidades de embalagem, baixa pela OS e custo médio
 
 - Tipo: `DOMAIN` / `FINANCIAL`
-- Status: `DECIDED_PROVISIONALLY` — aguardando ratificação do Owner
+- Status: `DECIDED` — ratificada com uma correção (custo médio)
 - Task: `TASK-0014`
 - Origem: `AG-04 — Catálogo & Estoque`
 - Responsável pela decisão: proprietário do produto
 - Criada em: `2026-09-17`
 - Decidida provisoriamente em: `2026-09-17`, sob delegação explícita do Owner
+- Ratificada em: `2026-09-22`, pelo Owner, após revisão externa
 
 ## Problema
 
@@ -81,3 +82,49 @@ porque separa três operações distintas que o cartão não separa.
 
 Confirma as unidades de embalagem, a baixa no lançamento do item como padrão e o custo médio
 ponderado recalculado somente nas entradas com custo?
+
+## Decisão final do Owner
+
+- Data: `2026-09-22`
+- Decisão: `DECIDED` — ratificada, com correção obrigatória da política de custo médio
+
+### Confirmado
+
+1. **Unidades:** `UNIDADE`, `LITRO`, `METRO`, `QUILOGRAMA`, `GALAO_5L`, `BALDE_20L`. O fracionamento
+   segue a `DR-0006` (decidida: opção C).
+2. **Estoque negativo** continua proibido. Nenhuma exceção administrativa no MVP.
+3. **Movimentação:** histórico imutável; correção sempre por novo movimento compensatório/estorno;
+   nenhum movimento é editado ou apagado.
+4. **Baixa automática pela OS:** os três modos `ITEM_LAUNCH`, `WORK_ORDER_FINISH` e `DISABLED`
+   permanecem; o padrão do MVP é `ITEM_LAUNCH`. Razão: manter o saldo operacional atualizado assim que
+   o item físico é comprometido com a OS e impedir que o mesmo saldo seja comprometido ao mesmo tempo
+   em outra ordem. Quando existir reserva formal de estoque, a política poderá ser reavaliada.
+5. **Cancelamento** continua gerando devolução por movimento inverso.
+6. **Idempotência:** `work_order_item_id` é a chave da baixa da OS; o índice único no banco é a
+   autoridade final.
+7. **Concorrência:** `SELECT … FOR UPDATE` na linha de saldo do produto.
+8. **Produto inativo:** segue a `DR-0016` (decidida: opção C).
+
+### Correção obrigatória — custo médio com saldo de custo desconhecido
+
+A revisão externa encontrou um defeito real: `Stock.add()` tratava custo médio nulo como zero
+(`médio nulo × saldo = 0`). Com saldo físico positivo sem custo conhecido, a primeira entrada com
+custo diluía o custo da compra sobre o estoque antigo, como se ele tivesse custado nada. Exemplo:
+10 unidades sem custo + 10 a R$ 30,00 resultavam em médio R$ 15,00.
+
+`null` significa **custo desconhecido**, não custo zero. Regra definitiva:
+
+| Caso | Situação | Resultado |
+| --- | --- | --- |
+| A | saldo zero, entrada com custo | `médio = custo da entrada` |
+| B | saldo positivo, médio conhecido, entrada com custo | `((saldo × médio) + (qtd × custo)) ÷ novo saldo`, escala 4, `HALF_UP` |
+| C | saldo positivo, médio desconhecido, entrada com custo | `médio = custo da entrada` — o saldo antigo **não** é tratado como custo zero |
+| D | entrada sem custo | mantém o médio atual; se era `null`, continua `null` |
+
+O caso C é, explicitamente, uma **política de inicialização de custo para estoque legado ou sem custo
+conhecido no MVP**: a primeira entrada com custo passa a representar o custo de todo o saldo. Nenhum
+custo zero é inventado em caso algum.
+
+Implementação: `Stock.add()`. Testes: `StockAverageCostTest` (casos A, B, C e D, sem banco) e
+`Task0014InventoryIntegrationTest.entryWithCostOverABalanceOfUnknownCostInitializesTheAverage`
+(PostgreSQL).

@@ -113,3 +113,22 @@ test('saldo insuficiente ao lançar item físico na OS aparece na tela da OS', a
   await userEvent.click(screen.getByRole('button', { name: 'Adicionar item à OS' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('Saldo insuficiente')
 })
+
+test('unidade contável não aceita fração na movimentação e a contínua aceita três casas', async () => {
+  mockApi({
+    'GET /api/products/p1': { id: 'p1', description: 'Óleo ATF Dexron', unit: 'GALAO_5L', type: 'SUPPLY', active: true },
+    'GET /api/inventory/stock': page([oil]),
+    'GET /api/inventory/products/p1/movements': page([]),
+  })
+  renderAt('/estoque/p1')
+  await screen.findByTestId('stock-balance')
+  const form = screen.getByRole('region', { name: 'Registrar entrada' })
+  const quantity = within(form).getByLabelText(/Quantidade/)
+  expect(quantity).toHaveAttribute('step', '1')
+  await userEvent.type(quantity, '1.5')
+  expect(within(form).getByRole('button', { name: 'Registrar entrada' })).toBeDisabled()
+  expect(within(form).getByText('Esta unidade aceita somente quantidade inteira.')).toBeInTheDocument()
+  await userEvent.clear(quantity)
+  await userEvent.type(quantity, '2')
+  expect(within(form).getByRole('button', { name: 'Registrar entrada' })).toBeEnabled()
+})

@@ -3,6 +3,7 @@ package br.com.uberhidraulica.erp.workorder.application;
 import br.com.uberhidraulica.erp.crm.CustomerVehicleQuery;
 import br.com.uberhidraulica.erp.iam.CurrentUser;
 import br.com.uberhidraulica.erp.productcatalog.ProductCatalogQuery;
+import br.com.uberhidraulica.erp.productcatalog.ProductQuantityRule;
 import br.com.uberhidraulica.erp.servicecatalog.ServiceCatalogQuery;
 import br.com.uberhidraulica.erp.workorder.WorkOrderEvents;
 import br.com.uberhidraulica.erp.workorder.WorkOrderQuery;
@@ -238,6 +239,9 @@ public class WorkOrderApplicationService implements WorkOrderQuery, br.com.uberh
         var product = products.product(productId).orElseThrow(() -> new WorkOrderException("PRODUCT_NOT_FOUND", "Produto não encontrado"));
         if (!product.active()) throw new WorkOrderException("PRODUCT_INACTIVE", "Produto inativo não pode ser lançado na OS");
         if (product.salePrice() == null) throw new WorkOrderException("PRODUCT_WITHOUT_SALE_PRICE", "Produto sem preço de venda definido no catálogo");
+        ProductQuantityRule.violation(product.unit(), quantity).ifPresent(message -> {
+            throw new WorkOrderException("INVALID_QUANTITY_FOR_UNIT", message);
+        });
         var item = new WorkOrder.ProductItem(UUID.randomUUID(), product.id(), product.description(), product.internalCode(),
                 product.unit(), quantity, product.salePrice(), clock.instant());
         repository.addProduct(id, item);

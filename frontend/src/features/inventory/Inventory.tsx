@@ -8,7 +8,7 @@ import { Badge, Field, PageHeader, State } from '../../components/ui'
 import { QueryState } from '../../components/QueryState'
 import { Pagination } from '../../components/controls'
 import { useDebouncedValue } from '../../utils/useDebouncedValue'
-import { formatBrl, formatDate, formatQuantity } from '../../utils/format'
+import { formatBrl, formatDate, formatQuantity, quantityFitsUnit, quantityRuleHint, quantityStep } from '../../utils/format'
 
 const PAGE_SIZE = 20
 const unitLabel = (unit: string) => PRODUCT_UNIT_LABELS[unit as ProductUnit] ?? unit
@@ -143,16 +143,17 @@ export function StockProductPage() {
         </section>
       </div>
       <aside className="stack">
-        <MovementForm title="Registrar entrada" action="entry" productId={productId} onRun={run} />
-        <MovementForm title="Registrar saída" action="exit" productId={productId} onRun={run} />
-        <MovementForm title="Ajustar saldo" action="adjustment" productId={productId} onRun={run} />
+        <MovementForm title="Registrar entrada" action="entry" productId={productId} unit={line?.unit} onRun={run} />
+        <MovementForm title="Registrar saída" action="exit" productId={productId} unit={line?.unit} onRun={run} />
+        <MovementForm title="Ajustar saldo" action="adjustment" productId={productId} unit={line?.unit} onRun={run} />
       </aside>
     </div>
   </>
 }
 
-function MovementForm({ title, action, productId, onRun }: {
-  title: string; action: 'entry' | 'exit' | 'adjustment'; productId: string; onRun: (run: () => Promise<unknown>) => Promise<unknown>
+function MovementForm({ title, action, productId, unit, onRun }: {
+  title: string; action: 'entry' | 'exit' | 'adjustment'; productId: string; unit: string | undefined
+  onRun: (run: () => Promise<unknown>) => Promise<unknown>
 }) {
   const [quantity, setQuantity] = useState('')
   const [unitCost, setUnitCost] = useState('')
@@ -168,11 +169,14 @@ function MovementForm({ title, action, productId, onRun }: {
     },
     onSuccess: () => { setQuantity(''); setUnitCost(''); setReason('') },
   })
-  const valid = quantity !== '' && Number(quantity) > 0 && (!reasonRequired || reason.trim().length >= 3)
+  const fitsUnit = quantityFitsUnit(quantity, unit)
+  const valid = quantity !== '' && Number(quantity) > 0 && fitsUnit && (!reasonRequired || reason.trim().length >= 3)
 
   return <section className="card" aria-label={title}>
     <h2>{title}</h2>
-    <Field label="Quantidade"><input className="input" type="number" step="0.001" min="0" value={quantity} onChange={e => setQuantity(e.target.value)} /></Field>
+    <Field label="Quantidade" error={fitsUnit ? undefined : quantityRuleHint(unit)}>
+      <input className="input" type="number" step={quantityStep(unit)} min="0" value={quantity} onChange={e => setQuantity(e.target.value)} />
+    </Field>
     {action === 'entry' && <Field label="Custo unitário">
       <input className="input" type="number" step="0.0001" min="0" value={unitCost} onChange={e => setUnitCost(e.target.value)} />
     </Field>}

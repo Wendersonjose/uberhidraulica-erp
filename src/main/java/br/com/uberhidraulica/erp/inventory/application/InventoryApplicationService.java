@@ -6,6 +6,7 @@ import br.com.uberhidraulica.erp.inventory.domain.Stock;
 import br.com.uberhidraulica.erp.inventory.domain.StockMovement;
 import br.com.uberhidraulica.erp.inventory.port.StockRepositoryPort;
 import br.com.uberhidraulica.erp.productcatalog.ProductCatalogQuery;
+import br.com.uberhidraulica.erp.productcatalog.ProductQuantityRule;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -79,16 +80,19 @@ public class InventoryApplicationService {
 
     @Transactional
     public StockMovement registerEntry(UUID productId, BigDecimal quantity, BigDecimal unitCost, String reason) {
+        requireUnitPrecision(productId, quantity);
         return apply(productId, StockMovement.Type.ENTRY, quantity, unitCost, reason, StockMovement.Source.MANUAL, null, null, null);
     }
 
     @Transactional
     public StockMovement registerExit(UUID productId, BigDecimal quantity, String reason) {
+        requireUnitPrecision(productId, quantity);
         return apply(productId, StockMovement.Type.EXIT, quantity, null, reason, StockMovement.Source.MANUAL, null, null, null);
     }
 
     @Transactional
     public StockMovement registerAdjustment(UUID productId, BigDecimal quantity, boolean increase, String reason) {
+        requireUnitPrecision(productId, quantity);
         return apply(productId, increase ? StockMovement.Type.ADJUSTMENT_IN : StockMovement.Type.ADJUSTMENT_OUT,
                 quantity, null, reason, StockMovement.Source.MANUAL, null, null, null);
     }
@@ -161,7 +165,8 @@ public class InventoryApplicationService {
     private StockMovement apply(UUID productId, StockMovement.Type type, BigDecimal quantity, BigDecimal unitCost, String reason,
                                 StockMovement.Source source, UUID workOrderId, UUID itemId, UUID reverses, boolean incoming) {
         var product = requireProduct(productId);
-        if (incoming && type != StockMovement.Type.REVERSAL && type != StockMovement.Type.WORK_ORDER_RETURN && !product.active())
+        // DR-0016: inativar impede nova compra; saída, ajustes com motivo, estorno e devolução seguem permitidos.
+        if (type == StockMovement.Type.ENTRY && !product.active())
             throw new InventoryException("PRODUCT_INACTIVE", "Produto inativo não recebe entrada");
         Instant now = clock.instant();
         Stock current = repository.lockBalance(productId);
@@ -171,6 +176,17 @@ public class InventoryApplicationService {
                 updated.quantity(), updated.averageCost(), reason, source, workOrderId, itemId, reverses, now,
                 currentUser.id().orElse(null), incoming);
         return repository.record(movement);
+    }
+
+    /**
+     * Precisão por unidade (DR-0006) nas movimentações manuais. A baixa pela OS herda a quantidade já
+     * validada no lançamento do item; estorno e devolução repetem a quantidade do movimento original.
+     */
+    private void requireUnitPrecision(UUID productId, BigDecimal quantity) {
+        if (quantity == null) return;
+        ProductQuantityRule.violation(requireProduct(productId).unit(), quantity).ifPresent(message -> {
+            throw new InventoryException("INVALID_QUANTITY_FOR_UNIT", message);
+        });
     }
 
     private ProductCatalogQuery.ProductReference requireProduct(UUID productId) {

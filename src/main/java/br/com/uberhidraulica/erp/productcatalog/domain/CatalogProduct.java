@@ -34,15 +34,26 @@ public record CatalogProduct(UUID id, String description, String internalCode, S
     public static CatalogProduct create(String description, String internalCode, String category, ProductType type,
                                         ProductUnit unit, BigDecimal referenceCost, BigDecimal salePrice,
                                         BigDecimal minimumStock, Instant now) {
-        return new CatalogProduct(UUID.randomUUID(), description, internalCode, category, type, unit,
-                referenceCost, salePrice, minimumStock, true, now, now);
+        return requireUnitPrecision(new CatalogProduct(UUID.randomUUID(), description, internalCode, category, type, unit,
+                referenceCost, salePrice, minimumStock, true, now, now));
     }
 
     public CatalogProduct update(String description, String internalCode, String category, ProductType type,
                                  ProductUnit unit, BigDecimal referenceCost, BigDecimal salePrice,
                                  BigDecimal minimumStock, Boolean active, Instant now) {
-        return new CatalogProduct(id, description, internalCode, category, type, unit, referenceCost, salePrice,
-                minimumStock, active == null ? this.active : active, createdAt, now);
+        return requireUnitPrecision(new CatalogProduct(id, description, internalCode, category, type, unit, referenceCost,
+                salePrice, minimumStock, active == null ? this.active : active, createdAt, now));
+    }
+
+    /**
+     * Estoque mínimo respeita a precisão da unidade (DR-0006). Aplicado na criação e na atualização, não
+     * no construtor, para que cadastros gravados antes da decisão continuem legíveis.
+     */
+    private static CatalogProduct requireUnitPrecision(CatalogProduct product) {
+        if (product.minimumStock() != null && !product.unit().accepts(product.minimumStock()))
+            throw new ProductCatalogException("INVALID_QUANTITY_FOR_UNIT",
+                    "Estoque mínimo inválido: " + product.unit().precisionRule());
+        return product;
     }
 
     /** Código interno é livre, mas normalizado para que a unicidade não dependa de caixa ou espaços. */
