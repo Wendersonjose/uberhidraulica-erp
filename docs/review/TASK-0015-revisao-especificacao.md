@@ -1,6 +1,6 @@
 # TASK-0015 — Revisão da especificação (AG-02, AG-06, AG-08)
 
-Objeto: `tasks/in-progress/TASK-0015-financeiro.md` e
+Objeto: `tasks/review/TASK-0015-financeiro.md` e
 `docs/architecture/financeiro/TASK-0015-modelo-financeiro.md`, contra `DR-0015` e `DR-0008` decididas.
 Data: `2026-09-22`. Revisão feita antes de qualquer código financeiro.
 

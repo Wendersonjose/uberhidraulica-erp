@@ -53,7 +53,7 @@ Seleção na finalização:
 | --- | --- | --- |
 | 0 | — | `409 WORK_ORDER_WITHOUT_BILLING_BASIS` |
 | 1 | ausente | selecionado automaticamente |
-| ≥ 2 | ausente | `409 BILLING_QUOTE_SELECTION_REQUIRED` (resposta lista os candidatos) |
+| ≥ 2 | ausente | `409 BILLING_QUOTE_SELECTION_REQUIRED`; a tela oferece os orçamentos da OS e reenvia com a escolha |
 | ≥ 1 | informado e candidato | usado |
 | ≥ 1 | informado e não candidato (outra OS, sem aprovação, inexistente) | `409 BILLING_QUOTE_NOT_ELIGIBLE` |
 
@@ -113,7 +113,7 @@ Operações:
 
 `description`, `supplier` (texto livre, opcional), `categoryId`, `amount` (> 0), `dueDate`
 (obrigatório), `notes`, pagamentos com estorno, cancelamento. Derivados: `paidAmount`,
-`outstandingBalance`, situação (`CANCELADO`, `PAGO`, `VENCIDO`, `PARCIAL`, `ABERTO`).
+`outstandingBalance`, situação (`CANCELADO`, `QUITADO` — exibido como "Pago" —, `VENCIDO`, `PARCIAL`, `ABERTO`).
 
 | Operação | Pré-condição | Recusa |
 | --- | --- | --- |
@@ -136,10 +136,10 @@ Operações:
 | Operação | Mecanismo |
 | --- | --- |
 | geração do recebível | bloqueio da linha da OS pela própria finalização + `UNIQUE(receivable.work_order_id)` |
-| recebimento, estorno de recebimento, pagamento, estorno de pagamento, criação de conta a pagar | cabeçalho `Idempotency-Key` obrigatório (1–100 caracteres), gravado com `UNIQUE`; mesma chave + mesmo conteúdo devolve o lançamento original (`200`, cabeçalho `Idempotent-Replay: true`); mesma chave + conteúdo diferente → `409 IDEMPOTENCY_KEY_REUSED` |
+| recebimento, estorno de recebimento, desconto/acréscimo, pagamento, estorno de pagamento, criação de conta a pagar | cabeçalho `Idempotency-Key` obrigatório (1–100 caracteres), gravado com `UNIQUE`; mesma chave + mesmo conteúdo devolve o lançamento original (`200`, cabeçalho `Idempotent-Replay: true`); mesma chave + conteúdo diferente → `409 IDEMPOTENCY_KEY_REUSED` |
 | estorno duplo | `UNIQUE(receipt_id)` / `UNIQUE(payment_id)` na tabela de estorno |
 
-Concorrência: toda mutação de um recebível ou conta a pagar começa por `SELECT … FOR UPDATE` na linha
+Retries com a mesma chave se serializam por `pg_advisory_xact_lock` sobre a chave. Concorrência: toda mutação de um recebível ou conta a pagar começa por `SELECT … FOR UPDATE` na linha
 do agregado. A verificação de chave, de saldo e de estorno acontece **depois** do bloqueio, então duas
 requisições simultâneas se serializam e a segunda enxerga o que a primeira gravou. As constraints são a
 autoridade final se a aplicação falhar.
@@ -177,7 +177,7 @@ de linha em `NUMERIC(19,4)` como no orçamento.
 | `expense_category` | índice único em `lower(name)` |
 | `receivable` | `UNIQUE(work_order_id)`; FK `work_order`; FK composta `(billing_quote_id, work_order_id) → workshop.quote(id, work_order_id)` (orçamento da mesma OS); `original_amount ≥ 0`; coerência do cancelamento |
 | `receivable_line` | FK `(receivable_id, quote_id) → receivable(id, billing_quote_id)`; FK `(quote_item_revision_id, quote_id) → workshop.quote_item_revision(id, quote_id)`; FK `(quote_item_revision_id, decision_type) → workshop.quote_decision(quote_item_revision_id, decision_type)` com `decision_type = 'APPROVE'` — **linha cobrada sem aprovação é impossível no banco**; `UNIQUE(receivable_id, quote_item_revision_id)` |
-| `receivable_adjustment` | tipo `DISCOUNT`/`SURCHARGE`; `amount > 0`; motivo não vazio |
+| `receivable_adjustment` | tipo `DISCOUNT`/`SURCHARGE`; `amount > 0`; motivo não vazio; `UNIQUE(idempotency_key)` |
 | `receivable_due_date_change` | datas diferentes; motivo não vazio |
 | `receipt` | `amount > 0`; FK forma; `UNIQUE(idempotency_key)` |
 | `receipt_reversal` | `UNIQUE(receipt_id)`; `UNIQUE(idempotency_key)`; motivo não vazio |

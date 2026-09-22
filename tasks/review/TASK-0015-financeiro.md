@@ -2,7 +2,7 @@
 
 ## Identificação
 
-- Status: `IN_PROGRESS` — especificação concluída e revisada; implementação iniciada
+- Status: `REVIEW` — implementação concluída, gates verdes; aguardando revisão independente
 - Prioridade: `HIGH`
 - Criada em: `2026-09-22`
 - Origem: quadro Trello "Projetos wenderson", lista "A fazer", cartões 31 a 34
@@ -101,11 +101,51 @@ Modelo de domínio, banco, idempotência, fluxo de caixa e contrato REST:
     duas vezes no mesmo orçamento → `409 QUOTE_ITEM_PRODUCT_ALREADY_LINKED`; orçamentos diferentes podem
     repetir; o PostgreSQL recusa a associação cross-OS mesmo por SQL direto.
 
+## Implementação
+
+| Entrega | Commit |
+| --- | --- |
+| `DR-0008`: `V17`, vínculo item comercial × item físico, editor de revisão | `78256b5` |
+| `QuoteBillingQuery` (base comercial efetiva) + testes unitários | `eb9144f` |
+| `V18` + módulo `finance` + finalização com `billingQuoteId` | `3494724` |
+| Telas do Financeiro, finalização com escolha, recebível na OS | `5841e4b` |
+| Testes de integração e ajustes em testes existentes | `f3f48f6` |
+
+Ajuste de modelo feito durante a implementação: desconto e acréscimo também exigem
+`Idempotency-Key` (coluna `idempotency_key UNIQUE` em `receivable_adjustment`), porque são mutações
+financeiras sujeitas a duplo clique. Retries concorrentes com a mesma chave são serializados por
+`pg_advisory_xact_lock` sobre a chave, antes do bloqueio da linha do agregado.
+
 ## Efeito colateral conhecido
 
 Finalizar uma OS passa a exigir base comercial aprovada. Testes existentes que finalizavam OS sem
 orçamento (Estoque) recebem um orçamento aprovado como fixture — consequência direta da F-02, não
 afrouxamento de teste.
+
+## Checkpoint PostgreSQL (2026-09-22)
+
+Desenvolvimento com Docker fechado. Docker aberto só para integração e suíte completa, e fechado em
+seguida.
+
+| Gate | Resultado |
+| --- | --- |
+| Sem Docker: `mvn compile`, `FinanceDomainTest` (12), `QuoteBillingServiceTest` (5), `FinanceMonetaryArchitectureTest`, `ModularityTest` | verdes |
+| `Task0015FinanceIntegrationTest` (PostgreSQL) | 18 testes, 0 falhas — inclui recebimentos concorrentes, retries concorrentes com a mesma chave, estornos concorrentes e as FKs de cross-OS e de decisão aprovada |
+| `Task0014InventoryIntegrationTest` | 15 testes, 0 falhas; prova que a recusa do Estoque desfaz o recebível |
+| `mvn test` — suíte backend completa | **204 testes, 0 falhas, 0 erros, 0 ignorados, `BUILD SUCCESS`** |
+| `npm test -- --run` | 12 arquivos, 106 testes |
+| `npx tsc --noEmit`, `npm run build`, `npm run lint` | limpos (aviso de chunk > 500 kB preexistente) |
+| `git diff --check` | limpo |
+
+Primeira execução da suíte completa: 1 falha em `Task0012WorkOrderWorkflowIntegrationTest`, que
+finalizava OS sem orçamento. Não é regressão: é a F-02. O teste passou a verificar a recusa
+`WORK_ORDER_WITHOUT_BILLING_BASIS` e depois finaliza com orçamento aprovado.
+
+## Pendências
+
+- `DR-0017` (`OPEN`): correção de ajuste lançado por engano. Hoje o ajuste é imutável e sem estorno.
+- `TASK-0016` — Caixa físico / sessão de caixa (`BACKLOG`), pré-requisito para aceitar `DINHEIRO`.
+- Sem CI remoto configurado nesta branch; tratado fora desta Task.
 
 ## Gates
 
@@ -118,3 +158,5 @@ concorrência e idempotência), suíte backend completa, `npm test -- --run`, `t
 - 2026-09-22 — Task aberta em `BACKLOG`; `DR-0015` reescrita como `OPEN`.
 - 2026-09-22 — Owner decidiu `DR-0015` e `DR-0008`. Especificação final, modelo de domínio e de banco e
   revisão `AG-02`/`AG-06`/`AG-08` concluídos; `DR-0017` aberta; Task em `IN_PROGRESS`.
+- 2026-09-22 — Implementação concluída em commits separados; checkpoint PostgreSQL com 204 testes
+  backend verdes; Task movida para `REVIEW`.
