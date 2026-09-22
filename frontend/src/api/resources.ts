@@ -113,7 +113,8 @@ export const workflowApi = {
   update: (id: string, body: { entryMileage: number | null; complaint: string; notes: string | null }) => put<WorkOrder>(`/api/work-orders/${id}`, body),
   move: (id: string, statusId: string, reason?: string) => post<WorkOrder>(`/api/work-orders/${id}/status`, reason ? { statusId, reason } : { statusId }),
   startExecution: (id: string) => post<WorkOrder>(`/api/work-orders/${id}/start-execution`, {}),
-  finish: (id: string) => post<WorkOrder>(`/api/work-orders/${id}/finish`, {}),
+  /** {@code billingQuoteId} escolhe o orçamento de faturamento quando a OS tem mais de um aprovado (DR-0015). */
+  finish: (id: string, billingQuoteId?: string) => post<WorkOrder>(`/api/work-orders/${id}/finish`, billingQuoteId ? { billingQuoteId } : {}),
   deliver: (id: string) => post<WorkOrder>(`/api/work-orders/${id}/deliver`, {}),
   cancel: (id: string, reason: string) => post<WorkOrder>(`/api/work-orders/${id}/cancel`, { reason }),
   statuses: () => api<StatusUsage[]>('/api/work-order-statuses'),

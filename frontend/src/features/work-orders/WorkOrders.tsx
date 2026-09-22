@@ -4,7 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { customersApi, servicesApi, vehiclesApi, workflowApi, workOrdersApi } from '../../api/resources'
+import { customersApi, quotesApi, servicesApi, vehiclesApi, workflowApi, workOrdersApi } from '../../api/resources'
+import { ApiError } from '../../api/http'
+import { WorkOrderReceivableCard } from '../finance/WorkOrderReceivableCard'
 import { queryKeys } from '../../api/queryKeys'
 import { OPERATIONAL_STAGES, PRICE_SOURCE_LABELS, STAGE_LABELS, type Stage, type WorkOrder } from '../../api/types'
 import { Badge, Field, PageHeader } from '../../components/ui'
@@ -167,6 +169,7 @@ export function WorkOrderDetailPage() {
     </PageHeader>
     {apiError && <div role="alert" className="notice error">{apiError}</div>}
     <WorkflowActions order={o} />
+    {(o.status === 'FINALIZADA' || o.status === 'ENTREGUE') && <WorkOrderReceivableCard workOrderId={o.id} />}
     <div className="detail-grid">
       <div>
         <DiagnosisCard order={o} />
@@ -274,9 +277,7 @@ function WorkflowActions({ order }: { order: WorkOrder }) {
                 onClick={() => run(() => workflowApi.move(order.id, statusId)).then(() => setStatusId(''), () => undefined)}>Mover</button>
         {stage !== 'EM_EXECUCAO' && stage !== 'REPROVADA' &&
           <button type="button" className="btn" onClick={() => run(() => workflowApi.startExecution(order.id)).catch(() => undefined)}>Iniciar execução</button>}
-        {stage === 'EM_EXECUCAO' &&
-          <ConfirmAction label="Finalizar OS" tone="primary" question="Finalizar a OS? Depois disso ela não aceita novos itens e só pode ser entregue."
-                         onConfirm={() => run(() => workflowApi.finish(order.id))} />}
+        {stage === 'EM_EXECUCAO' && <FinishAction orderId={order.id} run={run} />}
         <ConfirmAction label="Cancelar OS" question="Cancelar a OS? Os dados são preservados, mas ela não volta ao fluxo."
                        onConfirm={() => { if (reason.trim().length < 3) return Promise.reject(new Error('Informe o motivo do cancelamento')); return run(() => workflowApi.cancel(order.id, reason.trim())).then(() => setReason('')) }}>
           <div className="field"><label>Motivo do cancelamento *<textarea className="textarea" value={reason} onChange={e => setReason(e.target.value)} /></label></div>
@@ -287,6 +288,28 @@ function WorkflowActions({ order }: { order: WorkOrder }) {
                        onConfirm={() => run(() => workflowApi.deliver(order.id))} />}
     </div>
   </section>
+}
+
+/**
+ * Finalização: gera o recebível pelo valor aprovado do orçamento de faturamento (DR-0015, F-02). Com mais de um
+ * orçamento aprovado o backend exige a escolha; a lista vem da própria OS e o backend confere a elegibilidade.
+ */
+function FinishAction({ orderId, run }: { orderId: string; run: (action: () => Promise<unknown>) => Promise<unknown> }) {
+  const [needsChoice, setNeedsChoice] = useState(false)
+  const [billingQuoteId, setBillingQuoteId] = useState('')
+  const quotes = useQuery({ queryKey: ['work-orders', orderId, 'quotes'], queryFn: () => quotesApi.list(orderId), enabled: needsChoice })
+  return <ConfirmAction label="Finalizar OS" tone="primary"
+    question="Finalizar a OS? Ela deixa de aceitar itens e o recebível nasce em aberto, pelo valor aprovado no orçamento."
+    onConfirm={() => run(() => workflowApi.finish(orderId, billingQuoteId || undefined)).catch(error => {
+      if (error instanceof ApiError && error.code === 'BILLING_QUOTE_SELECTION_REQUIRED') setNeedsChoice(true)
+      throw error
+    })}>
+    {needsChoice && <div className="field"><label>Orçamento a cobrar *
+      <select className="select" value={billingQuoteId} onChange={event => setBillingQuoteId(event.target.value)}>
+        <option value="">Selecione</option>
+        {quotes.data?.map((quote, index) => <option key={quote.id} value={quote.id}>Orçamento {index + 1} — criado em {formatDate(quote.createdAt)}</option>)}
+      </select></label></div>}
+  </ConfirmAction>
 }
 
 /** Diagnóstico técnico; editável só em etapa operacional, como no backend (DR-0013). */
