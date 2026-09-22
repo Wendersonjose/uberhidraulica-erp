@@ -2,7 +2,7 @@
 
 ## Identificação
 
-- Status: `REVIEW` — revisão externa `CHANGES_REQUIRED`; correções implementadas; checkpoint PostgreSQL pendente
+- Status: `REVIEW` — F1–F4 corrigidos; checkpoint PostgreSQL pendente
 - Prioridade: `HIGH`
 - Criada em: `2026-09-22`
 - Origem: quadro Trello "Projetos wenderson", lista "A fazer", cartões 31 a 34
@@ -22,7 +22,8 @@
 
 - `DR-0015` — `DECIDED` (F-01 a F-13), com as interpretações técnicas da seção 5.
 - `DR-0008` — `DECIDED`, opção A: vínculo opcional `quote_item.work_order_product_id`.
-- `DR-0017` — `OPEN`: correção de ajuste lançado por engano. Até decidir, ajuste é imutável.
+- `DR-0017` — `DECIDED`, opção A: ajuste lançado por engano é corrigido por estorno próprio, total e único,
+  com motivo, `Idempotency-Key` e `FINANCE_REVERSE`; ajuste estornado deixa de compor os derivados.
 - `DR-0007` — política monetária. `DR-0009` — oficina única. `DR-0012` — OS finalizada não é cancelada.
 
 ## Especificação
@@ -152,6 +153,28 @@ varredura AG-15: `docs/review/TASK-0015-revisao-tecnica.md`.
 domínio e base comercial, modularidade, ArchUnit monetário e o frontend inteiro (110 testes, build, lint).
 Os testes de integração novos e a suíte completa precisam rodar antes de `DONE`.
 
+## Nova revisão externa (2026-09-22) — F4
+
+F1, F2 e F3 confirmados. Novo finding **F4 (MEDIUM, bloqueante para `DONE`)**: a identidade do pedido
+idempotente estava incompleta — mesma chave com outro conteúdo podia ser tratada como replay. Corrigido
+comparando o pedido normalizado com o que está persistido, sem migration nova:
+
+| Operação | Identidade comparada |
+| --- | --- |
+| Ajuste | recebível, tipo, valor, motivo normalizado |
+| Alteração de vencimento | recebível, novo vencimento, motivo normalizado |
+| Estorno de recebimento, pagamento e ajuste | lançamento alvo, motivo normalizado |
+| Recebimento e pagamento | dono, valor, forma, data efetiva, observação normalizada |
+| Conta a pagar | descrição, fornecedor, categoria, valor, vencimento, observação (normalizados) |
+
+Data omitida em recebimento/pagamento significa "hoje" no instante do pedido original: no replay ela é
+reconstruída de `recorded_at` no fuso da oficina, então o retry da mesma requisição depois da meia-noite
+devolve o lançamento original em vez de `IDEMPOTENCY_KEY_REUSED`.
+
+Testes: `FinanceDomainTest` (identidade da liquidação com a virada da meia-noite e identidade da conta a
+pagar) e seis testes novos em `Task0015FinanceIntegrationTest` cobrindo os oito casos da revisão e o retry
+após a meia-noite.
+
 ## Pendências
 
 - Rodar o checkpoint PostgreSQL da revisão (integração do Financeiro, Estoque, fluxo da OS, IAM e suíte completa).
@@ -173,3 +196,5 @@ concorrência e idempotência), suíte backend completa, `npm test -- --run`, `t
   backend verdes; Task movida para `REVIEW`.
 - 2026-09-22 — Revisão externa `CHANGES_REQUIRED`. F1, F2, F3, `DR-0017` e vencimento idempotente
   corrigidos (`V19`). Checkpoint PostgreSQL não executado por falha do Docker; Task mantida em `REVIEW`.
+- 2026-09-22 — Nova revisão externa: F1–F3 confirmados; F4 (identidade do pedido idempotente) corrigido sem migration.
+  Checkpoint PostgreSQL ainda pendente; Task mantida em `REVIEW`.

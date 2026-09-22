@@ -81,6 +81,30 @@ permissão e ator nulo; nenhum recebível nasce; a OS continua `EM_EXECUCAO`; us
 
 ---
 
+### F4 — MEDIUM, bloqueante para `DONE` — identidade do pedido idempotente incompleta
+
+Encontrado na nova revisão externa, que confirmou F1–F3. A regra "mesma chave + outro conteúdo →
+`IDEMPOTENCY_KEY_REUSED`" não valia em todas as mutações: ajuste comparava só o recebível; vencimento não
+comparava o motivo; estornos só o alvo; recebimento e pagamento ignoravam a observação; conta a pagar
+ignorava fornecedor e observação; e um retry sem data depois da meia-noite virava conflito porque o
+"hoje" recalculado mudava.
+
+**Correção** — sem migration; os campos persistidos reconstroem o pedido:
+
+- ajuste: recebível, tipo, valor e motivo normalizado;
+- vencimento: recebível, novo vencimento e motivo normalizado;
+- estornos (recebimento, pagamento, ajuste): alvo e motivo normalizado;
+- recebimento e pagamento: dono, valor, forma, data efetiva e observação normalizada;
+- conta a pagar: descrição, fornecedor, categoria, valor, vencimento e observação normalizados;
+- data omitida: a intenção é o dia da oficina no instante do pedido original, reconstruído de
+  `recorded_at` em `America/Sao_Paulo` — nunca o "hoje" do retry.
+
+Testes: `settlementIdentityIncludesNotesAndReconstructsTheOmittedDateFromTheOriginalInstant`,
+`payableIdentityIncludesSupplierAndNotes` (unitários, verdes) e, no PostgreSQL,
+`adjustmentKeyReusedWithDifferentAmountOrReasonIsRefused`, `dueDateKeyReusedWithSameDateButDifferentReasonIsRefused`,
+`reversalKeysReusedWithSameTargetButDifferentReasonAreRefused`, `receiptAndPaymentKeysReusedWithDifferentNotesAreRefused`,
+`payableKeyReusedWithDifferentSupplierOrNotesIsRefused` e `retryOfAReceiptWithoutDateAfterMidnightReturnsTheOriginal`.
+
 ## 2. DR-0017 — decidida (opção A) e implementada
 
 - `V19`: `finance.receivable_adjustment_reversal` com `UNIQUE (adjustment_id)` e `UNIQUE (idempotency_key)`.
@@ -132,7 +156,7 @@ e três unitários em `FinanceDomainTest`.
 | Gate | Resultado |
 | --- | --- |
 | `mvn compile`, `mvn test-compile` | verdes |
-| `FinanceDomainTest` (15), `QuoteBillingServiceTest` (7), `FinanceMonetaryArchitectureTest`, `ModularityTest` | verdes, sem Docker |
+| `FinanceDomainTest` (17), `QuoteBillingServiceTest` (7), `FinanceMonetaryArchitectureTest`, `ModularityTest` | verdes, sem Docker |
 | `npm test -- --run` | 12 arquivos, 110 testes verdes |
 | `npx tsc --noEmit`, `npm run build`, `npm run lint` | limpos (aviso de chunk > 500 kB preexistente) |
 | `git diff --check` | limpo |
@@ -151,7 +175,7 @@ checkpoint"**, não falha funcional — e também não é evidência de que os t
 
 | Critério | Situação |
 | --- | --- |
-| 1. Três findings corrigidos | feito |
+| 1. Findings F1–F4 corrigidos | feito (F1–F3 confirmados pela revisão externa; F4 aguarda o checkpoint) |
 | 2. DR-0017 `DECIDED` e implementada | feito |
 | 3. Testes concorrentes PostgreSQL verdes | **pendente** — não executados |
 | 4. Suíte backend completa verde | **pendente** — não executada |
