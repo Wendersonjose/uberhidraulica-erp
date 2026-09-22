@@ -46,7 +46,10 @@ public class WorkOrderController {
     @PutMapping("/{id}/diagnosis") Response diagnosis(@PathVariable UUID id, @Valid @RequestBody DiagnosisRequest r) { return Response.from(application.registerDiagnosis(id, r.diagnosis())); }
     @PostMapping("/{id}/status") Response move(@PathVariable UUID id, @Valid @RequestBody MoveRequest r) { return Response.from(application.move(id, r.statusId(), r.reason())); }
     @PostMapping("/{id}/start-execution") Response startExecution(@PathVariable UUID id) { return Response.from(application.startExecution(id)); }
-    @PostMapping("/{id}/finish") Response finish(@PathVariable UUID id) { return Response.from(application.finish(id)); }
+    /** Corpo opcional: {@code billingQuoteId} escolhe o orçamento de faturamento quando há mais de um candidato. */
+    @PostMapping("/{id}/finish") Response finish(@PathVariable UUID id, @RequestBody(required = false) FinishRequest r) {
+        return Response.from(application.finish(id, r == null ? null : r.billingQuoteId()));
+    }
     @PostMapping("/{id}/deliver") Response deliver(@PathVariable UUID id) { return Response.from(application.deliver(id)); }
     @PostMapping("/{id}/cancel") Response cancel(@PathVariable UUID id, @Valid @RequestBody CancelRequest r) { return Response.from(application.cancel(id, r.reason())); }
 
@@ -127,4 +130,5 @@ public class WorkOrderController {
                                   UUID changedBy, String reason, boolean automatic) {}
     public record BoardCard(UUID id, Long number, Instant openedAt, String complaint, String customerName, String vehicleLabel) {}
     public record BoardColumnResponse(StatusResponse status, List<BoardCard> orders) {}
+    public record FinishRequest(UUID billingQuoteId) {}
 }

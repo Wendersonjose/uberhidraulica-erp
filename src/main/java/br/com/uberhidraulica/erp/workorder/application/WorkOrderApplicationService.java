@@ -124,12 +124,21 @@ public class WorkOrderApplicationService implements WorkOrderQuery, br.com.uberh
         return transition(current, current.startExecution(defaultStatus(Stage.EM_EXECUCAO), clock.instant()), null, true);
     }
 
+    /**
+     * Finaliza a OS. Estoque e Financeiro reagem na mesma transação: se um deles recusar (saldo
+     * insuficiente, falta de base comercial para o recebível), a OS continua em execução.
+     *
+     * @param billingQuoteId orçamento de faturamento escolhido pelo usuário, ou nulo (DR-0015, F-02)
+     */
     @Transactional
-    public WorkOrder finish(UUID id) {
+    public WorkOrder finish(UUID id, UUID billingQuoteId) {
         WorkOrder current = locked(id);
-        WorkOrder finished = transition(current, current.finish(defaultStatus(Stage.FINALIZADA), currentUser.id().orElse(null), clock.instant()), null, true);
+        Instant now = clock.instant();
+        UUID by = currentUser.id().orElse(null);
+        WorkOrder finished = transition(current, current.finish(defaultStatus(Stage.FINALIZADA), by, now), null, true);
         events.publishEvent(new WorkOrderEvents.Finished(id, finished.products().stream()
-                .map(item -> new WorkOrderEvents.ProductLine(item.id(), item.productId(), item.quantity())).toList()));
+                .map(item -> new WorkOrderEvents.ProductLine(item.id(), item.productId(), item.quantity())).toList(),
+                billingQuoteId, now, by));
         return finished;
     }
 
