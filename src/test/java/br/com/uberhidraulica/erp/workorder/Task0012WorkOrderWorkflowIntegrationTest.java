@@ -59,6 +59,7 @@ class Task0012WorkOrderWorkflowIntegrationTest {
 
     @BeforeEach
     void clean() throws Exception {
+        br.com.uberhidraulica.erp.support.CommercialFixtures.clean(jdbc);
         jdbc.update("delete from workorder.work_order_product");
         jdbc.update("delete from workorder.work_order_service");
         jdbc.update("delete from workorder.work_order_status_history");
@@ -146,6 +147,9 @@ class Task0012WorkOrderWorkflowIntegrationTest {
         action(order, "start-execution").andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("WORK_ORDER_ALREADY_IN_EXECUTION"));
         action(order, "deliver").andExpect(status().isConflict());
         send(post("/api/work-orders/" + order + "/services"), "{\"serviceId\":\"" + service + "\"}").andExpect(status().isCreated());
+        // DR-0015, F-02: sem base comercial aprovada a finalização é recusada; o assunto aqui é o fluxo da OS.
+        action(order, "finish").andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("WORK_ORDER_WITHOUT_BILLING_BASIS"));
+        br.com.uberhidraulica.erp.support.CommercialFixtures.approvedQuote(jdbc, java.util.UUID.fromString(order), "Serviço", new java.math.BigDecimal("150.00"));
 
         action(order, "finish").andExpect(status().isOk()).andExpect(jsonPath("$.status").value("FINALIZADA"))
                 .andExpect(jsonPath("$.lifecycle.finishedAt").exists());

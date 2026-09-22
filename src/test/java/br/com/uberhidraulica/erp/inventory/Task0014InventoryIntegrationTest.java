@@ -57,6 +57,7 @@ class Task0014InventoryIntegrationTest {
 
     @BeforeEach
     void clean() {
+        br.com.uberhidraulica.erp.support.CommercialFixtures.clean(jdbc);
         jdbc.update("delete from inventory.stock_movement");
         jdbc.update("delete from inventory.stock_balance");
         jdbc.update("delete from workorder.work_order_product");
@@ -387,6 +388,8 @@ class Task0014InventoryIntegrationTest {
         assertThat(balance(plenty)).isEqualByComparingTo("10.000");
         assertThat(balance(scarce)).isEqualByComparingTo("1.000");
         assertThat(jdbc.queryForObject("select count(*) from inventory.stock_movement where movement_type = 'WORK_ORDER_OUT'", Long.class)).isZero();
+        // A recusa do Estoque desfaz também o recebível gerado pelo Financeiro na mesma transação.
+        assertThat(jdbc.queryForObject("select count(*) from finance.receivable", Long.class)).isZero();
     }
 
     private record Outcome(boolean success, String message) {}
@@ -443,8 +446,11 @@ class Task0014InventoryIntegrationTest {
         String customer = id(send(post("/api/customers"), "{\"personType\":\"PF\",\"name\":\"Cliente Estoque\",\"phone\":\"34999990000\"}"));
         String vehicle = id(send(post("/api/vehicles"), "{\"customerId\":\"" + customer + "\",\"plate\":\"EST" + (1000 + sequence)
                 + "\",\"manufacturer\":\"Ford\",\"model\":\"Cargo\"}"));
-        return id(send(post("/api/work-orders"), "{\"customerId\":\"" + customer + "\",\"vehicleId\":\"" + vehicle
+        String order = id(send(post("/api/work-orders"), "{\"customerId\":\"" + customer + "\",\"vehicleId\":\"" + vehicle
                 + "\",\"complaint\":\"Vazamento\"}").andExpect(status().isCreated()));
+        // DR-0015, F-02: finalizar exige base comercial aprovada; o assunto destes testes é o estoque.
+        br.com.uberhidraulica.erp.support.CommercialFixtures.approvedQuote(jdbc, UUID.fromString(order), "Serviço", new java.math.BigDecimal("100.00"));
+        return order;
     }
 
     private ResultActions send(MockHttpServletRequestBuilder request, String body) throws Exception {

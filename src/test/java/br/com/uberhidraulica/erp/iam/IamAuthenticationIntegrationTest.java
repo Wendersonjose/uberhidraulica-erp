@@ -53,6 +53,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @ExtendWith(OutputCaptureExtension.class)
 class IamAuthenticationIntegrationTest {
+    private static final java.util.List<String> FINANCE = java.util.List.of("FINANCE_VIEW", "FINANCE_RECEIVE", "FINANCE_REVERSE",
+            "FINANCE_ADJUST", "FINANCE_PAYABLE", "FINANCE_CONFIG");
+
     private static final String OWNER_EMAIL = "owner@example.test";
     private static final String OWNER_PASSWORD = "bootstrap-secret-for-test";
 
@@ -90,10 +93,11 @@ class IamAuthenticationIntegrationTest {
                 .containsAll(br.com.uberhidraulica.erp.iam.domain.IamPermissions.ALL);
         assertThat(authorizations.profilePermissions(ProfileCode.DONO)).containsExactlyInAnyOrderElementsOf(
                 Stream.concat(br.com.uberhidraulica.erp.iam.domain.IamPermissions.ALL.stream(),
-                        Stream.of("QUOTE_PRESENT", "QUOTE_DISCOUNT")).toList());
+                        Stream.concat(Stream.of("QUOTE_PRESENT", "QUOTE_DISCOUNT"), FINANCE.stream())).toList());
         assertThat(authorizations.profilePermissions(ProfileCode.GERENTE_ADMINISTRATIVO))
-                .containsExactlyInAnyOrder("QUOTE_PRESENT", "QUOTE_DISCOUNT");
-        assertThat(authorizations.profilePermissions(ProfileCode.GERENTE_FINANCEIRO)).isEmpty();
+                .containsExactlyInAnyOrder("QUOTE_PRESENT", "QUOTE_DISCOUNT", "FINANCE_VIEW", "FINANCE_RECEIVE");
+        // DR-0015, F-13: o Gerente Financeiro recebe todas as permissões do Financeiro e nada mais por padrão.
+        assertThat(authorizations.profilePermissions(ProfileCode.GERENTE_FINANCEIRO)).containsExactlyInAnyOrderElementsOf(FINANCE);
         assertThat(jdbc.queryForObject("select count(*) from iam.audit_event where action='FIRST_OWNER_BOOTSTRAPPED'", Long.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("select must_change_password from iam.credential", Boolean.class)).isTrue();
         assertThat(jdbc.queryForObject("select password_hash from iam.credential", String.class))
