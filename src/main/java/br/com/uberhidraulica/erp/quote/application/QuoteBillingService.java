@@ -30,8 +30,26 @@ class QuoteBillingService implements QuoteBillingQuery {
     }
 
     @Override
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public BillingBasis billingBasisForFinalization(UUID workOrderId, UUID billingQuoteId) {
+        // Bloqueio primeiro; leitura depois. Nenhum dado de orçamento desta OS foi carregado antes nesta transação.
+        quotes.lockByWorkOrderId(workOrderId);
+        List<BillingCandidate> candidates = derive(workOrderId);
+        List<UUID> ids = candidates.stream().map(BillingCandidate::quoteId).toList();
+        if (billingQuoteId != null)
+            return candidates.stream().filter(candidate -> candidate.quoteId().equals(billingQuoteId)).findFirst()
+                    .map(candidate -> new BillingBasis(Outcome.SELECTED, candidate, ids))
+                    .orElse(new BillingBasis(Outcome.NOT_ELIGIBLE, null, ids));
+        if (candidates.isEmpty()) return new BillingBasis(Outcome.NO_BASIS, null, ids);
+        if (candidates.size() > 1) return new BillingBasis(Outcome.SELECTION_REQUIRED, null, ids);
+        return new BillingBasis(Outcome.SELECTED, candidates.get(0), ids);
+    }
+
+    @Override
     @Transactional(readOnly = true)
-    public List<BillingCandidate> billingCandidates(UUID workOrderId) {
+    public List<BillingCandidate> billingCandidates(UUID workOrderId) { return derive(workOrderId); }
+
+    private List<BillingCandidate> derive(UUID workOrderId) {
         List<BillingCandidate> candidates = new ArrayList<>();
         for (Quote quote : quotes.findByWorkOrderId(workOrderId)) {
             Map<UUID, DecisionType> decided = decisions.decisionsByQuote(quote.id());

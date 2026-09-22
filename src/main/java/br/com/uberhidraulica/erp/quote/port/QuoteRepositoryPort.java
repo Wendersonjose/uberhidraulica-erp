@@ -17,6 +17,12 @@ public interface QuoteRepositoryPort {
 
     List<Quote> findByWorkOrderId(UUID workOrderId);
 
+    /**
+     * {@code SELECT ... FOR UPDATE} em todos os orçamentos da OS, em ordem de id, mantido até o commit.
+     * Apresentação e decisão avançam a versão da mesma linha, então esperam por quem segura este bloqueio.
+     */
+    void lockByWorkOrderId(UUID workOrderId);
+
     QuoteItem createItem(QuoteItem item);
 
     QuoteItemRevision createItemRevision(QuoteItemRevision revision);

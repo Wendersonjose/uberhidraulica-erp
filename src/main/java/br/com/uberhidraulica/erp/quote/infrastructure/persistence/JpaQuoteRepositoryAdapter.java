@@ -53,6 +53,9 @@ public class JpaQuoteRepositoryAdapter implements QuoteRepositoryPort {
     }
 
     @Override
+    public void lockByWorkOrderId(UUID workOrderId) { quotes.lockByWorkOrderId(workOrderId); }
+
+    @Override
     public QuoteItem createItem(QuoteItem item) {
         QuoteItemEntity entity = new QuoteItemEntity();
         entity.id = item.id();

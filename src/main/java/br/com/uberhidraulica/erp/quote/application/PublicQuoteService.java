@@ -118,6 +118,8 @@ public class PublicQuoteService {
         Optional<DecisionSubmission> previous = publicAccess.findSubmission(access.id(), request.requestId());
         if (previous.isPresent()) return replay(previous.get(), payloadDigest, access, now);
 
+        // Serializa com a finalização da OS antes de ler o orçamento (revisão TASK-0015, F1).
+        workOrderEvents.lockForCommercialChange(loadQuote(access).workOrderId());
         Quote quote = loadQuote(access);
         QuoteRevision revision = quote.revision(access.quoteRevisionId())
                 .orElseThrow(() -> new QuoteException("PUBLIC_QUOTE_NOT_AVAILABLE", "Orçamento indisponível"));
@@ -158,6 +160,9 @@ public class PublicQuoteService {
     @Transactional
     public Quote registerInternal(Quote quote, UUID revisionId, String contactChannel, String authorizedBy, String notes,
                                   List<ItemDecision> items) {
+        // Serializa com a finalização da OS e relê o orçamento depois do bloqueio (revisão TASK-0015, F1).
+        workOrderEvents.lockForCommercialChange(quote.workOrderId());
+        quote = quotes.findById(quote.id()).orElseThrow();
         Instant now = Instant.now(clock);
         QuoteRevision revision = quote.revision(revisionId)
                 .orElseThrow(() -> new QuoteException("QUOTE_REVISION_NOT_FOUND", "Revisão não encontrada"));

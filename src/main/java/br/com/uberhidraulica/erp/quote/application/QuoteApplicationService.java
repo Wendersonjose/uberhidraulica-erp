@@ -148,6 +148,8 @@ public class QuoteApplicationService {
      */
     @Transactional
     public Quote present(UUID workOrderId, UUID quoteId, UUID revisionId) {
+        // Serializa com a finalização da OS antes de ler o orçamento (revisão TASK-0015, F1).
+        workOrderEvents.lockForCommercialChange(workOrderId);
         Quote quote = get(workOrderId, quoteId);
         QuoteRevision revision = quote.revision(revisionId)
                 .orElseThrow(() -> new QuoteException("QUOTE_REVISION_NOT_FOUND", "Revisão não encontrada"));

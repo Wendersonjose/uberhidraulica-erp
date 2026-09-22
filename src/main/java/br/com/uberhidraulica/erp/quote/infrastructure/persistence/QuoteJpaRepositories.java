@@ -12,6 +12,9 @@ import java.util.UUID;
 interface QuoteJpaRepository extends JpaRepository<QuoteEntity, UUID> {
     List<QuoteEntity> findByWorkOrderIdOrderByCreatedAtAscIdAsc(UUID workOrderId);
 
+    @Query(value = "select q.id from workshop.quote q where q.work_order_id = :workOrderId order by q.id for update", nativeQuery = true)
+    List<UUID> lockByWorkOrderId(@Param("workOrderId") UUID workOrderId);
+
     /**
      * Avanço condicional da versão do agregado.
      *

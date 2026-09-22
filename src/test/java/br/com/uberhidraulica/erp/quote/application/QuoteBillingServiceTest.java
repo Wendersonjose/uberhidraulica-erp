@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -155,5 +156,42 @@ class QuoteBillingServiceTest {
 
         assertThat(candidates(one.build(), other.build(), none.build()))
                 .extracting(QuoteBillingQuery.BillingCandidate::quoteId).containsExactly(one.quoteId, other.quoteId);
+    }
+
+    /** Revisão TASK-0015, F1: o bloqueio vem antes de qualquer leitura, e a seleção é refeita depois dele. */
+    @Test
+    void finalizationBasisLocksTheQuotesBeforeReadingAndRedoesTheSelection() {
+        Builder one = new Builder();
+        var a = one.item("A", "10.00", 1);
+        one.present(a);
+        one.decided.put(a.id(), DecisionType.APPROVE);
+        Builder other = new Builder();
+        var b = other.item("B", "20.00", 1);
+        other.present(b);
+        other.decided.put(b.id(), DecisionType.APPROVE);
+        Quote first = one.build();
+        Quote second = other.build();
+        when(quotes.findByWorkOrderId(WORK_ORDER)).thenReturn(List.of(first, second));
+
+        assertThat(service.billingBasisForFinalization(WORK_ORDER, null).outcome()).isEqualTo(QuoteBillingQuery.Outcome.SELECTION_REQUIRED);
+        var chosen = service.billingBasisForFinalization(WORK_ORDER, other.quoteId);
+        assertThat(chosen.outcome()).isEqualTo(QuoteBillingQuery.Outcome.SELECTED);
+        assertThat(chosen.selected().approvedTotal()).isEqualByComparingTo("20.00");
+        assertThat(service.billingBasisForFinalization(WORK_ORDER, UUID.randomUUID()).outcome()).isEqualTo(QuoteBillingQuery.Outcome.NOT_ELIGIBLE);
+
+        var order = inOrder(quotes);
+        order.verify(quotes).lockByWorkOrderId(WORK_ORDER);
+        order.verify(quotes).findByWorkOrderId(WORK_ORDER);
+    }
+
+    @Test
+    void finalizationBasisWithoutApprovalIsNoBasis() {
+        Builder quote = new Builder();
+        var a = quote.item("A", "10.00", 1);
+        quote.present(a);
+        quote.decided.put(a.id(), DecisionType.REJECT);
+        Quote built = quote.build();
+        when(quotes.findByWorkOrderId(WORK_ORDER)).thenReturn(List.of(built));
+        assertThat(service.billingBasisForFinalization(WORK_ORDER, null).outcome()).isEqualTo(QuoteBillingQuery.Outcome.NO_BASIS);
     }
 }

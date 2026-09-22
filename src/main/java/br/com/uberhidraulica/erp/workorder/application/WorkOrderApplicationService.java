@@ -82,6 +82,10 @@ public class WorkOrderApplicationService implements WorkOrderQuery, br.com.uberh
 
     @Override
     @Transactional
+    public void lockForCommercialChange(UUID workOrderId) { locked(workOrderId); }
+
+    @Override
+    @Transactional
     public void quotePresented(UUID workOrderId) {
         if (!automationEnabled(AUTOMATION_QUOTE_PRESENTED)) return;
         automatic(locked(workOrderId), Stage.AGUARDANDO_APROVACAO, "Orçamento apresentado ao cliente");

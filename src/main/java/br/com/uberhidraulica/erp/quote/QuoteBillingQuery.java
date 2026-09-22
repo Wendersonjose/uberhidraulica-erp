@@ -14,8 +14,32 @@ import java.util.UUID;
  */
 public interface QuoteBillingQuery {
 
-    /** Orçamentos da OS com ao menos um item aprovado na versão corrente; lista vazia quando não há base. */
+    /**
+     * Orçamentos da OS com ao menos um item aprovado na versão corrente; lista vazia quando não há base.
+     * Consulta informativa, para a interface: não é autoridade para gerar recebível.
+     */
     List<BillingCandidate> billingCandidates(UUID workOrderId);
+
+    /**
+     * Base comercial autoritativa para o recebível, dentro da transação da finalização (exige transação ativa).
+     *
+     * <p>Bloqueia com {@code SELECT ... FOR UPDATE} todos os orçamentos da OS, só então relê apresentações e
+     * decisões, deriva de novo versões correntes e aprovações e refaz a seleção. O bloqueio dura até o commit
+     * que grava o recebível: apresentação ou decisão concorrente espera, e ao continuar já não pode tornar
+     * obsoleta a versão que o recebível cobrou.</p>
+     *
+     * @param billingQuoteId escolha do usuário, ou nulo para a seleção automática
+     */
+    BillingBasis billingBasisForFinalization(UUID workOrderId, UUID billingQuoteId);
+
+    enum Outcome { SELECTED, NO_BASIS, SELECTION_REQUIRED, NOT_ELIGIBLE }
+
+    /** Resultado da seleção; {@code selected} só existe quando {@code outcome == SELECTED}. */
+    record BillingBasis(Outcome outcome, BillingCandidate selected, List<UUID> candidateQuoteIds) {
+        public BillingBasis {
+            candidateQuoteIds = List.copyOf(candidateQuoteIds);
+        }
+    }
 
     /**
      * @param approvedTotal soma dos totais já arredondados das linhas aprovadas (DR-0007)
