@@ -2,7 +2,7 @@
 
 ## Identificação
 
-- Status: `REVIEW` — implementação concluída, gates verdes; aguardando revisão independente
+- Status: `REVIEW` — revisão externa `CHANGES_REQUIRED`; correções implementadas; checkpoint PostgreSQL pendente
 - Prioridade: `HIGH`
 - Criada em: `2026-09-22`
 - Origem: quadro Trello "Projetos wenderson", lista "A fazer", cartões 31 a 34
@@ -141,9 +141,20 @@ Primeira execução da suíte completa: 1 falha em `Task0012WorkOrderWorkflowInt
 finalizava OS sem orçamento. Não é regressão: é a F-02. O teste passou a verificar a recusa
 `WORK_ORDER_WITHOUT_BILLING_BASIS` e depois finaliza com orçamento aprovado.
 
+## Revisão externa (2026-09-22) — `CHANGES_REQUIRED`
+
+Três findings (F1 BLOCKER, F2 HIGH, F3 HIGH), `DR-0017` decidida e hardening do vencimento. Todos
+corrigidos em `93a6043`, `d0894d5`, `fbe5556` e `fdb6e33`, com a migration nova `V19`. Detalhes, testes e
+varredura AG-15: `docs/review/TASK-0015-revisao-tecnica.md`.
+
+**Checkpoint PostgreSQL da revisão: não executado** — o Docker Desktop não iniciou o engine nesta sessão
+(`monitor exited: exit status 150`). Sem Docker ficaram verdes: compilação, 22 testes unitários de
+domínio e base comercial, modularidade, ArchUnit monetário e o frontend inteiro (110 testes, build, lint).
+Os testes de integração novos e a suíte completa precisam rodar antes de `DONE`.
+
 ## Pendências
 
-- `DR-0017` (`OPEN`): correção de ajuste lançado por engano. Hoje o ajuste é imutável e sem estorno.
+- Rodar o checkpoint PostgreSQL da revisão (integração do Financeiro, Estoque, fluxo da OS, IAM e suíte completa).
 - `TASK-0016` — Caixa físico / sessão de caixa (`BACKLOG`), pré-requisito para aceitar `DINHEIRO`.
 - Sem CI remoto configurado nesta branch; tratado fora desta Task.
 
@@ -160,3 +171,5 @@ concorrência e idempotência), suíte backend completa, `npm test -- --run`, `t
   revisão `AG-02`/`AG-06`/`AG-08` concluídos; `DR-0017` aberta; Task em `IN_PROGRESS`.
 - 2026-09-22 — Implementação concluída em commits separados; checkpoint PostgreSQL com 204 testes
   backend verdes; Task movida para `REVIEW`.
+- 2026-09-22 — Revisão externa `CHANGES_REQUIRED`. F1, F2, F3, `DR-0017` e vencimento idempotente
+  corrigidos (`V19`). Checkpoint PostgreSQL não executado por falha do Docker; Task mantida em `REVIEW`.

@@ -1,11 +1,12 @@
 # DR-0017 — Correção de desconto ou acréscimo financeiro lançado por engano
 
 - Tipo: `FINANCIAL`
-- Status: `OPEN`
+- Status: `DECIDED`
 - Task: `TASK-0015`
 - Origem: `AG-06 — Financeiro`, na formalização da `DR-0015`
 - Responsável pela decisão: proprietário do produto
 - Criada em: `2026-09-22`
+- Decidida em: `2026-09-22`, pelo Owner, na revisão externa da `TASK-0015`
 
 ## Problema
 
@@ -41,6 +42,32 @@ Desconto ou acréscimo financeiro lançado por engano deve ser (A) estornado por
 
 ## Decisão final do Owner
 
-- Data: `-`
-- Opção escolhida: `-`
-- Decisão: `PENDENTE`
+- Data: `2026-09-22`
+- Opção escolhida: **A — estorno próprio do ajuste**
+- Decisão: `DECIDED`
+
+Desconto ou acréscimo lançado incorretamente não é apagado, editado nem corrigido por um lançamento que
+finja ser outro tipo de operação. A correção é um registro de estorno ligado ao ajuste original.
+
+### Regras
+
+1. Estorno sempre **total** daquele ajuste; o ajuste original permanece imutável.
+2. Motivo obrigatório, instante do servidor, usuário responsável, `Idempotency-Key` obrigatório.
+3. No máximo um estorno por ajuste, protegido no banco (`UNIQUE (adjustment_id)`).
+4. Permissão `FINANCE_REVERSE`.
+5. Ajuste estornado deixa de compor `discountAmount` ou `surchargeAmount`; o histórico mostra o ajuste
+   e o seu estorno.
+6. **Invariante de saldo.** Estornar desconto aumenta o saldo e é sempre seguro. Estornar acréscimo
+   reduz o valor ajustado: se depois do estorno `receivedAmount > adjustedAmount`, o estorno é recusado
+   (`409 ADJUSTMENT_REVERSAL_EXCEEDS_RECEIVED`). Não se cria saldo negativo nem crédito; o usuário estorna
+   antes os recebimentos excedentes.
+
+### Implementação
+
+- `V19`: `finance.receivable_adjustment_reversal` com `UNIQUE (adjustment_id)` e `UNIQUE (idempotency_key)`.
+- `POST /api/finance/adjustments/{adjustmentId}/reversal` com `Idempotency-Key` e `{reason}`.
+- Bloqueio da linha do recebível antes da verificação; retries da mesma chave serializados por
+  `pg_advisory_xact_lock`.
+- Testes: `FinanceDomainTest` (derivados, invariante do acréscimo, estorno único) e
+  `Task0015FinanceIntegrationTest` (retry, estorno concorrente, acréscimo acima do recebido, permissão,
+  constraint da `V19`).
