@@ -7,6 +7,7 @@ export const FINANCE_REVERSE = 'FINANCE_REVERSE'
 export const FINANCE_ADJUST = 'FINANCE_ADJUST'
 export const FINANCE_PAYABLE = 'FINANCE_PAYABLE'
 export const FINANCE_CONFIG = 'FINANCE_CONFIG'
+export const FINANCE_BILL = 'FINANCE_BILL'
 
 export type FinancialStatus = 'ABERTO' | 'PARCIAL' | 'VENCIDO' | 'QUITADO' | 'CANCELADO'
 export const RECEIVABLE_STATUS_LABELS: Record<FinancialStatus, string> = {
@@ -32,7 +33,10 @@ export type Receivable = {
   originalAmount: number; discountAmount: number; surchargeAmount: number; adjustedAmount: number; receivedAmount: number
   outstandingBalance: number; issuedOn: string; dueDate: string; status: FinancialStatus; createdAt: string
   cancelledAt: string | null; cancellationReason: string | null; lines: ReceivableLine[]
-  adjustments: { id: string; type: 'DISCOUNT' | 'SURCHARGE'; amount: number; reason: string; recordedAt: string }[]
+  adjustments: {
+    id: string; type: 'DISCOUNT' | 'SURCHARGE'; amount: number; reason: string; recordedAt: string; reversed: boolean
+    reversal: { id: string; reason: string; reversedAt: string } | null
+  }[]
   dueDateChanges: { id: string; previousDueDate: string; newDueDate: string; reason: string; changedAt: string }[]
   receipts: Settlement[]
 }
@@ -75,7 +79,9 @@ export const financeApi = {
   reverseReceipt: (id: string, reason: string, key: string) => idempotent<Settlement>(`/api/finance/receipts/${id}/reversal`, { reason }, key),
   adjust: (id: string, body: { type: 'DISCOUNT' | 'SURCHARGE'; amount: number; reason: string }, key: string) =>
     idempotent<Receivable>(`/api/finance/receivables/${id}/adjustments`, body, key),
-  changeDueDate: (id: string, dueDate: string, reason: string) => put<Receivable>(`/api/finance/receivables/${id}/due-date`, { dueDate, reason }),
+  changeDueDate: (id: string, dueDate: string, reason: string, key: string) =>
+    api<Receivable>(`/api/finance/receivables/${id}/due-date`, { method: 'PUT', body: JSON.stringify({ dueDate, reason }), headers: { 'Idempotency-Key': key } }),
+  reverseAdjustment: (id: string, reason: string, key: string) => idempotent<Receivable>(`/api/finance/adjustments/${id}/reversal`, { reason }, key),
 
   payables: (filter: { status?: string; categoryId?: string; page?: number }) =>
     api<Page<PayableSummary>>('/api/finance/payables' + query({ ...filter, size: 20 })),
@@ -89,7 +95,9 @@ export const financeApi = {
 
   cashFlow: (from: string, to: string, categoryId?: string) => api<CashFlow>('/api/finance/cash-flow' + query({ from, to, categoryId })),
   paymentMethods: () => api<PaymentMethod[]>('/api/finance/payment-methods'),
-  createPaymentMethod: (name: string) => api<PaymentMethod>('/api/finance/payment-methods', { method: 'POST', body: JSON.stringify({ name }) }),
+  /** A natureza (movimenta dinheiro físico) é obrigatória e definitiva: não é inferida do nome nem alterada depois. */
+  createPaymentMethod: (name: string, cashSessionRequired: boolean) =>
+    api<PaymentMethod>('/api/finance/payment-methods', { method: 'POST', body: JSON.stringify({ name, cashSessionRequired }) }),
   updatePaymentMethod: (id: string, name: string, active: boolean) => put<PaymentMethod>(`/api/finance/payment-methods/${id}`, { name, active }),
   categories: () => api<ExpenseCategory[]>('/api/finance/expense-categories'),
   createCategory: (name: string) => api<ExpenseCategory>('/api/finance/expense-categories', { method: 'POST', body: JSON.stringify({ name }) }),

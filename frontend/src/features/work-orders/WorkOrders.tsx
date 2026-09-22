@@ -6,6 +6,8 @@ import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { customersApi, quotesApi, servicesApi, vehiclesApi, workflowApi, workOrdersApi } from '../../api/resources'
 import { ApiError } from '../../api/http'
+import { FINANCE_BILL } from '../../api/finance'
+import { useAuth } from '../../auth/useAuth'
 import { WorkOrderReceivableCard } from '../finance/WorkOrderReceivableCard'
 import { queryKeys } from '../../api/queryKeys'
 import { OPERATIONAL_STAGES, PRICE_SOURCE_LABELS, STAGE_LABELS, type Stage, type WorkOrder } from '../../api/types'
@@ -246,6 +248,7 @@ export function WorkOrderDetailPage() {
 
 /** Ações do fluxo, oferecidas conforme a etapa atual; o backend continua sendo a autoridade das transições. */
 function WorkflowActions({ order }: { order: WorkOrder }) {
+  const { session } = useAuth()
   const client = useQueryClient()
   const [error, setError] = useState('')
   const [statusId, setStatusId] = useState('')
@@ -259,6 +262,8 @@ function WorkflowActions({ order }: { order: WorkOrder }) {
     try { await action(); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Não foi possível concluir a ação'); throw e }
   }
   const stage = order.status
+  // Finalizar gera o recebível: exige FINANCE_BILL no backend; aqui só se reflete a autorização.
+  const canBill = Boolean(session?.permissions?.includes(FINANCE_BILL))
   if (stage === 'ENTREGUE' || stage === 'CANCELADA') return null
   const targets = statuses.data?.map(u => u.status).filter(s => s.active && OPERATIONAL_STAGES.includes(s.stage) && s.id !== order.statusInfo?.id) ?? []
 
@@ -277,7 +282,8 @@ function WorkflowActions({ order }: { order: WorkOrder }) {
                 onClick={() => run(() => workflowApi.move(order.id, statusId)).then(() => setStatusId(''), () => undefined)}>Mover</button>
         {stage !== 'EM_EXECUCAO' && stage !== 'REPROVADA' &&
           <button type="button" className="btn" onClick={() => run(() => workflowApi.startExecution(order.id)).catch(() => undefined)}>Iniciar execução</button>}
-        {stage === 'EM_EXECUCAO' && <FinishAction orderId={order.id} run={run} />}
+        {stage === 'EM_EXECUCAO' && canBill && <FinishAction orderId={order.id} run={run} />}
+        {stage === 'EM_EXECUCAO' && !canBill && <span className="muted">Finalizar gera o faturamento e exige a permissão de faturamento.</span>}
         <ConfirmAction label="Cancelar OS" question="Cancelar a OS? Os dados são preservados, mas ela não volta ao fluxo."
                        onConfirm={() => { if (reason.trim().length < 3) return Promise.reject(new Error('Informe o motivo do cancelamento')); return run(() => workflowApi.cancel(order.id, reason.trim())).then(() => setReason('')) }}>
           <div className="field"><label>Motivo do cancelamento *<textarea className="textarea" value={reason} onChange={e => setReason(e.target.value)} /></label></div>

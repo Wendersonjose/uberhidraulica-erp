@@ -135,7 +135,7 @@ test('finalizar OS com mais de um orçamento aprovado pede a escolha e reenvia c
       { id: 'qb', workOrderId: 'o1', createdAt: '2026-09-19T10:00:00Z', revisions: [], items: [] }],
     'POST /api/work-orders/o1/finish': (init: RequestInit | undefined) => (String(init?.body).includes('billingQuoteId')
       ? json({ id: 'o1' }) : json({ code: 'BILLING_QUOTE_SELECTION_REQUIRED', message: 'A OS tem mais de um orçamento aprovado; escolha qual será cobrado' }, 409)),
-  })
+  }, as(['FINANCE_BILL']))
   renderAt('/ordens-servico/o1')
   await userEvent.click(await screen.findByRole('button', { name: 'Finalizar OS' }))
   const dialog = screen.getByRole('group', { name: /Finalizar a OS/ })
@@ -202,4 +202,75 @@ test('editor de orçamento cobra um item físico da OS com o vínculo da DR-0008
     items: [{ quoteItemId: null, workOrderProductId: 'wp1', description: 'Bomba hidráulica', quantity: 1, unitPrice: 900 }],
   }))
   expect(requestsTo(fetch, 'GET', '/api/work-orders/o1')).not.toHaveLength(0)
+})
+
+const executionOrder = () => {
+  const execution = { id: 's6', name: 'Em execução', stage: 'EM_EXECUCAO', position: 60, active: true, stageDefault: true }
+  return {
+    'GET /api/work-orders/o1': { id: 'o1', number: 12, customerId: 'c1', vehicleId: 'v1', entryMileage: null, openedAt: '2026-09-17T10:00:00Z',
+      status: 'EM_EXECUCAO', statusInfo: execution, complaint: 'Vazamento', notes: null, lifecycle: {}, services: [], products: [] },
+    'GET /api/customers/c1': { id: 'c1', name: 'Maria Souza' },
+    'GET /api/vehicles/v1': { id: 'v1', manufacturer: 'Volvo', model: 'FH', plate: 'TRK1A11' },
+    'GET /api/services': [], 'GET /api/products': [], 'GET /api/work-orders/o1/status-history': [],
+    'GET /api/work-order-statuses': [{ status: execution, orderCount: 1 }],
+  }
+}
+
+test('sem FINANCE_BILL a finalização não é oferecida', async () => {
+  mockApi(executionOrder(), as(['FINANCE_VIEW']))
+  renderAt('/ordens-servico/o1')
+  expect(await screen.findByText(/exige a permissão de faturamento/)).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Finalizar OS' })).not.toBeInTheDocument()
+})
+
+test('nova forma de pagamento exige declarar se movimenta dinheiro físico', async () => {
+  const fetch = mockApi({
+    'GET /api/finance/payment-methods': methods,
+    'GET /api/finance/expense-categories': [],
+    'GET /api/finance/settings': { defaultReceivableDueDays: 0 },
+    'POST /api/finance/payment-methods': { id: 'm-new', code: 'DINHEIRO_BALCAO', name: 'Dinheiro balcão', active: true, cashSessionRequired: true },
+  }, as(ALL))
+  renderAt('/financeiro/configuracoes')
+  const card = await screen.findByRole('region', { name: 'Formas de pagamento' })
+  await userEvent.type(within(card).getByLabelText('Nome'), 'Dinheiro balcão')
+  expect(within(card).getByRole('button', { name: 'Cadastrar' })).toBeDisabled()
+  await userEvent.click(within(card).getByLabelText(/Sim — fica indisponível/))
+  await userEvent.click(within(card).getByRole('button', { name: 'Cadastrar' }))
+  await waitFor(() => expect(lastBody(fetch, 'POST', '/api/finance/payment-methods')).toEqual({ name: 'Dinheiro balcão', cashSessionRequired: true }))
+})
+
+test('ajuste lançado errado é estornado com motivo e chave, e o histórico mostra o estorno', async () => {
+  const adjustment = { id: 'a1', type: 'DISCOUNT', amount: 50, reason: 'Negociação', recordedAt: '2026-09-21T10:00:00Z', reversed: false, reversal: null }
+  const fetch = mockApi({
+    'GET /api/finance/receivables/r1': receivable({ adjustments: [adjustment, { ...adjustment, id: 'a2', amount: 10,
+      reversed: true, reversal: { id: 'x', reason: 'Duplicado', reversedAt: '2026-09-21T11:00:00Z' } }] }),
+    'GET /api/finance/payment-methods': methods,
+    'POST /api/finance/adjustments/a1/reversal': receivable(),
+  }, as(ALL))
+  renderAt('/financeiro/recebiveis/r1')
+  expect(await screen.findByText(/estornado em .*Duplicado/)).toBeInTheDocument()
+  const buttons = screen.getAllByRole('button', { name: 'Estornar ajuste' })
+  expect(buttons).toHaveLength(1)
+  await userEvent.click(buttons[0])
+  await userEvent.type(screen.getByLabelText('Motivo do estorno'), 'Lançado em duplicidade')
+  await userEvent.click(screen.getByRole('button', { name: 'Confirmar estorno' }))
+  await waitFor(() => expect(lastBody(fetch, 'POST', '/api/finance/adjustments/a1/reversal')).toEqual({ reason: 'Lançado em duplicidade' }))
+  expect(headerOf(requestsTo(fetch, 'POST', '/api/finance/adjustments/a1/reversal')[0][1], 'Idempotency-Key')).toBeTruthy()
+})
+
+test('alteração de vencimento envia chave de idempotência', async () => {
+  const fetch = mockApi({
+    'GET /api/finance/receivables/r1': receivable(),
+    'GET /api/finance/payment-methods': methods,
+    'PUT /api/finance/receivables/r1/due-date': receivable({ dueDate: '2026-10-15' }),
+  }, as(ALL))
+  renderAt('/financeiro/recebiveis/r1')
+  const form = await screen.findByRole('region', { name: 'Alterar vencimento' })
+  const date = within(form).getByLabelText(/Novo vencimento/)
+  await userEvent.clear(date)
+  await userEvent.type(date, '2026-10-15')
+  await userEvent.type(within(form).getByLabelText(/Motivo da alteração/), 'Pedido do cliente')
+  await userEvent.click(within(form).getByRole('button', { name: 'Alterar vencimento' }))
+  await waitFor(() => expect(lastBody(fetch, 'PUT', '/api/finance/receivables/r1/due-date')).toEqual({ dueDate: '2026-10-15', reason: 'Pedido do cliente' }))
+  expect(headerOf(requestsTo(fetch, 'PUT', '/api/finance/receivables/r1/due-date')[0][1], 'Idempotency-Key')).toBeTruthy()
 })

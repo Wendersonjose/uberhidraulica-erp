@@ -25,11 +25,12 @@ function CatalogCard({ title, kind, canConfigure }: { title: string; kind: 'meth
   const key = kind === 'methods' ? financeKeys.methods : financeKeys.categories
   const list = useQuery({ queryKey: key, queryFn: () => (kind === 'methods' ? financeApi.paymentMethods() : financeApi.categories()) })
   const [name, setName] = useState('')
+  const [cash, setCash] = useState<'' | 'yes' | 'no'>('')
   const [error, setError] = useState('')
   const refresh = () => client.invalidateQueries({ queryKey: key })
   const create = useMutation({
-    mutationFn: () => (kind === 'methods' ? financeApi.createPaymentMethod(name.trim()) : financeApi.createCategory(name.trim())),
-    onSuccess: async () => { setName(''); setError(''); await refresh() },
+    mutationFn: () => (kind === 'methods' ? financeApi.createPaymentMethod(name.trim(), cash === 'yes') : financeApi.createCategory(name.trim())),
+    onSuccess: async () => { setName(''); setCash(''); setError(''); await refresh() },
     onError: e => setError(e instanceof Error ? e.message : 'Não foi possível cadastrar'),
   })
   const toggle = useMutation({
@@ -45,13 +46,20 @@ function CatalogCard({ title, kind, canConfigure }: { title: string; kind: 'meth
                 empty={!list.data?.length} emptyMessage="Nenhum cadastro.">
       <ul className="history">{list.data?.map(item => <li key={item.id}>
         {item.name} <Badge tone={item.active ? 'success' : 'warning'}>{item.active ? 'Ativo' : 'Inativo'}</Badge>
-        {kind === 'methods' && (item as PaymentMethod).cashSessionRequired && <span className="muted"> · exige sessão de caixa</span>}
+        {kind === 'methods' && (item as PaymentMethod).cashSessionRequired && <span className="muted"> · exige sessão de caixa / movimenta dinheiro físico</span>}
         {canConfigure && <button type="button" className="btn secondary" onClick={() => toggle.mutate(item)}>{item.active ? 'Inativar' : 'Reativar'}</button>}
       </li>)}</ul>
     </QueryState>
     {canConfigure && <div className="inline-form">
       <div className="field"><label>Nome<input className="input" value={name} onChange={e => setName(e.target.value)} /></label></div>
-      <button type="button" className="btn" disabled={name.trim().length < 2 || create.isPending} onClick={() => create.mutate()}>Cadastrar</button>
+      {kind === 'methods' && <fieldset className="field" aria-label="Natureza da forma">
+        <legend>Exige sessão de caixa / movimenta dinheiro físico? *</legend>
+        <label><input type="radio" name="cash-nature" checked={cash === 'yes'} onChange={() => setCash('yes')} /> Sim — fica indisponível até existir sessão de caixa</label>
+        <label><input type="radio" name="cash-nature" checked={cash === 'no'} onChange={() => setCash('no')} /> Não — forma eletrônica ou sem dinheiro físico</label>
+        <span className="muted">Definido agora e não pode ser alterado depois.</span>
+      </fieldset>}
+      <button type="button" className="btn" disabled={name.trim().length < 2 || (kind === 'methods' && cash === '') || create.isPending}
+              onClick={() => create.mutate()}>Cadastrar</button>
     </div>}
   </section>
 }

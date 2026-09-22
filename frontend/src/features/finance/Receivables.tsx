@@ -119,7 +119,12 @@ function ReceivableView({ receivable: r, onChange }: { receivable: Receivable; o
         {(r.adjustments.length > 0 || r.dueDateChanges.length > 0) && <section className="card">
           <h2>Histórico financeiro</h2>
           <ul className="history">
-            {r.adjustments.map(a => <li key={a.id}>{formatDate(a.recordedAt)} — {a.type === 'DISCOUNT' ? 'Desconto' : 'Acréscimo'} de {formatBrl(a.amount)}: {a.reason}</li>)}
+            {r.adjustments.map(a => <li key={a.id}>
+              {formatDate(a.recordedAt)} — {a.type === 'DISCOUNT' ? 'Desconto' : 'Acréscimo'} de {formatBrl(a.amount)}: {a.reason}
+              {a.reversal && <span className="muted"> · estornado em {formatDate(a.reversal.reversedAt)}: {a.reversal.reason}</span>}
+              {canReverse && !a.reversal && r.status !== 'CANCELADO' &&
+                <ReverseAction label="Estornar ajuste" onReverse={(reason, key) => financeApi.reverseAdjustment(a.id, reason, key)} onDone={onChange} />}
+            </li>)}
             {r.dueDateChanges.map(c => <li key={c.id}>{formatDate(c.changedAt)} — vencimento de {formatDay(c.previousDueDate)} para {formatDay(c.newDueDate)}: {c.reason}</li>)}
           </ul>
         </section>}
@@ -191,9 +196,10 @@ function DueDateForm({ receivable, onDone }: { receivable: Receivable; onDone: (
   const [date, setDate] = useState(receivable.dueDate)
   const [reason, setReason] = useState('')
   const [error, setError] = useState('')
+  const idempotency = useIdempotencyKey()
   const mutation = useMutation({
-    mutationFn: () => financeApi.changeDueDate(receivable.id, date, reason.trim()),
-    onSuccess: async () => { setReason(''); setError(''); await onDone() },
+    mutationFn: () => financeApi.changeDueDate(receivable.id, date, reason.trim(), idempotency.key),
+    onSuccess: async () => { idempotency.renew(); setReason(''); setError(''); await onDone() },
     onError: e => setError(e instanceof Error ? e.message : 'Não foi possível alterar o vencimento'),
   })
   return <section className="card" aria-label="Alterar vencimento">
@@ -209,7 +215,9 @@ function DueDateForm({ receivable, onDone }: { receivable: Receivable; onDone: (
 }
 
 /** Estorno total com motivo, em dois passos; a chave de idempotência protege o duplo clique. */
-export function ReverseAction({ onReverse, onDone }: { onReverse: (reason: string, key: string) => Promise<unknown>; onDone: () => Promise<unknown> }) {
+export function ReverseAction({ onReverse, onDone, label = 'Estornar' }: {
+  onReverse: (reason: string, key: string) => Promise<unknown>; onDone: () => Promise<unknown>; label?: string
+}) {
   const [asking, setAsking] = useState(false)
   const [reason, setReason] = useState('')
   const [error, setError] = useState('')
@@ -219,7 +227,7 @@ export function ReverseAction({ onReverse, onDone }: { onReverse: (reason: strin
     onSuccess: async () => { idempotency.renew(); setAsking(false); setReason(''); await onDone() },
     onError: e => setError(e instanceof Error ? e.message : 'Não foi possível estornar'),
   })
-  if (!asking) return <button type="button" className="btn secondary" onClick={() => setAsking(true)}>Estornar</button>
+  if (!asking) return <button type="button" className="btn secondary" onClick={() => setAsking(true)}>{label}</button>
   return <div role="group" aria-label="Confirmar estorno">
     {error && <div role="alert" className="notice error">{error}</div>}
     <input className="input" aria-label="Motivo do estorno" placeholder="Motivo do estorno" value={reason} onChange={e => setReason(e.target.value)} />

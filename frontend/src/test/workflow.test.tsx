@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test } from 'vitest'
-import { json, lastBody, mockApi, renderAt, requestsTo } from './harness'
+import { json, lastBody, mockApi, renderAt, requestsTo, session } from './harness'
 
 const status = (id: string, name: string, stage: string, extra = {}) => ({ id, name, stage, position: 10, active: true, stageDefault: true, ...extra })
 const aberta = status('s1', 'Aberta', 'ABERTA')
@@ -46,7 +46,7 @@ test('detalhe move para status operacional e inicia execução', async () => {
     'GET /api/work-orders/o1': () => json(current),
     'POST /api/work-orders/o1/status': () => { current = order('EM_EXECUCAO', peca); return json(current) },
     'POST /api/work-orders/o1/start-execution': () => { current = order('EM_EXECUCAO', execucao); return json(current) },
-  })
+  }, { ...session, permissions: ['FINANCE_BILL'] })
   renderAt('/ordens-servico/o1')
   expect(await screen.findByText(/Aberta$/, { selector: 'strong' })).toBeInTheDocument()
   const moveTo = await screen.findByLabelText('Mover para')
