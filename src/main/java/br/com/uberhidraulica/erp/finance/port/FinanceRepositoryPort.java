@@ -53,6 +53,17 @@ public interface FinanceRepositoryPort {
     /** Recebível do ajuste que usou esta chave, se houver. */
     Optional<UUID> receivableAdjustedWithKey(String idempotencyKey);
 
+    /** Recebível dono do ajuste, se o ajuste existir. */
+    Optional<UUID> receivableOfAdjustment(UUID adjustmentId);
+
+    void insertAdjustmentReversal(UUID adjustmentId, Settlement.Reversal reversal);
+
+    /** Ajuste cujo estorno usou esta chave, se houver. */
+    Optional<UUID> adjustmentReversedWithKey(String idempotencyKey);
+
+    /** Alteração de vencimento gravada com esta chave, se houver. */
+    Optional<DueDateChangeRef> dueDateChangedWithKey(String idempotencyKey);
+
     /**
      * Bloqueio transacional sobre a chave de idempotência: duas requisições com a mesma chave se serializam,
      * e a segunda encontra o lançamento da primeira em vez de disputar a constraint.
@@ -131,4 +142,6 @@ public interface FinanceRepositoryPort {
                           BigDecimal paidAmount, BigDecimal outstandingBalance, LocalDate dueDate, FinancialStatus status) {}
 
     record DailyAmount(LocalDate date, BigDecimal amount) {}
+
+    record DueDateChangeRef(UUID receivableId, LocalDate newDueDate) {}
 }

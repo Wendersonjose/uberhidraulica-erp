@@ -40,7 +40,12 @@ class FinanceDomainTest {
     }
 
     private static Receivable.Adjustment adjustment(Receivable.AdjustmentType type, String amount) {
-        return new Receivable.Adjustment(UUID.randomUUID(), type, money(amount), "Negociação", NOW, USER, UUID.randomUUID().toString());
+        return new Receivable.Adjustment(UUID.randomUUID(), type, money(amount), "Negociação", NOW, USER, UUID.randomUUID().toString(), null);
+    }
+
+    private static Receivable.Adjustment reversed(Receivable.AdjustmentType type, String amount) {
+        return new Receivable.Adjustment(UUID.randomUUID(), type, money(amount), "Negociação", NOW, USER, UUID.randomUUID().toString(),
+                new Settlement.Reversal(UUID.randomUUID(), "Lançado errado", NOW, USER, "rk"));
     }
 
     @Test
@@ -137,29 +142,65 @@ class FinanceDomainTest {
         assertThat(payable.status(TODAY)).isEqualTo(FinancialStatus.PARCIAL);
     }
 
+    // ------------------------------------------------------------------ DR-0017: estorno de ajuste
+
+    @Test
+    void reversedAdjustmentsNoLongerComposeTheAdjustedAmount() {
+        Receivable r = receivable("1000.00", TODAY, List.of(reversed(Receivable.AdjustmentType.DISCOUNT, "100.00"),
+                adjustment(Receivable.AdjustmentType.SURCHARGE, "50.00"), reversed(Receivable.AdjustmentType.SURCHARGE, "20.00")), List.of());
+        assertThat(r.discountAmount()).isEqualByComparingTo("0.00");
+        assertThat(r.surchargeAmount()).isEqualByComparingTo("50.00");
+        assertThat(r.adjustedAmount()).isEqualByComparingTo("1050.00");
+        assertThat(r.adjustments()).hasSize(3);
+    }
+
+    @Test
+    void surchargeReversalIsRefusedWhenReceiptsWouldExceedTheAdjustedAmount() {
+        var surcharge = adjustment(Receivable.AdjustmentType.SURCHARGE, "100.00");
+        Receivable paid = receivable("500.00", TODAY, List.of(surcharge), List.of(receipt("550.00", false)));
+        assertThatThrownBy(() -> paid.checkAdjustmentReversal(surcharge.id())).extracting("code").isEqualTo("ADJUSTMENT_REVERSAL_EXCEEDS_RECEIVED");
+        Receivable partial = receivable("500.00", TODAY, List.of(surcharge), List.of(receipt("500.00", false)));
+        partial.checkAdjustmentReversal(surcharge.id());
+        var discount = adjustment(Receivable.AdjustmentType.DISCOUNT, "100.00");
+        receivable("500.00", TODAY, List.of(discount), List.of(receipt("400.00", false))).checkAdjustmentReversal(discount.id());
+    }
+
+    @Test
+    void adjustmentIsReversedAtMostOnce() {
+        var done = reversed(Receivable.AdjustmentType.DISCOUNT, "10.00");
+        assertThatThrownBy(() -> receivable("100.00", TODAY, List.of(done), List.of()).checkAdjustmentReversal(done.id()))
+                .extracting("code").isEqualTo("ADJUSTMENT_ALREADY_REVERSED");
+        assertThatThrownBy(() -> receivable("100.00", TODAY, List.of(), List.of()).checkAdjustmentReversal(UUID.randomUUID()))
+                .extracting("code").isEqualTo("ADJUSTMENT_NOT_FOUND");
+    }
+
+    @Test
+    void renamingOrInactivatingAPaymentMethodNeverChangesItsNature() {
+        PaymentMethod cash = new PaymentMethod(UUID.randomUUID(), "DINHEIRO_BALCAO", "Dinheiro balcão", true, true, NOW, NOW);
+        PaymentMethod renamed = cash.withNameAndActive("Balcão", false, NOW).withNameAndActive("Balcão", true, NOW);
+        assertThat(renamed.cashSessionRequired()).isTrue();
+        assertThatThrownBy(renamed::requireUsable).extracting("code").isEqualTo("CASH_SESSION_REQUIRED");
+    }
+
     // ------------------------------------------------------------------ seleção do orçamento de faturamento (F-02)
 
     private static QuoteBillingQuery.BillingCandidate candidate() {
         return new QuoteBillingQuery.BillingCandidate(UUID.randomUUID(), UUID.randomUUID(), money("100.00"), List.of());
     }
 
-    @Test
-    void singleCandidateIsSelectedAutomatically() {
-        var only = candidate();
-        assertThat(ReceivableService.select(List.of(only), null)).isEqualTo(only);
+    private static QuoteBillingQuery.BillingBasis basis(QuoteBillingQuery.Outcome outcome, QuoteBillingQuery.BillingCandidate selected) {
+        return new QuoteBillingQuery.BillingBasis(outcome, selected, List.of());
     }
 
     @Test
-    void severalCandidatesRequireExplicitSelectionAndNoneMeansNoBillingBasis() {
-        var first = candidate();
-        var second = candidate();
-        assertThatThrownBy(() -> ReceivableService.select(List.of(first, second), null))
+    void selectedBasisIsUsedAndEveryOtherOutcomeIsAClearRefusal() {
+        var only = candidate();
+        assertThat(ReceivableService.selected(basis(QuoteBillingQuery.Outcome.SELECTED, only))).isEqualTo(only);
+        assertThatThrownBy(() -> ReceivableService.selected(basis(QuoteBillingQuery.Outcome.SELECTION_REQUIRED, null)))
                 .extracting("code").isEqualTo("BILLING_QUOTE_SELECTION_REQUIRED");
-        assertThat(ReceivableService.select(List.of(first, second), second.quoteId())).isEqualTo(second);
-        assertThatThrownBy(() -> ReceivableService.select(List.of(), null)).extracting("code").isEqualTo("WORK_ORDER_WITHOUT_BILLING_BASIS");
-        assertThatThrownBy(() -> ReceivableService.select(List.of(first), UUID.randomUUID()))
-                .extracting("code").isEqualTo("BILLING_QUOTE_NOT_ELIGIBLE");
-        assertThatThrownBy(() -> ReceivableService.select(List.of(), UUID.randomUUID()))
+        assertThatThrownBy(() -> ReceivableService.selected(basis(QuoteBillingQuery.Outcome.NO_BASIS, null)))
+                .extracting("code").isEqualTo("WORK_ORDER_WITHOUT_BILLING_BASIS");
+        assertThatThrownBy(() -> ReceivableService.selected(basis(QuoteBillingQuery.Outcome.NOT_ELIGIBLE, null)))
                 .extracting("code").isEqualTo("BILLING_QUOTE_NOT_ELIGIBLE");
     }
 }

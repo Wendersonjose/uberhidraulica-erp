@@ -47,6 +47,7 @@ public class WorkOrderController {
     @PostMapping("/{id}/status") Response move(@PathVariable UUID id, @Valid @RequestBody MoveRequest r) { return Response.from(application.move(id, r.statusId(), r.reason())); }
     @PostMapping("/{id}/start-execution") Response startExecution(@PathVariable UUID id) { return Response.from(application.startExecution(id)); }
     /** Corpo opcional: {@code billingQuoteId} escolhe o orçamento de faturamento quando há mais de um candidato. */
+    @org.springframework.security.access.prepost.PreAuthorize("@iamAuthorization.hasPermission(authentication, 'FINANCE_BILL')")
     @PostMapping("/{id}/finish") Response finish(@PathVariable UUID id, @RequestBody(required = false) FinishRequest r) {
         return Response.from(application.finish(id, r == null ? null : r.billingQuoteId()));
     }

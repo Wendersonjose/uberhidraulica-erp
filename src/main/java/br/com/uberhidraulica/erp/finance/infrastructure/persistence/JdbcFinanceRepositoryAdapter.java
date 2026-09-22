@@ -75,14 +75,17 @@ class JdbcFinanceRepositoryAdapter implements FinanceRepositoryPort {
                         rs.getBigDecimal("quantity"), rs.getBigDecimal("unit_price"), rs.getBigDecimal("discount_amount"),
                         rs.getBigDecimal("total_amount"), rs.getInt("display_order")));
         List<Receivable.Adjustment> adjustments = jdbc.query(
-                "select * from finance.receivable_adjustment where receivable_id = :id order by recorded_at, id", id,
+                "select a.*, v.id as reversal_id, v.reason as reversal_reason, v.reversed_at, v.reversed_by, v.idempotency_key as reversal_key"
+                        + " from finance.receivable_adjustment a left join finance.receivable_adjustment_reversal v on v.adjustment_id = a.id"
+                        + " where a.receivable_id = :id order by a.recorded_at, a.id", id,
                 (rs, i) -> new Receivable.Adjustment(uuid(rs, "id"), Receivable.AdjustmentType.valueOf(rs.getString("adjustment_type")),
                         rs.getBigDecimal("amount"), rs.getString("reason"), instant(rs, "recorded_at"), uuid(rs, "recorded_by"),
-                        rs.getString("idempotency_key")));
+                        rs.getString("idempotency_key"), uuid(rs, "reversal_id") == null ? null : new Settlement.Reversal(uuid(rs, "reversal_id"),
+                        rs.getString("reversal_reason"), instant(rs, "reversed_at"), uuid(rs, "reversed_by"), rs.getString("reversal_key"))));
         List<Receivable.DueDateChange> changes = jdbc.query(
                 "select * from finance.receivable_due_date_change where receivable_id = :id order by changed_at, id", id,
                 (rs, i) -> new Receivable.DueDateChange(uuid(rs, "id"), date(rs, "previous_due_date"), date(rs, "new_due_date"),
-                        rs.getString("reason"), instant(rs, "changed_at"), uuid(rs, "changed_by")));
+                        rs.getString("reason"), instant(rs, "changed_at"), uuid(rs, "changed_by"), rs.getString("idempotency_key")));
         List<Settlement> receipts = jdbc.query(RECEIPTS + " where p.receivable_id = :id order by p.recorded_at, p.id", id, RECEIPT);
         return new Receivable(row.id(), row.workOrderId(), row.number(), row.customerId(), row.quoteId(), row.original(), row.issuedOn(),
                 row.dueDate(), row.createdAt(), row.createdBy(), row.cancelledAt(), row.cancelledBy(), row.cancellationReason(),
@@ -126,8 +129,9 @@ class JdbcFinanceRepositoryAdapter implements FinanceRepositoryPort {
 
     @Override
     public void changeDueDate(UUID receivableId, Receivable.DueDateChange c) {
-        jdbc.update("insert into finance.receivable_due_date_change (id, receivable_id, previous_due_date, new_due_date, reason, changed_at, changed_by)"
-                + " values (:id, :receivable, :previous, :next, :reason, :at, :by)", new MapSqlParameterSource().addValue("id", c.id())
+        jdbc.update("insert into finance.receivable_due_date_change (id, receivable_id, previous_due_date, new_due_date, reason, changed_at,"
+                + " changed_by, idempotency_key) values (:id, :receivable, :previous, :next, :reason, :at, :by, :key)", new MapSqlParameterSource()
+                .addValue("id", c.id()).addValue("key", c.idempotencyKey())
                 .addValue("receivable", receivableId).addValue("previous", Date.valueOf(c.previousDueDate()))
                 .addValue("next", Date.valueOf(c.newDueDate())).addValue("reason", c.reason())
                 .addValue("at", Timestamp.from(c.changedAt())).addValue("by", c.changedBy()));
@@ -187,8 +191,10 @@ class JdbcFinanceRepositoryAdapter implements FinanceRepositoryPort {
 
     /** Totais derivados por recebível, calculados a partir dos lançamentos a cada consulta. */
     private static final String RECEIVABLE_TOTALS = "with totals as (select r.*,"
-            + " coalesce((select sum(a.amount) from finance.receivable_adjustment a where a.receivable_id = r.id and a.adjustment_type = 'DISCOUNT'), 0) as discount_amount,"
-            + " coalesce((select sum(a.amount) from finance.receivable_adjustment a where a.receivable_id = r.id and a.adjustment_type = 'SURCHARGE'), 0) as surcharge_amount,"
+            + " coalesce((select sum(a.amount) from finance.receivable_adjustment a where a.receivable_id = r.id and a.adjustment_type = 'DISCOUNT'"
+            + "   and not exists (select 1 from finance.receivable_adjustment_reversal x where x.adjustment_id = a.id)), 0) as discount_amount,"
+            + " coalesce((select sum(a.amount) from finance.receivable_adjustment a where a.receivable_id = r.id and a.adjustment_type = 'SURCHARGE'"
+            + "   and not exists (select 1 from finance.receivable_adjustment_reversal x where x.adjustment_id = a.id)), 0) as surcharge_amount,"
             + " coalesce((select sum(p.amount) from finance.receipt p where p.receivable_id = r.id"
             + "   and not exists (select 1 from finance.receipt_reversal v where v.receipt_id = p.id)), 0) as settled_amount"
             + " from finance.receivable r),"
@@ -221,6 +227,30 @@ class JdbcFinanceRepositoryAdapter implements FinanceRepositoryPort {
     public Optional<UUID> receivableAdjustedWithKey(String key) {
         return jdbc.query("select receivable_id from finance.receivable_adjustment where idempotency_key = :key", Map.of("key", key),
                 (rs, i) -> uuid(rs, "receivable_id")).stream().findFirst();
+    }
+
+    @Override
+    public Optional<UUID> receivableOfAdjustment(UUID adjustmentId) {
+        return jdbc.query("select receivable_id from finance.receivable_adjustment where id = :id", Map.of("id", adjustmentId),
+                (rs, i) -> uuid(rs, "receivable_id")).stream().findFirst();
+    }
+
+    @Override
+    public void insertAdjustmentReversal(UUID adjustmentId, Settlement.Reversal r) {
+        jdbc.update("insert into finance.receivable_adjustment_reversal (id, adjustment_id, reason, reversed_at, reversed_by, idempotency_key)"
+                + " values (:id, :target, :reason, :at, :by, :key)", reversalParams(adjustmentId, r));
+    }
+
+    @Override
+    public Optional<UUID> adjustmentReversedWithKey(String key) {
+        return jdbc.query("select adjustment_id from finance.receivable_adjustment_reversal where idempotency_key = :key", Map.of("key", key),
+                (rs, i) -> uuid(rs, "adjustment_id")).stream().findFirst();
+    }
+
+    @Override
+    public Optional<DueDateChangeRef> dueDateChangedWithKey(String key) {
+        return jdbc.query("select receivable_id, new_due_date from finance.receivable_due_date_change where idempotency_key = :key",
+                Map.of("key", key), (rs, i) -> new DueDateChangeRef(uuid(rs, "receivable_id"), date(rs, "new_due_date"))).stream().findFirst();
     }
 
     @Override

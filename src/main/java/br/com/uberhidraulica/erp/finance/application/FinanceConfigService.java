@@ -37,12 +37,18 @@ public class FinanceConfigService {
     @Transactional(readOnly = true)
     public List<PaymentMethod> paymentMethods() { return repository.paymentMethods(); }
 
-    /** Nova forma: o código deriva do nome; a marca de sessão de caixa nunca é concedida pela API. */
+    /**
+     * Nova forma: a classificação "movimenta dinheiro físico" é obrigatória e definitiva (revisão TASK-0015, F2).
+     * Nunca é inferida do nome. Com {@code cashSessionRequired = true}, a forma fica indisponível para liquidação
+     * até existir sessão de caixa (TASK-0016).
+     */
     @Transactional
-    public PaymentMethod createPaymentMethod(String name) {
+    public PaymentMethod createPaymentMethod(String name, Boolean cashSessionRequired) {
         String normalized = Money.requiredText(name, "Nome da forma de pagamento", 80);
+        if (cashSessionRequired == null)
+            throw new FinanceException("INVALID_PAYMENT_METHOD", "Informe se a forma movimenta dinheiro físico e exige sessão de caixa");
         Instant now = clock.instant();
-        PaymentMethod method = new PaymentMethod(UUID.randomUUID(), code(normalized), normalized, true, false, now, now);
+        PaymentMethod method = new PaymentMethod(UUID.randomUUID(), code(normalized), normalized, true, cashSessionRequired, now, now);
         return save(() -> repository.savePaymentMethod(method, true), method, "PAYMENT_METHOD_ALREADY_EXISTS");
     }
 
@@ -50,7 +56,7 @@ public class FinanceConfigService {
     public PaymentMethod updatePaymentMethod(UUID id, String name, boolean active) {
         PaymentMethod current = repository.paymentMethod(id)
                 .orElseThrow(() -> new FinanceException("PAYMENT_METHOD_NOT_FOUND", "Forma de pagamento não encontrada"));
-        PaymentMethod updated = new PaymentMethod(id, current.code(), name, active, current.cashSessionRequired(), current.createdAt(), clock.instant());
+        PaymentMethod updated = current.withNameAndActive(name, active, clock.instant());
         return save(() -> repository.savePaymentMethod(updated, false), updated, "PAYMENT_METHOD_ALREADY_EXISTS");
     }
 

@@ -93,8 +93,20 @@ class ReceivableController {
 
     @PutMapping("/receivables/{id}/due-date")
     @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'FINANCE_ADJUST')")
-    ReceivableResponse changeDueDate(@PathVariable UUID id, @Valid @RequestBody DueDateRequest request) {
-        return respond(receivables.changeDueDate(id, request.dueDate(), request.reason()));
+    ResponseEntity<ReceivableResponse> changeDueDate(@PathVariable UUID id, @RequestHeader(value = IDEMPOTENCY_HEADER, required = false) String key,
+                                                     @Valid @RequestBody DueDateRequest request) {
+        Recorded<Receivable> result = receivables.changeDueDate(id, request.dueDate(), request.reason(), key);
+        return ResponseEntity.ok().header(REPLAY_HEADER, String.valueOf(result.replayed())).body(respond(result.value()));
+    }
+
+    /** DR-0017: estorno total do desconto ou acréscimo; o ajuste original não é editado. */
+    @PostMapping("/adjustments/{id}/reversal")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'FINANCE_REVERSE')")
+    ResponseEntity<ReceivableResponse> reverseAdjustment(@PathVariable UUID id, @RequestHeader(value = IDEMPOTENCY_HEADER, required = false) String key,
+                                                         @Valid @RequestBody ReversalRequest request) {
+        Recorded<Receivable> result = receivables.reverseAdjustment(id, request.reason(), key);
+        return ResponseEntity.status(result.replayed() ? HttpStatus.OK : HttpStatus.CREATED)
+                .header(REPLAY_HEADER, String.valueOf(result.replayed())).body(respond(receivables.get(result.value().id())));
     }
 
     private ResponseEntity<SettlementResponse> settled(Recorded<br.com.uberhidraulica.erp.finance.domain.Settlement> result) {

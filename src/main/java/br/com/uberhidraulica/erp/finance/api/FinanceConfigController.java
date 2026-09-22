@@ -42,7 +42,9 @@ class FinanceConfigController {
     @PostMapping("/payment-methods")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'FINANCE_CONFIG')")
-    PaymentMethod createPaymentMethod(@Valid @RequestBody NameRequest request) { return config.createPaymentMethod(request.name()); }
+    PaymentMethod createPaymentMethod(@Valid @RequestBody PaymentMethodRequest request) {
+        return config.createPaymentMethod(request.name(), request.cashSessionRequired());
+    }
 
     @PutMapping("/payment-methods/{id}")
     @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'FINANCE_CONFIG')")
@@ -76,6 +78,9 @@ class FinanceConfigController {
     }
 
     record NameRequest(@NotBlank @Size(max = 80) String name) {}
+
+    /** {@code cashSessionRequired} obrigatório: movimenta dinheiro físico? Definido na criação, nunca alterado. */
+    record PaymentMethodRequest(@NotBlank @Size(max = 80) String name, @NotNull Boolean cashSessionRequired) {}
 
     record UpdateRequest(@NotBlank @Size(max = 80) String name, @NotNull Boolean active) {}
 

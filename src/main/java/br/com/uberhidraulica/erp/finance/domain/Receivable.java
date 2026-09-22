@@ -26,9 +26,14 @@ public record Receivable(UUID id, UUID workOrderId, long workOrderNumber, UUID c
     public record Line(UUID id, UUID quoteItemRevisionId, String description, BigDecimal quantity, BigDecimal unitPrice,
                        BigDecimal discountAmount, BigDecimal totalAmount, int displayOrder) {}
 
-    /** Desconto ou acréscimo financeiro manual; imutável e, enquanto a DR-0017 estiver aberta, sem estorno. */
+    /**
+     * Desconto ou acréscimo financeiro manual; imutável. Correção é estorno total próprio (DR-0017, opção A):
+     * o ajuste estornado deixa de compor descontos ou acréscimos, e o histórico mostra os dois registros.
+     */
     public record Adjustment(UUID id, AdjustmentType type, BigDecimal amount, String reason, Instant recordedAt, UUID recordedBy,
-                             String idempotencyKey) {
+                             String idempotencyKey, Settlement.Reversal reversal) {
+        public boolean active() { return reversal == null; }
+
         public Adjustment {
             if (id == null || type == null || recordedAt == null || recordedBy == null || idempotencyKey == null)
                 throw new FinanceException("INVALID_FINANCE_ENTRY", "Dados obrigatórios do ajuste ausentes");
@@ -37,7 +42,8 @@ public record Receivable(UUID id, UUID workOrderId, long workOrderNumber, UUID c
         }
     }
 
-    public record DueDateChange(UUID id, LocalDate previousDueDate, LocalDate newDueDate, String reason, Instant changedAt, UUID changedBy) {}
+    public record DueDateChange(UUID id, LocalDate previousDueDate, LocalDate newDueDate, String reason, Instant changedAt, UUID changedBy,
+                                String idempotencyKey) {}
 
     public Receivable {
         if (id == null || workOrderId == null || customerId == null || billingQuoteId == null || issuedOn == null
@@ -77,7 +83,8 @@ public record Receivable(UUID id, UUID workOrderId, long workOrderNumber, UUID c
     }
 
     private BigDecimal adjustmentTotal(AdjustmentType type) {
-        return Money.sum(adjustments.stream().filter(adjustment -> adjustment.type() == type).map(Adjustment::amount).toList());
+        return Money.sum(adjustments.stream().filter(adjustment -> adjustment.active() && adjustment.type() == type)
+                .map(Adjustment::amount).toList());
     }
 
     // ------------------------------------------------------------------ regras
@@ -94,6 +101,21 @@ public record Receivable(UUID id, UUID workOrderId, long workOrderNumber, UUID c
         requireNotCancelled();
         if (type == AdjustmentType.DISCOUNT && amount.compareTo(outstandingBalance()) > 0)
             throw new FinanceException("AMOUNT_EXCEEDS_BALANCE", "Desconto maior que o saldo em aberto de " + outstandingBalance().toPlainString());
+    }
+
+    /**
+     * DR-0017: estorno total e único do ajuste. Estornar desconto só aumenta o saldo. Estornar acréscimo reduz o
+     * valor ajustado, e é recusado se o recebido passaria a exceder o novo valor: nada de saldo negativo ou crédito.
+     */
+    public void checkAdjustmentReversal(UUID adjustmentId) {
+        requireNotCancelled();
+        Adjustment adjustment = adjustments.stream().filter(candidate -> candidate.id().equals(adjustmentId)).findFirst()
+                .orElseThrow(() -> new FinanceException("ADJUSTMENT_NOT_FOUND", "Ajuste não encontrado"));
+        if (!adjustment.active()) throw new FinanceException("ADJUSTMENT_ALREADY_REVERSED", "Este ajuste já foi estornado");
+        if (adjustment.type() == AdjustmentType.SURCHARGE
+                && receivedAmount().compareTo(adjustedAmount().subtract(adjustment.amount())) > 0)
+            throw new FinanceException("ADJUSTMENT_REVERSAL_EXCEEDS_RECEIVED",
+                    "Estornar este acréscimo deixaria o recebido acima do valor devido; estorne antes os recebimentos excedentes");
     }
 
     /** DR-0015, F-04: ajuste individual de vencimento só enquanto houver saldo em aberto. */

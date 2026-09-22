@@ -36,13 +36,18 @@ public class ReceivableService {
     private final QuoteBillingQuery billing;
     private final WorkOrderQuery workOrders;
     private final CurrentUser currentUser;
+    private final br.com.uberhidraulica.erp.iam.IamAuthorization authorization;
     private final Clock clock = Clock.systemUTC();
 
-    public ReceivableService(FinanceRepositoryPort repository, QuoteBillingQuery billing, WorkOrderQuery workOrders, CurrentUser currentUser) {
+    public static final String BILL_PERMISSION = "FINANCE_BILL";
+
+    public ReceivableService(FinanceRepositoryPort repository, QuoteBillingQuery billing, WorkOrderQuery workOrders, CurrentUser currentUser,
+                             br.com.uberhidraulica.erp.iam.IamAuthorization authorization) {
         this.repository = repository;
         this.billing = billing;
         this.workOrders = workOrders;
         this.currentUser = currentUser;
+        this.authorization = authorization;
     }
 
     public LocalDate today() { return LocalDate.now(clock.withZone(Money.WORKSHOP_ZONE)); }
@@ -64,11 +69,16 @@ public class ReceivableService {
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public Receivable generateForFinishedWorkOrder(UUID workOrderId, UUID billingQuoteId, Instant finishedAt, UUID finishedBy) {
+        // Revisão TASK-0015, F3: gerar recebível é mutação financeira. Além do @PreAuthorize do endpoint, este
+        // caminho recusa qualquer finalização sem ator autorizado — inclusive chamadas internas.
+        if (finishedBy == null || !authorization.hasPermission(finishedBy, BILL_PERMISSION))
+            throw new FinanceException("FINANCE_BILL_REQUIRED", "Seu perfil não pode gerar o faturamento da OS");
         var existing = repository.findReceivableByWorkOrder(workOrderId);
         if (existing.isPresent()) return existing.get();
         var order = workOrders.workOrder(workOrderId)
                 .orElseThrow(() -> new FinanceException("WORK_ORDER_NOT_FOUND", "Ordem de Serviço não encontrada"));
-        QuoteBillingQuery.BillingCandidate source = select(billing.billingCandidates(workOrderId), billingQuoteId);
+        // Revisão TASK-0015, F1: a base é obtida com os orçamentos da OS bloqueados até o commit deste recebível.
+        QuoteBillingQuery.BillingCandidate source = selected(billing.billingBasisForFinalization(workOrderId, billingQuoteId));
         LocalDate issuedOn = LocalDate.ofInstant(finishedAt, Money.WORKSHOP_ZONE);
         List<Receivable.Line> lines = new ArrayList<>();
         int order0 = 1;
@@ -82,19 +92,17 @@ public class ReceivableService {
         return receivable;
     }
 
-    /** Seleção do orçamento de faturamento: nunca o último, nunca a soma, nunca o total bruto da OS. */
-    static QuoteBillingQuery.BillingCandidate select(List<QuoteBillingQuery.BillingCandidate> candidates, UUID chosen) {
-        if (chosen != null)
-            return candidates.stream().filter(candidate -> candidate.quoteId().equals(chosen)).findFirst()
-                    .orElseThrow(() -> new FinanceException("BILLING_QUOTE_NOT_ELIGIBLE",
-                            "O orçamento escolhido não pertence a esta OS ou não tem item aprovado"));
-        if (candidates.isEmpty())
-            throw new FinanceException("WORK_ORDER_WITHOUT_BILLING_BASIS",
+    /** Resultado da seleção feita sob bloqueio: nunca o último, nunca a soma, nunca o total bruto da OS. */
+    static QuoteBillingQuery.BillingCandidate selected(QuoteBillingQuery.BillingBasis basis) {
+        return switch (basis.outcome()) {
+            case SELECTED -> basis.selected();
+            case NOT_ELIGIBLE -> throw new FinanceException("BILLING_QUOTE_NOT_ELIGIBLE",
+                    "O orçamento escolhido não pertence a esta OS ou não tem item aprovado");
+            case NO_BASIS -> throw new FinanceException("WORK_ORDER_WITHOUT_BILLING_BASIS",
                     "A OS não tem orçamento com item aprovado; regularize a aprovação comercial antes de finalizar");
-        if (candidates.size() > 1)
-            throw new FinanceException("BILLING_QUOTE_SELECTION_REQUIRED",
+            case SELECTION_REQUIRED -> throw new FinanceException("BILLING_QUOTE_SELECTION_REQUIRED",
                     "A OS tem mais de um orçamento aprovado; escolha qual será cobrado");
-        return candidates.get(0);
+        };
     }
 
     /** F-08: com recebimento não estornado, recusa; sem recebimentos, cancela preservando o histórico. */
@@ -172,20 +180,57 @@ public class ReceivableService {
             return new Recorded<>(receivable, true);
         }
         Receivable.Adjustment adjustment = new Receivable.Adjustment(UUID.randomUUID(), type, amount, reason, clock.instant(),
-                currentUser.requireId(), key);
+                currentUser.requireId(), key, null);
         receivable.checkAdjustment(type, adjustment.amount());
         repository.insertAdjustment(receivableId, adjustment);
         return new Recorded<>(repository.findReceivable(receivableId).orElseThrow(), false);
     }
 
+    /** DR-0017: estorno total do ajuste, com motivo, autor, instante do servidor e chave de idempotência. */
     @Transactional
-    public Receivable changeDueDate(UUID receivableId, LocalDate newDueDate, String reason) {
-        String normalized = Money.requiredText(reason, "Motivo da alteração", 500);
+    public Recorded<Receivable> reverseAdjustment(UUID adjustmentId, String reason, String idempotencyKey) {
+        String key = Idempotency.require(idempotencyKey);
+        String normalized = Money.requiredText(reason, "Motivo do estorno", 500);
+        UUID receivableId = repository.receivableOfAdjustment(adjustmentId)
+                .orElseThrow(() -> new FinanceException("ADJUSTMENT_NOT_FOUND", "Ajuste não encontrado"));
+        repository.lockIdempotencyKey(key);
         Receivable receivable = lock(receivableId);
+        var previous = repository.adjustmentReversedWithKey(key);
+        if (previous.isPresent()) {
+            if (!previous.get().equals(adjustmentId)) throw Idempotency.reused();
+            return new Recorded<>(receivable, true);
+        }
+        receivable.checkAdjustmentReversal(adjustmentId);
+        try {
+            repository.insertAdjustmentReversal(adjustmentId, new Settlement.Reversal(UUID.randomUUID(), normalized, clock.instant(),
+                    currentUser.requireId(), key));
+        } catch (DataIntegrityViolationException alreadyReversed) {
+            throw new FinanceException("ADJUSTMENT_ALREADY_REVERSED", "Este ajuste já foi estornado");
+        }
+        return new Recorded<>(repository.findReceivable(receivableId).orElseThrow(), false);
+    }
+
+    /** Alteração de vencimento idempotente: o retry da mesma intenção devolve o que já foi aplicado. */
+    @Transactional
+    public Recorded<Receivable> changeDueDate(UUID receivableId, LocalDate newDueDate, String reason, String idempotencyKey) {
+        String key = Idempotency.require(idempotencyKey);
+        String normalized = Money.requiredText(reason, "Motivo da alteração", 500);
+        repository.lockIdempotencyKey(key);
+        Receivable receivable = lock(receivableId);
+        var previous = repository.dueDateChangedWithKey(key);
+        if (previous.isPresent()) {
+            if (!previous.get().receivableId().equals(receivableId) || !previous.get().newDueDate().equals(newDueDate))
+                throw Idempotency.reused();
+            return new Recorded<>(receivable, true);
+        }
         receivable.checkDueDateChange(newDueDate);
-        repository.changeDueDate(receivableId, new Receivable.DueDateChange(UUID.randomUUID(), receivable.dueDate(), newDueDate,
-                normalized, clock.instant(), currentUser.requireId()));
-        return repository.findReceivable(receivableId).orElseThrow();
+        try {
+            repository.changeDueDate(receivableId, new Receivable.DueDateChange(UUID.randomUUID(), receivable.dueDate(), newDueDate,
+                    normalized, clock.instant(), currentUser.requireId(), key));
+        } catch (DataIntegrityViolationException collision) {
+            throw Idempotency.reused();
+        }
+        return new Recorded<>(repository.findReceivable(receivableId).orElseThrow(), false);
     }
 
     // ------------------------------------------------------------------ consulta

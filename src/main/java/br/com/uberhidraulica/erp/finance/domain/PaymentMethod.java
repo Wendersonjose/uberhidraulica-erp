@@ -20,6 +20,11 @@ public record PaymentMethod(UUID id, String code, String name, boolean active, b
         name = Money.requiredText(name, "Nome da forma de pagamento", 80);
     }
 
+    /** Renomear, inativar ou reativar nunca mudam a natureza da forma (revisão TASK-0015, F2). */
+    public PaymentMethod withNameAndActive(String newName, boolean newActive, Instant now) {
+        return new PaymentMethod(id, code, newName, newActive, cashSessionRequired, createdAt, now);
+    }
+
     /** Forma utilizável agora em nova liquidação. */
     public void requireUsable() {
         if (!active) throw new FinanceException("PAYMENT_METHOD_INACTIVE", "Forma de pagamento inativa");

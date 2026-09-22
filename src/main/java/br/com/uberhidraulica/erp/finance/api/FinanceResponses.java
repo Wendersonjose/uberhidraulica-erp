@@ -38,20 +38,29 @@ final class FinanceResponses {
                               BigDecimal receivedAmount, BigDecimal outstandingBalance, LocalDate issuedOn, LocalDate dueDate,
                               FinancialStatus status, Instant createdAt, Instant cancelledAt, String cancellationReason,
                               List<Receivable.Line> lines, List<AdjustmentResponse> adjustments,
-                              List<Receivable.DueDateChange> dueDateChanges, List<SettlementResponse> receipts) {
+                              List<DueDateChangeResponse> dueDateChanges, List<SettlementResponse> receipts) {
         static ReceivableResponse from(Receivable r, String customerName, LocalDate today) {
             return new ReceivableResponse(r.id(), r.workOrderId(), r.workOrderNumber(), r.customerId(), customerName, r.billingQuoteId(),
                     r.originalAmount(), r.discountAmount(), r.surchargeAmount(), r.adjustedAmount(), r.receivedAmount(),
                     r.outstandingBalance(), r.issuedOn(), r.dueDate(), r.status(today), r.createdAt(), r.cancelledAt(),
                     r.cancellationReason(), r.lines(), r.adjustments().stream().map(AdjustmentResponse::from).toList(),
-                    r.dueDateChanges(), r.receipts().stream().map(SettlementResponse::from).toList());
+                    r.dueDateChanges().stream().map(DueDateChangeResponse::from).toList(),
+                    r.receipts().stream().map(SettlementResponse::from).toList());
         }
     }
 
     /** A chave de idempotência não é devolvida: ela é do cliente que fez o pedido. */
-    record AdjustmentResponse(UUID id, Receivable.AdjustmentType type, BigDecimal amount, String reason, Instant recordedAt, UUID recordedBy) {
+    record AdjustmentResponse(UUID id, Receivable.AdjustmentType type, BigDecimal amount, String reason, Instant recordedAt, UUID recordedBy,
+                              boolean reversed, ReversalResponse reversal) {
         static AdjustmentResponse from(Receivable.Adjustment a) {
-            return new AdjustmentResponse(a.id(), a.type(), a.amount(), a.reason(), a.recordedAt(), a.recordedBy());
+            return new AdjustmentResponse(a.id(), a.type(), a.amount(), a.reason(), a.recordedAt(), a.recordedBy(), !a.active(),
+                    ReversalResponse.from(a.reversal()));
+        }
+    }
+
+    record DueDateChangeResponse(UUID id, LocalDate previousDueDate, LocalDate newDueDate, String reason, Instant changedAt, UUID changedBy) {
+        static DueDateChangeResponse from(Receivable.DueDateChange c) {
+            return new DueDateChangeResponse(c.id(), c.previousDueDate(), c.newDueDate(), c.reason(), c.changedAt(), c.changedBy());
         }
     }
 
