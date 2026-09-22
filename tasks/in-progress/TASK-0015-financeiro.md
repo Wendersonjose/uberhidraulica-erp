@@ -1,0 +1,120 @@
+# TASK-0015 — Financeiro: contas a receber da OS, recebimentos, contas a pagar e fluxo de caixa
+
+## Identificação
+
+- Status: `IN_PROGRESS` — especificação concluída e revisada; implementação iniciada
+- Prioridade: `HIGH`
+- Criada em: `2026-09-22`
+- Origem: quadro Trello "Projetos wenderson", lista "A fazer", cartões 31 a 34
+- Proprietário principal: Financeiro — `AG-06`
+- Revisão da especificação: `AG-02`, `AG-06`, `AG-08` — `docs/review/TASK-0015-revisao-especificacao.md`
+
+## Cartões Trello cobertos
+
+| Cartão | Escopo |
+| --- | --- |
+| Contas a receber da ordem de serviço | recebível ligado à OS e ao orçamento de faturamento; valor original congelado, descontos/acréscimos e saldo; finalizar ≠ receber; cancelamento com histórico |
+| Registro de recebimentos e formas de pagamento | recebimento total/parcial com data efetiva, forma e usuário; estorno total, próprio e auditável; formas configuráveis |
+| Contas a pagar e despesas | descrição, fornecedor em texto livre, categoria configurável, valor, vencimento obrigatório, situação; pagamento total/parcial; cancelamento preserva histórico |
+| Fluxo de caixa e visão financeira | realizado × previsto por período e categoria; entradas, saídas e variação líquida; tudo derivado |
+
+## Decisões
+
+- `DR-0015` — `DECIDED` (F-01 a F-13), com as interpretações técnicas da seção 5.
+- `DR-0008` — `DECIDED`, opção A: vínculo opcional `quote_item.work_order_product_id`.
+- `DR-0017` — `OPEN`: correção de ajuste lançado por engano. Até decidir, ajuste é imutável.
+- `DR-0007` — política monetária. `DR-0009` — oficina única. `DR-0012` — OS finalizada não é cancelada.
+
+## Especificação
+
+Modelo de domínio, banco, idempotência, fluxo de caixa e contrato REST:
+`docs/architecture/financeiro/TASK-0015-modelo-financeiro.md`.
+
+## Entregas, em commits separados
+
+1. `V17` + Orçamento: vínculo do item comercial com o item físico da OS (`DR-0008`).
+2. Orçamento: contrato público `QuoteBillingQuery` (base comercial efetiva).
+3. `V18` + módulo `finance`: recebível, recebimentos, ajustes, vencimento, contas a pagar, formas,
+   categorias, configuração, permissões, fluxo de caixa; ouvintes da finalização e do cancelamento.
+4. OS: finalização aceita `billingQuoteId`; evento `Finished` leva o orçamento escolhido.
+5. Frontend: telas do Financeiro, seleção do orçamento na finalização, autorização refletida.
+6. Testes e checkpoint PostgreSQL.
+
+## Critérios de aceite
+
+### Recebível da OS
+
+1. Finalizar a OS gera exatamente um recebível em aberto; nenhum recebimento é registrado.
+2. O valor original é a soma dos itens com decisão `APPROVE` na versão corrente do orçamento de
+   faturamento; item rejeitado, pendente ou substituído não entra. Nunca o total bruto da OS.
+3. Um candidato → seleção automática; dois ou mais sem escolha → `409 BILLING_QUOTE_SELECTION_REQUIRED`;
+   nenhum → `409 WORK_ORDER_WITHOUT_BILLING_BASIS`; orçamento de outra OS ou sem aprovação →
+   `409 BILLING_QUOTE_NOT_ELIGIBLE`. Em todos os casos a OS continua em execução.
+4. O recebível guarda o orçamento de faturamento e o snapshot das linhas; decisão comercial posterior
+   não o altera.
+5. Vencimento = data da finalização + `default_receivable_due_days` (inicial 0).
+6. Entregar a OS não cria outro recebível; repetir a finalização não cria outro recebível.
+7. Recusa do Estoque na finalização desfaz também o recebível, e vice-versa.
+
+### Recebimento e estorno
+
+8. Recebimento parcial permitido; valor acima do saldo → `409 AMOUNT_EXCEEDS_BALANCE`.
+9. `DINHEIRO` → `409 CASH_SESSION_REQUIRED`; forma inativa → `409 PAYMENT_METHOD_INACTIVE`.
+10. Data efetiva não futura; padrão hoje (`America/Sao_Paulo`).
+11. `Idempotency-Key` obrigatório; retry com a mesma chave não duplica; chave reutilizada com outro
+    conteúdo → `409 IDEMPOTENCY_KEY_REUSED`.
+12. Estorno total, com motivo; reabre o saldo; segundo estorno → `409 RECEIPT_ALREADY_REVERSED`.
+13. Nenhum recebimento é editado ou apagado.
+14. Dois recebimentos simultâneos cuja soma excede o saldo: só um passa (PostgreSQL real).
+
+### Ajustes e vencimento
+
+15. Desconto e acréscimo manuais com motivo e `FINANCE_ADJUST`; valor original preservado; desconto
+    maior que o saldo recusado; valor ajustado nunca negativo.
+16. Mudança de vencimento com motivo, registrada com valor anterior, só com saldo em aberto.
+
+### Cancelamento
+
+17. Cancelar OS cujo recebível tem recebimento não estornado → `409 RECEIVABLE_HAS_RECEIPTS`; sem
+    recebimentos, o recebível é cancelado e preservado. (No fluxo atual a OS finalizada não é
+    cancelada — `DR-0012`; a regra é testada no Financeiro diretamente.)
+
+### Contas a pagar
+
+18. Criação com descrição, categoria ativa, valor > 0 e vencimento obrigatórios; fornecedor opcional.
+19. Pagamento parcial; acima do saldo recusado; `DINHEIRO` recusado; estorno total; idempotência.
+20. Cancelamento com motivo; com pagamento não estornado → `409 PAYABLE_HAS_PAYMENTS`.
+
+### Configuração, fluxo e permissões
+
+21. Formas e categorias: cadastrar, renomear, inativar; nunca excluir; lançamento guarda o nome da forma.
+22. Fluxo de caixa: realizado e previsto separados, entradas, saídas e variação líquida, série diária,
+    filtro de categoria para saídas; sem "saldo".
+23. `VENCIDO` derivado, sem bloquear abertura de OS do cliente.
+24. Toda rota respeita a permissão da tabela do modelo; `GERENTE_ADMINISTRATIVO` recebe mas não estorna,
+    não ajusta, não lança conta a pagar e não configura.
+25. Dinheiro em `BigDecimal`/`NUMERIC`; ArchUnit proíbe `float`/`double` no módulo.
+
+### DR-0008
+
+26. Item comercial pode apontar um item físico da mesma OS; outra OS → `404 WORK_ORDER_PRODUCT_NOT_FOUND`;
+    duas vezes no mesmo orçamento → `409 QUOTE_ITEM_PRODUCT_ALREADY_LINKED`; orçamentos diferentes podem
+    repetir; o PostgreSQL recusa a associação cross-OS mesmo por SQL direto.
+
+## Efeito colateral conhecido
+
+Finalizar uma OS passa a exigir base comercial aprovada. Testes existentes que finalizavam OS sem
+orçamento (Estoque) recebem um orçamento aprovado como fixture — consequência direta da F-02, não
+afrouxamento de teste.
+
+## Gates
+
+Docker fechado no desenvolvimento. No checkpoint: integração do Financeiro e do Orçamento (incluindo
+concorrência e idempotência), suíte backend completa, `npm test -- --run`, `tsc`, `build`, `lint`,
+`git diff --check`. Docker fechado em seguida.
+
+## Histórico
+
+- 2026-09-22 — Task aberta em `BACKLOG`; `DR-0015` reescrita como `OPEN`.
+- 2026-09-22 — Owner decidiu `DR-0015` e `DR-0008`. Especificação final, modelo de domínio e de banco e
+  revisão `AG-02`/`AG-06`/`AG-08` concluídos; `DR-0017` aberta; Task em `IN_PROGRESS`.
