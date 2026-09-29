@@ -23,3 +23,7 @@ export function formatPhone(value: string | null | undefined) {
   return d
 }
 export const formatZipCode = (value: string) => digits(value).replace(/(\d{5})(\d{3})/, '$1-$2')
+
+/** Pontos percentuais já calculados pelo backend (ex.: 23.5 → "23,50%"), não uma fração 0–1. */
+export const formatPercent = (value: number) =>
+  `${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}%`

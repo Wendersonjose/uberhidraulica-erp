@@ -54,6 +54,12 @@ export type ExpenseCategory = { id: string; name: string; active: boolean }
 export type CashFlowDay = { date: string; inflows: number; outflows: number; net: number }
 export type CashFlowBlock = { inflows: number; outflows: number; net: number; days: CashFlowDay[] }
 export type CashFlow = { from: string; to: string; categoryId: string | null; realized: CashFlowBlock; forecast: CashFlowBlock }
+export type FinanceDashboard = {
+  from: string; to: string
+  revenue: number; received: number; receivableOpen: number; overdue: number
+  partsCost: number; expensesRegistered: number; expensesPaid: number
+  grossProfit: number; operatingResult: number; grossMargin: number; operatingMargin: number
+}
 
 /** Uma chave por intenção de envio: o retry da mesma intenção reaproveita a chave e não duplica o lançamento. */
 export const newIdempotencyKey = () =>
@@ -94,6 +100,7 @@ export const financeApi = {
   cancelPayable: (id: string, reason: string) => api<Payable>(`/api/finance/payables/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
 
   cashFlow: (from: string, to: string, categoryId?: string) => api<CashFlow>('/api/finance/cash-flow' + query({ from, to, categoryId })),
+  dashboard: (from: string, to: string) => api<FinanceDashboard>('/api/finance/dashboard' + query({ from, to })),
   paymentMethods: () => api<PaymentMethod[]>('/api/finance/payment-methods'),
   /** A natureza (movimenta dinheiro físico) é obrigatória e definitiva: não é inferida do nome nem alterada depois. */
   createPaymentMethod: (name: string, cashSessionRequired: boolean) =>
@@ -116,6 +123,7 @@ export const financeKeys = {
   categories: ['finance', 'categories'] as const,
   settings: ['finance', 'settings'] as const,
   cashFlow: (from: string, to: string, categoryId: string) => ['finance', 'cash-flow', from, to, categoryId] as const,
+  dashboard: (from: string, to: string) => ['finance', 'dashboard', from, to] as const,
 }
 
 /** Data de hoje no fuso da oficina, no formato ISO usado pela API. */
