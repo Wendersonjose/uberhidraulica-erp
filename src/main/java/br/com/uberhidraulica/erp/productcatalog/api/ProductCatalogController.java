@@ -7,6 +7,7 @@ import br.com.uberhidraulica.erp.productcatalog.domain.ProductUnit;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.net.URI;
@@ -22,6 +23,7 @@ public class ProductCatalogController {
     public ProductCatalogController(ProductCatalogApplicationService application) { this.application = application; }
 
     @PostMapping
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'PRODUCT_MANAGE')")
     ResponseEntity<Response> create(@Valid @RequestBody CreateRequest request) {
         Response response = Response.from(application.create(request.description(), request.internalCode(),
                 request.category(), request.type(), request.unit(), request.referenceCost(), request.salePrice(),
@@ -36,6 +38,7 @@ public class ProductCatalogController {
     List<Response> list() { return application.list().stream().map(Response::from).toList(); }
 
     @PutMapping("/{id}")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'PRODUCT_MANAGE')")
     Response update(@PathVariable UUID id, @Valid @RequestBody UpdateRequest request) {
         return Response.from(application.update(id, request.description(), request.internalCode(), request.category(),
                 request.type(), request.unit(), request.referenceCost(), request.salePrice(), request.minimumStock(),

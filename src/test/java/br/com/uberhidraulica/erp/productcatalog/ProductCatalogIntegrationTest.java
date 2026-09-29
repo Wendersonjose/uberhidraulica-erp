@@ -1,5 +1,7 @@
 package br.com.uberhidraulica.erp.productcatalog;
 
+import br.com.uberhidraulica.erp.support.ApiSessions;
+import br.com.uberhidraulica.erp.support.ApiSessions.Session;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,6 +15,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -33,22 +36,38 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 class ProductCatalogIntegrationTest {
+    private static final String OWNER_EMAIL = "owner-product@example.test";
+    private static final String BOOTSTRAP_PASSWORD = "product-bootstrap-password";
+    private static final String PASSWORD = "product-operational-password";
+
     @Container @ServiceConnection
     static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:18-alpine");
 
     @DynamicPropertySource
     static void bootstrap(DynamicPropertyRegistry properties) {
         properties.add("IAM_BOOTSTRAP_OWNER_NAME", () -> "Owner Product Test");
-        properties.add("IAM_BOOTSTRAP_OWNER_EMAIL", () -> "owner-product@example.test");
-        properties.add("IAM_BOOTSTRAP_OWNER_PASSWORD", () -> "product-bootstrap-password");
+        properties.add("IAM_BOOTSTRAP_OWNER_EMAIL", () -> OWNER_EMAIL);
+        properties.add("IAM_BOOTSTRAP_OWNER_PASSWORD", () -> BOOTSTRAP_PASSWORD);
     }
 
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
     @Autowired ProductCatalogQuery catalog;
 
+    private ApiSessions api;
+    private Session owner;
+
     @BeforeEach
-    void cleanCatalog() { jdbc.update("delete from productcatalog.product"); }
+    void cleanCatalog() throws Exception {
+        jdbc.update("delete from productcatalog.product");
+        api = new ApiSessions(mvc, PASSWORD);
+        owner = api.owner(OWNER_EMAIL, BOOTSTRAP_PASSWORD);
+    }
+
+    /** POST/PUT autenticados com sessão real do Dono: PRODUCT_MANAGE e PRODUCT_COST_MANAGE, gates testados à parte. */
+    private ResultActions send(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request, String body) throws Exception {
+        return api.send(owner, request, body);
+    }
 
     @Test
     void endpointsRequireAuthentication() throws Exception {
@@ -65,8 +84,7 @@ class ProductCatalogIntegrationTest {
 
     @Test
     void createsConsultsListsAndUpdatesProduct() throws Exception {
-        MvcResult created = mvc.perform(post("/api/products").with(user("operator")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content(fluid()))
+        MvcResult created = send(post("/api/products"), fluid())
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.description").value("Óleo ATF Dexron III"))
                 .andExpect(jsonPath("$.internalCode").value("ATF-D3"))
@@ -84,11 +102,10 @@ class ProductCatalogIntegrationTest {
         mvc.perform(get("/api/products").with(user("operator"))).andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(id));
 
-        mvc.perform(put("/api/products/{id}", id).with(user("operator")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"description\":\"Óleo ATF Dexron VI\",\"internalCode\":\"atf-d6\",\"category\":\"Fluidos\","
+        send(put("/api/products/{id}", id),
+                        "{\"description\":\"Óleo ATF Dexron VI\",\"internalCode\":\"atf-d6\",\"category\":\"Fluidos\","
                                 + "\"type\":\"SUPPLY\",\"unit\":\"LITRO\",\"referenceCost\":\"31.00\",\"salePrice\":\"49.90\","
-                                + "\"minimumStock\":\"15.500\",\"active\":false}"))
+                                + "\"minimumStock\":\"15.500\",\"active\":false}")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.description").value("Óleo ATF Dexron VI"))
                 .andExpect(jsonPath("$.internalCode").value("ATF-D6"))
@@ -97,8 +114,7 @@ class ProductCatalogIntegrationTest {
 
     @Test
     void createsProductWithoutOptionalFieldsAndKeepsItActive() throws Exception {
-        mvc.perform(post("/api/products").with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"description\":\"Retentor genérico\",\"type\":\"PART\",\"unit\":\"UNIDADE\"}"))
+        send(post("/api/products"), "{\"description\":\"Retentor genérico\",\"type\":\"PART\",\"unit\":\"UNIDADE\"}")
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.internalCode").doesNotExist())
                 .andExpect(jsonPath("$.category").doesNotExist())
@@ -110,20 +126,15 @@ class ProductCatalogIntegrationTest {
 
     @Test
     void rejectsInvalidProductAndUnknownId() throws Exception {
-        mvc.perform(post("/api/products").with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"description\":\"  \",\"type\":\"PART\",\"unit\":\"UNIDADE\"}"))
+        send(post("/api/products"), "{\"description\":\"  \",\"type\":\"PART\",\"unit\":\"UNIDADE\"}")
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-        mvc.perform(post("/api/products").with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"description\":\"Peça\",\"type\":\"PART\",\"unit\":\"UNIDADE\",\"salePrice\":\"-1.00\"}"))
+        send(post("/api/products"), "{\"description\":\"Peça\",\"type\":\"PART\",\"unit\":\"UNIDADE\",\"salePrice\":\"-1.00\"}")
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-        mvc.perform(post("/api/products").with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"description\":\"Peça\",\"type\":\"PART\"}"))
+        send(post("/api/products"), "{\"description\":\"Peça\",\"type\":\"PART\"}")
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-        mvc.perform(post("/api/products").with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"description\":\"Peça\",\"type\":\"PART\",\"unit\":\"CAIXA\"}"))
+        send(post("/api/products"), "{\"description\":\"Peça\",\"type\":\"PART\",\"unit\":\"CAIXA\"}")
                 .andExpect(status().isBadRequest());
-        mvc.perform(post("/api/products").with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"description\":\"Peça\",\"type\":\"PART\",\"unit\":\"UNIDADE\",\"internalCode\":\"codigo invalido\"}"))
+        send(post("/api/products"), "{\"description\":\"Peça\",\"type\":\"PART\",\"unit\":\"UNIDADE\",\"internalCode\":\"codigo invalido\"}")
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_PRODUCT"));
         mvc.perform(get("/api/products/{id}", UUID.randomUUID()).with(user("operator")))
                 .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"));
@@ -131,10 +142,8 @@ class ProductCatalogIntegrationTest {
 
     @Test
     void rejectsDuplicatedInternalCodeIgnoringCaseAndSpaces() throws Exception {
-        mvc.perform(post("/api/products").with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                .content(fluid())).andExpect(status().isCreated());
-        mvc.perform(post("/api/products").with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"description\":\"Outro fluido\",\"internalCode\":\" atf-d3 \",\"type\":\"SUPPLY\",\"unit\":\"LITRO\"}"))
+        send(post("/api/products"), fluid()).andExpect(status().isCreated());
+        send(post("/api/products"), "{\"description\":\"Outro fluido\",\"internalCode\":\" atf-d3 \",\"type\":\"SUPPLY\",\"unit\":\"LITRO\"}")
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("PRODUCT_INTERNAL_CODE_ALREADY_EXISTS"));
         assertThat(jdbc.queryForObject("select count(*) from productcatalog.product", Long.class)).isEqualTo(1);
@@ -142,8 +151,7 @@ class ProductCatalogIntegrationTest {
 
     @Test
     void publicContractExposesProductWithoutStockBalance() throws Exception {
-        MvcResult created = mvc.perform(post("/api/products").with(user("operator")).with(csrf())
-                .contentType(MediaType.APPLICATION_JSON).content(fluid())).andExpect(status().isCreated()).andReturn();
+        MvcResult created = send(post("/api/products"), fluid()).andExpect(status().isCreated()).andReturn();
         UUID id = UUID.fromString(JsonPath.read(created.getResponse().getContentAsString(), "$.id"));
 
         ProductCatalogQuery.ProductReference reference = catalog.product(id).orElseThrow();

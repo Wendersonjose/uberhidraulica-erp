@@ -57,6 +57,11 @@ class Task0012WorkOrderWorkflowIntegrationTest {
     String vehicle;
     String service;
 
+    /** Sessão real do Dono: os endpoints mutadores agora exigem WORKORDER_MANAGE/WORKORDER_CONFIG/CRM_MANAGE/
+     * SERVICE_MANAGE/FINANCE_BILL reais; os casos de permissão em si vivem em ModulePermissionsIntegrationTest. */
+    private br.com.uberhidraulica.erp.support.ApiSessions sessions;
+    private br.com.uberhidraulica.erp.support.ApiSessions.Session owner;
+
     @BeforeEach
     void clean() throws Exception {
         br.com.uberhidraulica.erp.support.CommercialFixtures.clean(jdbc);
@@ -72,6 +77,8 @@ class Task0012WorkOrderWorkflowIntegrationTest {
         jdbc.update("delete from crm.vehicle_ownership");
         jdbc.update("delete from crm.vehicle");
         jdbc.update("delete from crm.customer");
+        sessions = new br.com.uberhidraulica.erp.support.ApiSessions(mvc, "workflow-operational-password");
+        owner = sessions.owner("owner-workflow@example.test", "workflow-bootstrap-password");
         customer = id(send(post("/api/customers"), "{\"personType\":\"PF\",\"name\":\"Cliente Fluxo\",\"phone\":\"34999990000\"}"));
         vehicle = id(send(post("/api/vehicles"), "{\"customerId\":\"" + customer + "\",\"plate\":\"FLX1A11\",\"manufacturer\":\"Scania\",\"model\":\"R450\"}"));
         service = id(send(post("/api/services"), "{\"name\":\"Revisão\",\"basePrice\":\"100.00\"}"));
@@ -241,12 +248,6 @@ class Task0012WorkOrderWorkflowIntegrationTest {
     }
 
     private ResultActions action(String order, String action) throws Exception {
-        // Finalizar exige FINANCE_BILL (revisão TASK-0015, F3), que só uma sessão real do IAM carrega.
-        if (action.equals("finish")) {
-            var sessions = new br.com.uberhidraulica.erp.support.ApiSessions(mvc, "workflow-operational-password");
-            return sessions.send(sessions.owner("owner-workflow@example.test", "workflow-bootstrap-password"),
-                    post("/api/work-orders/" + order + "/finish"), "");
-        }
         return send(post("/api/work-orders/" + order + "/" + action), "");
     }
 
@@ -255,9 +256,7 @@ class Task0012WorkOrderWorkflowIntegrationTest {
     }
 
     private ResultActions send(MockHttpServletRequestBuilder request, String body) throws Exception {
-        request.with(user("operator")).with(csrf());
-        if (!body.isEmpty()) request.contentType(MediaType.APPLICATION_JSON).content(body);
-        return mvc.perform(request);
+        return sessions.send(owner, request, body);
     }
 
     private static String id(ResultActions result) throws Exception {

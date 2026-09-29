@@ -1,4 +1,4 @@
 @org.springframework.modulith.ApplicationModule(
         displayName = "Catálogo de Produtos",
-        allowedDependencies = {})
+        allowedDependencies = {"iam"})
 package br.com.uberhidraulica.erp.productcatalog;

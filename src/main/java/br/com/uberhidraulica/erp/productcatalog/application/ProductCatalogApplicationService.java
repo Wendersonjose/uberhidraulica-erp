@@ -1,5 +1,7 @@
 package br.com.uberhidraulica.erp.productcatalog.application;
 
+import br.com.uberhidraulica.erp.iam.CurrentUser;
+import br.com.uberhidraulica.erp.iam.IamAuthorization;
 import br.com.uberhidraulica.erp.productcatalog.ProductCatalogQuery;
 import br.com.uberhidraulica.erp.productcatalog.domain.*;
 import br.com.uberhidraulica.erp.productcatalog.port.ProductCatalogRepositoryPort;
@@ -14,10 +16,17 @@ import java.util.UUID;
 
 @Service
 public class ProductCatalogApplicationService implements ProductCatalogQuery {
-    private final ProductCatalogRepositoryPort repository;
+    public static final String COST_PERMISSION = "PRODUCT_COST_MANAGE";
 
-    public ProductCatalogApplicationService(ProductCatalogRepositoryPort repository) {
+    private final ProductCatalogRepositoryPort repository;
+    private final CurrentUser currentUser;
+    private final IamAuthorization authorization;
+
+    public ProductCatalogApplicationService(ProductCatalogRepositoryPort repository, CurrentUser currentUser,
+                                            IamAuthorization authorization) {
         this.repository = repository;
+        this.currentUser = currentUser;
+        this.authorization = authorization;
     }
 
     @Transactional
@@ -42,8 +51,19 @@ public class ProductCatalogApplicationService implements ProductCatalogQuery {
                                  ProductUnit unit, BigDecimal referenceCost, BigDecimal salePrice,
                                  BigDecimal minimumStock, Boolean active) {
         CatalogProduct current = get(id);
+        // Defesa em profundidade: PRODUCT_MANAGE cobre a edição de rotina, mas alterar custo/preço junto
+        // com o resto do produto exige a permissão financeira separada, mesmo num único PUT.
+        boolean costChanged = changed(current.referenceCost(), referenceCost) || changed(current.salePrice(), salePrice);
+        if (costChanged && !authorization.hasPermission(currentUser.requireId(), COST_PERMISSION))
+            throw new ProductCatalogException("PRODUCT_COST_MANAGE_REQUIRED", "Seu perfil não pode alterar custo ou preço de venda");
         return persist(current.update(description, internalCode, category, type, unit, referenceCost, salePrice,
                 minimumStock, active, Instant.now()));
+    }
+
+    /** Compara por valor (não por escala), tratando ausência de custo/preço como um valor legítimo. */
+    private static boolean changed(BigDecimal before, BigDecimal after) {
+        if (before == null || after == null) return before != after;
+        return before.compareTo(after) != 0;
     }
 
     @Override

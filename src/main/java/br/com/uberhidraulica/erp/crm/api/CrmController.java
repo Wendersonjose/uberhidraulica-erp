@@ -4,6 +4,7 @@ import br.com.uberhidraulica.erp.crm.domain.*;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import org.springframework.http.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.net.URI;
 import java.time.Instant;
@@ -13,7 +14,7 @@ import java.util.*;
 public class CrmController {
     private final CrmApplicationService application;
     public CrmController(CrmApplicationService application) { this.application=application; }
-    @PostMapping("/api/customers") ResponseEntity<CustomerResponse> createCustomer(@Valid @RequestBody CustomerRequest r) { var x=CustomerResponse.from(application.createCustomer(r.personType(),r.name(),r.document(),r.phone(),r.email(),r.addressValue())); return ResponseEntity.created(URI.create("/api/customers/"+x.id())).body(x); }
+    @PostMapping("/api/customers") @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'CRM_MANAGE')") ResponseEntity<CustomerResponse> createCustomer(@Valid @RequestBody CustomerRequest r) { var x=CustomerResponse.from(application.createCustomer(r.personType(),r.name(),r.document(),r.phone(),r.email(),r.addressValue())); return ResponseEntity.created(URI.create("/api/customers/"+x.id())).body(x); }
     @GetMapping("/api/customers/{id}") CustomerResponse getCustomer(@PathVariable UUID id) { return CustomerResponse.from(application.getCustomer(id)); }
     /** Lista completa ordenada por nome, usada pelos seletores; telas de consulta usam a busca paginada. */
     @GetMapping("/api/customers") List<CustomerResponse> listCustomers() { return application.listCustomers().stream().map(CustomerResponse::from).toList(); }
@@ -22,10 +23,10 @@ public class CrmController {
         var result=application.searchCustomers(new CustomerSearch(q, personType, status, page, size));
         return new PageResponse<>(result.items().stream().map(CustomerResponse::from).toList(), result.totalItems(), result.page(), result.size(), result.totalPages());
     }
-    @PutMapping("/api/customers/{id}") CustomerResponse updateCustomer(@PathVariable UUID id,@Valid @RequestBody CustomerRequest r) { return CustomerResponse.from(application.updateCustomer(id,r.personType(),r.name(),r.document(),r.phone(),r.email(),r.addressValue())); }
-    @PostMapping("/api/customers/{id}/inactivate") CustomerResponse inactivateCustomer(@PathVariable UUID id) { return CustomerResponse.from(application.inactivateCustomer(id)); }
-    @PostMapping("/api/customers/{id}/reactivate") CustomerResponse reactivateCustomer(@PathVariable UUID id) { return CustomerResponse.from(application.reactivateCustomer(id)); }
-    @PostMapping("/api/vehicles") ResponseEntity<VehicleResponse> createVehicle(@Valid @RequestBody VehicleRequest r) {
+    @PutMapping("/api/customers/{id}") @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'CRM_MANAGE')") CustomerResponse updateCustomer(@PathVariable UUID id,@Valid @RequestBody CustomerRequest r) { return CustomerResponse.from(application.updateCustomer(id,r.personType(),r.name(),r.document(),r.phone(),r.email(),r.addressValue())); }
+    @PostMapping("/api/customers/{id}/inactivate") @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'CRM_MANAGE')") CustomerResponse inactivateCustomer(@PathVariable UUID id) { return CustomerResponse.from(application.inactivateCustomer(id)); }
+    @PostMapping("/api/customers/{id}/reactivate") @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'CRM_MANAGE')") CustomerResponse reactivateCustomer(@PathVariable UUID id) { return CustomerResponse.from(application.reactivateCustomer(id)); }
+    @PostMapping("/api/vehicles") @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'CRM_MANAGE')") ResponseEntity<VehicleResponse> createVehicle(@Valid @RequestBody VehicleRequest r) {
         var x=VehicleResponse.from(application.createVehicle(r.customerId(),r.plate(),r.manufacturer(),r.model(),r.modelYear(),r.mileage(),r.steeringGearManufacturer(),r.color(),r.notes()));
         return ResponseEntity.created(URI.create("/api/vehicles/"+x.id())).body(x);
     }
@@ -37,15 +38,15 @@ public class CrmController {
         return new PageResponse<>(result.items().stream().map(r->new VehicleListItem(VehicleResponse.from(r.vehicle()), r.customerName())).toList(),
                 result.totalItems(), result.page(), result.size(), result.totalPages());
     }
-    @PutMapping("/api/vehicles/{id}") VehicleResponse updateVehicle(@PathVariable UUID id,@Valid @RequestBody VehicleUpdateRequest r) {
+    @PutMapping("/api/vehicles/{id}") @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'CRM_MANAGE')") VehicleResponse updateVehicle(@PathVariable UUID id,@Valid @RequestBody VehicleUpdateRequest r) {
         return VehicleResponse.from(application.updateVehicle(id,r.plate(),r.manufacturer(),r.model(),r.modelYear(),r.mileage(),r.steeringGearManufacturer(),r.color(),r.notes()));
     }
-    @PostMapping("/api/vehicles/{id}/owner") VehicleResponse transferVehicle(@PathVariable UUID id,@Valid @RequestBody TransferRequest r) { return VehicleResponse.from(application.transferVehicle(id,r.customerId())); }
+    @PostMapping("/api/vehicles/{id}/owner") @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'CRM_MANAGE')") VehicleResponse transferVehicle(@PathVariable UUID id,@Valid @RequestBody TransferRequest r) { return VehicleResponse.from(application.transferVehicle(id,r.customerId())); }
     @GetMapping("/api/vehicles/{id}/ownership-history") List<OwnershipResponse> ownershipHistory(@PathVariable UUID id) {
         return application.ownershipHistory(id).stream().map(o->new OwnershipResponse(o.id(),o.customerId(),application.getCustomer(o.customerId()).name(),o.startedAt(),o.endedAt())).toList();
     }
-    @PostMapping("/api/vehicles/{id}/inactivate") VehicleResponse inactivateVehicle(@PathVariable UUID id) { return VehicleResponse.from(application.inactivateVehicle(id)); }
-    @PostMapping("/api/vehicles/{id}/reactivate") VehicleResponse reactivateVehicle(@PathVariable UUID id) { return VehicleResponse.from(application.reactivateVehicle(id)); }
+    @PostMapping("/api/vehicles/{id}/inactivate") @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'CRM_MANAGE')") VehicleResponse inactivateVehicle(@PathVariable UUID id) { return VehicleResponse.from(application.inactivateVehicle(id)); }
+    @PostMapping("/api/vehicles/{id}/reactivate") @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'CRM_MANAGE')") VehicleResponse reactivateVehicle(@PathVariable UUID id) { return VehicleResponse.from(application.reactivateVehicle(id)); }
 
     public record CustomerRequest(@NotNull Customer.PersonType personType,@NotBlank @Size(max=160) String name,@Size(max=24) String document,
                                   @NotBlank @Size(max=24) String phone,@Size(max=254) String email,@Valid AddressPayload address) {

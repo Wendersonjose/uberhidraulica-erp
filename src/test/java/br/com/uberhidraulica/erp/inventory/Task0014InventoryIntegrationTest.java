@@ -463,10 +463,10 @@ class Task0014InventoryIntegrationTest {
         return order;
     }
 
+    /** Sessão real do Dono: os endpoints mutadores agora exigem INVENTORY_MOVE/INVENTORY_ADJUST/PRODUCT_MANAGE/
+     * WORKORDER_MANAGE/CRM_MANAGE reais; os casos de permissão em si vivem em ModulePermissionsIntegrationTest. */
     private ResultActions send(MockHttpServletRequestBuilder request, String body) throws Exception {
-        request.with(user("operator")).with(csrf());
-        if (!body.isEmpty()) request.contentType(MediaType.APPLICATION_JSON).content(body);
-        return mvc.perform(request);
+        return sessions.send(owner, request, body);
     }
 
     private static String id(ResultActions result) throws Exception {

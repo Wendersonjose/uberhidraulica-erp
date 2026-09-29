@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -37,21 +38,25 @@ public class InventoryController {
     }
 
     @PostMapping("/products/{productId}/entries")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'INVENTORY_MOVE')")
     ResponseEntity<MovementResponse> entry(@PathVariable UUID productId, @Valid @RequestBody EntryRequest request) {
         return created(application.registerEntry(productId, request.quantity(), request.unitCost(), request.reason()));
     }
 
     @PostMapping("/products/{productId}/exits")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'INVENTORY_MOVE')")
     ResponseEntity<MovementResponse> exit(@PathVariable UUID productId, @Valid @RequestBody ExitRequest request) {
         return created(application.registerExit(productId, request.quantity(), request.reason()));
     }
 
     @PostMapping("/products/{productId}/adjustments")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'INVENTORY_ADJUST')")
     ResponseEntity<MovementResponse> adjustment(@PathVariable UUID productId, @Valid @RequestBody AdjustmentRequest request) {
         return created(application.registerAdjustment(productId, request.quantity(), "IN".equals(request.direction()), request.reason()));
     }
 
     @PostMapping("/movements/{movementId}/reverse")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'INVENTORY_ADJUST')")
     ResponseEntity<MovementResponse> reverse(@PathVariable UUID movementId, @RequestBody(required = false) ReverseRequest request) {
         return created(application.reverse(movementId, request == null ? null : request.reason()));
     }
@@ -60,6 +65,7 @@ public class InventoryController {
     Map<String, String> settings() { return Map.of(InventoryApplicationService.WRITE_OFF_SETTING, application.writeOffMode().name()); }
 
     @PutMapping("/settings/write-off")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'INVENTORY_ADJUST')")
     Map<String, String> changeWriteOff(@Valid @RequestBody WriteOffRequest request) {
         return Map.of(InventoryApplicationService.WRITE_OFF_SETTING, application.changeWriteOffMode(request.mode()).name());
     }

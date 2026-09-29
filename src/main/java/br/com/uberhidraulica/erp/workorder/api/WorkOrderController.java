@@ -26,6 +26,7 @@ public class WorkOrderController {
     }
 
     @PostMapping
+    @org.springframework.security.access.prepost.PreAuthorize("@iamAuthorization.hasPermission(authentication, 'WORKORDER_MANAGE')")
     ResponseEntity<Response> open(@Valid @RequestBody OpenRequest r) {
         var x = Response.from(application.open(r.customerId(), r.vehicleId(), r.entryMileage(), r.complaint(), r.notes()));
         return ResponseEntity.created(URI.create("/api/work-orders/" + x.id())).body(x);
@@ -39,20 +40,31 @@ public class WorkOrderController {
     }
 
     @PutMapping("/{id}")
+    @org.springframework.security.access.prepost.PreAuthorize("@iamAuthorization.hasPermission(authentication, 'WORKORDER_MANAGE')")
     Response update(@PathVariable UUID id, @Valid @RequestBody UpdateRequest r) {
         return Response.from(application.updateDetails(id, r.entryMileage(), r.complaint(), r.notes()));
     }
 
-    @PutMapping("/{id}/diagnosis") Response diagnosis(@PathVariable UUID id, @Valid @RequestBody DiagnosisRequest r) { return Response.from(application.registerDiagnosis(id, r.diagnosis())); }
-    @PostMapping("/{id}/status") Response move(@PathVariable UUID id, @Valid @RequestBody MoveRequest r) { return Response.from(application.move(id, r.statusId(), r.reason())); }
-    @PostMapping("/{id}/start-execution") Response startExecution(@PathVariable UUID id) { return Response.from(application.startExecution(id)); }
+    @PutMapping("/{id}/diagnosis")
+    @org.springframework.security.access.prepost.PreAuthorize("@iamAuthorization.hasPermission(authentication, 'WORKORDER_MANAGE')")
+    Response diagnosis(@PathVariable UUID id, @Valid @RequestBody DiagnosisRequest r) { return Response.from(application.registerDiagnosis(id, r.diagnosis())); }
+    @PostMapping("/{id}/status")
+    @org.springframework.security.access.prepost.PreAuthorize("@iamAuthorization.hasPermission(authentication, 'WORKORDER_MANAGE')")
+    Response move(@PathVariable UUID id, @Valid @RequestBody MoveRequest r) { return Response.from(application.move(id, r.statusId(), r.reason())); }
+    @PostMapping("/{id}/start-execution")
+    @org.springframework.security.access.prepost.PreAuthorize("@iamAuthorization.hasPermission(authentication, 'WORKORDER_MANAGE')")
+    Response startExecution(@PathVariable UUID id) { return Response.from(application.startExecution(id)); }
     /** Corpo opcional: {@code billingQuoteId} escolhe o orçamento de faturamento quando há mais de um candidato. */
     @org.springframework.security.access.prepost.PreAuthorize("@iamAuthorization.hasPermission(authentication, 'FINANCE_BILL')")
     @PostMapping("/{id}/finish") Response finish(@PathVariable UUID id, @RequestBody(required = false) FinishRequest r) {
         return Response.from(application.finish(id, r == null ? null : r.billingQuoteId()));
     }
-    @PostMapping("/{id}/deliver") Response deliver(@PathVariable UUID id) { return Response.from(application.deliver(id)); }
-    @PostMapping("/{id}/cancel") Response cancel(@PathVariable UUID id, @Valid @RequestBody CancelRequest r) { return Response.from(application.cancel(id, r.reason())); }
+    @PostMapping("/{id}/deliver")
+    @org.springframework.security.access.prepost.PreAuthorize("@iamAuthorization.hasPermission(authentication, 'WORKORDER_MANAGE')")
+    Response deliver(@PathVariable UUID id) { return Response.from(application.deliver(id)); }
+    @PostMapping("/{id}/cancel")
+    @org.springframework.security.access.prepost.PreAuthorize("@iamAuthorization.hasPermission(authentication, 'WORKORDER_MANAGE')")
+    Response cancel(@PathVariable UUID id, @Valid @RequestBody CancelRequest r) { return Response.from(application.cancel(id, r.reason())); }
 
     @GetMapping("/{id}/status-history")
     List<HistoryResponse> history(@PathVariable UUID id) {
@@ -75,11 +87,13 @@ public class WorkOrderController {
     }
 
     @PostMapping("/{id}/services")
+    @org.springframework.security.access.prepost.PreAuthorize("@iamAuthorization.hasPermission(authentication, 'WORKORDER_MANAGE')")
     ResponseEntity<Response> add(@PathVariable UUID id, @Valid @RequestBody AddServiceRequest r) {
         return ResponseEntity.status(HttpStatus.CREATED).body(Response.from(application.addService(id, r.serviceId(), r.price())));
     }
 
     @PostMapping("/{id}/products")
+    @org.springframework.security.access.prepost.PreAuthorize("@iamAuthorization.hasPermission(authentication, 'WORKORDER_MANAGE')")
     ResponseEntity<Response> addProduct(@PathVariable UUID id, @Valid @RequestBody AddProductRequest r) {
         return ResponseEntity.status(HttpStatus.CREATED).body(Response.from(application.addProduct(id, r.productId(), r.quantity())));
     }

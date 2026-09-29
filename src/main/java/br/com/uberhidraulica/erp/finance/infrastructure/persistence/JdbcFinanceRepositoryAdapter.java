@@ -12,6 +12,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -477,14 +478,22 @@ class JdbcFinanceRepositoryAdapter implements FinanceRepositoryPort {
                 + " coalesce(sum(case when outstanding > 0 then outstanding else 0 end), 0) as receivable_open,"
                 + " coalesce(sum(case when status = 'VENCIDO' then outstanding else 0 end), 0) as overdue"
                 + " from classified where cancelled_at is null and issued_on between :from and :to", params);
-        return new DashboardReceivableTotals((BigDecimal) totals.get("revenue"), (BigDecimal) totals.get("receivable_open"),
-                (BigDecimal) totals.get("overdue"), workOrderIds);
+        return new DashboardReceivableTotals(money(totals.get("revenue")), money(totals.get("receivable_open")),
+                money(totals.get("overdue")), workOrderIds);
     }
 
     @Override
     public BigDecimal dashboardExpensesRegistered(LocalDate from, LocalDate to) {
-        return jdbc.queryForObject("select coalesce(sum(amount), 0) from finance.payable"
-                + " where cancelled_at is null and created_at::date between :from and :to", period(from, to), BigDecimal.class);
+        // created_at é TIMESTAMPTZ: a data-calendário é a da oficina (America/Sao_Paulo), não a do fuso
+        // da sessão do banco — mesma convenção de Money.WORKSHOP_ZONE usada no restante do Financeiro.
+        return money(jdbc.queryForObject("select coalesce(sum(amount), 0) from finance.payable"
+                + " where cancelled_at is null and (created_at at time zone 'America/Sao_Paulo')::date between :from and :to",
+                period(from, to), BigDecimal.class));
+    }
+
+    /** `coalesce(sum(numeric), 0)` some vezes volta com escala menor que a monetária (0 sem linhas). */
+    private static BigDecimal money(Object value) {
+        return ((BigDecimal) value).setScale(2, java.math.RoundingMode.UNNECESSARY);
     }
 
     private List<DailyAmount> daily(String sql, MapSqlParameterSource params) {

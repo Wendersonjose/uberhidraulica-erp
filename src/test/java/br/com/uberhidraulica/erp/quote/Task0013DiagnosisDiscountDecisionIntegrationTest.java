@@ -107,10 +107,19 @@ class Task0013DiagnosisDiscountDecisionIntegrationTest {
         revision(owner, order, quote, item(null, "Peça", "1", "30.00", "30.01")).andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("QUOTE_DISCOUNT_EXCEEDS_ITEM_TOTAL"));
 
-        Session finance = createUserSession(FINANCE_EMAIL, "GERENTE_FINANCEIRO");
-        revision(finance, order, quote, item(null, "Peça", "1", "30.00", "5.00")).andExpect(status().isForbidden())
+        // Desde a auditoria de permissões dos módulos, QUOTE_MANAGE gate o endpoint inteiro (só DONO e
+        // GERENTE_ADMINISTRATIVO o têm), então GERENTE_FINANCEIRO não alcança mais este endpoint de jeito
+        // nenhum. Para continuar provando que QUOTE_DISCOUNT é um gate independente de QUOTE_MANAGE (alguém
+        // que pode criar revisão nem por isso pode conceder desconto), usa-se um GERENTE_ADMINISTRATIVO com
+        // exceção individual DENY em QUOTE_DISCOUNT.
+        String noDiscountEmail = "admin-no-discount@example.test";
+        Session noDiscount = createUserSession(noDiscountEmail, "GERENTE_ADMINISTRATIVO");
+        UUID noDiscountId = jdbc.queryForObject("select id from iam.app_user where email = ?", UUID.class, noDiscountEmail);
+        send(owner, put("/api/iam/users/" + noDiscountId + "/permission-exceptions/QUOTE_DISCOUNT"), "{\"resolution\":\"DENY\"}")
+                .andExpect(status().isNoContent());
+        revision(noDiscount, order, quote, item(null, "Peça", "1", "30.00", "5.00")).andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("QUOTE_DISCOUNT_NOT_ALLOWED"));
-        revision(finance, order, quote, item(null, "Peça", "1", "30.00", "0")).andExpect(status().isCreated());
+        revision(noDiscount, order, quote, item(null, "Peça", "1", "30.00", "0")).andExpect(status().isCreated());
         assertThatThrownBy(() -> jdbc.update("update workshop.quote_item_revision set discount_amount = 1.005"))
                 .hasMessageContaining("ck_quote_item_revision_discount");
     }

@@ -875,6 +875,80 @@ class Task0015FinanceIntegrationTest {
         assertThat(count("finance.receipt")).isEqualTo(1);
     }
 
+    // ================================================================ resumo financeiro gerencial
+
+    /**
+     * O dashboard precisa bater matematicamente com os lançamentos de origem: faturamento vem só do
+     * orçamento aprovado (nunca do total bruto da OS ou do item físico avulso), custo de peças vem do
+     * custo histórico da baixa de estoque (nunca do custo atual do catálogo), e recebido/despesas pagas
+     * vêm dos lançamentos realizados no período.
+     */
+    @Test
+    void dashboardMatchesTheUnderlyingLedgersForThePeriod() throws Exception {
+        send(put("/api/inventory/settings/write-off"), "{\"mode\":\"ITEM_LAUNCH\"}").andExpect(status().isOk());
+
+        String order = openWorkOrder();
+        String product = id(send(post("/api/products"), "{\"description\":\"Peça Dashboard\",\"type\":\"PART\",\"unit\":\"UNIDADE\","
+                + "\"salePrice\":\"50.00\"}").andExpect(status().isCreated()));
+        send(post("/api/inventory/products/" + product + "/entries"), "{\"quantity\":\"10\",\"unitCost\":\"20.00\",\"reason\":\"Compra inicial\"}")
+                .andExpect(status().isCreated());
+        // Baixa 2 unidades a custo histórico 20.00 cada = 40.00 de custo — item físico avulso, sem entrar no orçamento.
+        send(post("/api/work-orders/" + order + "/products"), "{\"productId\":\"" + product + "\",\"quantity\":\"2\"}")
+                .andExpect(status().isCreated());
+
+        approvedQuote(order, "Serviço Dashboard", "300.00");
+        start(order);
+        finish(order, null).andExpect(status().isOk());
+        String receivable = JsonPath.read(api.read(owner, "/api/finance/work-orders/" + order + "/receivable").andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(), "$.id");
+        receipt(receivable, "dash-receipt", "150.00", method("PIX")).andExpect(status().isCreated());
+
+        String category = id(send(post("/api/finance/expense-categories"), "{\"name\":\"Categoria Dashboard\"}").andExpect(status().isCreated()));
+        String payable = id(api.send(owner, post("/api/finance/payables").header("Idempotency-Key", "dash-payable"),
+                "{\"description\":\"Conta Dashboard\",\"categoryId\":\"" + category + "\",\"amount\":\"80.00\",\"dueDate\":\""
+                        + today() + "\"}").andExpect(status().isCreated()));
+        payment(payable, "dash-payment", "80.00", method("PIX")).andExpect(status().isCreated());
+
+        // faturamento 300.00; custo de peças 40.00 -> lucro bruto 260.00; despesas registradas 80.00 -> resultado operacional 180.00.
+        api.read(owner, "/api/finance/dashboard?from=" + today() + "&to=" + today()).andExpect(status().isOk())
+                .andExpect(jsonPath("$.revenue").value(300.00))
+                .andExpect(jsonPath("$.received").value(150.00))
+                .andExpect(jsonPath("$.receivableOpen").value(150.00))
+                .andExpect(jsonPath("$.overdue").value(0))
+                .andExpect(jsonPath("$.partsCost").value(40.00))
+                .andExpect(jsonPath("$.expensesRegistered").value(80.00))
+                .andExpect(jsonPath("$.expensesPaid").value(80.00))
+                .andExpect(jsonPath("$.grossProfit").value(260.00))
+                .andExpect(jsonPath("$.operatingResult").value(180.00))
+                // 260.00 / 300.00 * 100 = 86,6666...% arredondado HALF_UP para 86.67; 180.00/300.00*100 = 60.00 exato.
+                .andExpect(jsonPath("$.grossMargin").value(86.67))
+                .andExpect(jsonPath("$.operatingMargin").value(60.00));
+
+        // Fora do período: nada aparece.
+        api.read(owner, "/api/finance/dashboard?from=" + today().minusDays(10) + "&to=" + today().minusDays(1)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.revenue").value(0)).andExpect(jsonPath("$.partsCost").value(0))
+                .andExpect(jsonPath("$.grossMargin").value(0)).andExpect(jsonPath("$.operatingMargin").value(0));
+    }
+
+    /** Recebível vencido conta em `overdue`, mas segue somado em `receivableOpen`. */
+    @Test
+    void dashboardOverdueIsASubsetOfReceivableOpen() throws Exception {
+        String receivable = finishedReceivable("200.00");
+        jdbc.update("update finance.receivable set due_date = ? where id = ?::uuid", java.sql.Date.valueOf(today().minusDays(1)), receivable);
+
+        api.read(owner, "/api/finance/dashboard?from=" + today() + "&to=" + today()).andExpect(status().isOk())
+                .andExpect(jsonPath("$.revenue").value(200.00)).andExpect(jsonPath("$.receivableOpen").value(200.00))
+                .andExpect(jsonPath("$.overdue").value(200.00));
+    }
+
+    /** Sem faturamento no período, as margens vêm zero — nunca erro nem NaN. */
+    @Test
+    void dashboardWithoutRevenueReturnsZeroMarginsNotAnError() throws Exception {
+        api.read(owner, "/api/finance/dashboard?from=" + today() + "&to=" + today()).andExpect(status().isOk())
+                .andExpect(jsonPath("$.revenue").value(0)).andExpect(jsonPath("$.grossMargin").value(0))
+                .andExpect(jsonPath("$.operatingMargin").value(0));
+    }
+
     private String createPayable(String key, String description, String supplier, String notes) throws Exception {
         return id(api.send(owner, post("/api/finance/payables").header("Idempotency-Key", key), payableBody(description, supplier, notes))
                 .andExpect(status().isCreated()));

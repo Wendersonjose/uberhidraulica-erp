@@ -11,7 +11,8 @@ import java.util.List;
 public class ProductCatalogExceptionHandler {
     @ExceptionHandler(ProductCatalogException.class)
     ResponseEntity<ErrorResponse> domain(ProductCatalogException exception) {
-        HttpStatus status = exception.code().endsWith("NOT_FOUND") ? HttpStatus.NOT_FOUND
+        HttpStatus status = "PRODUCT_COST_MANAGE_REQUIRED".equals(exception.code()) ? HttpStatus.FORBIDDEN
+                : exception.code().endsWith("NOT_FOUND") ? HttpStatus.NOT_FOUND
                 : exception.code().endsWith("ALREADY_EXISTS") ? HttpStatus.CONFLICT
                 : HttpStatus.BAD_REQUEST;
         return ResponseEntity.status(status).body(new ErrorResponse(exception.code(), exception.getMessage(), List.of()));

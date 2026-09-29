@@ -45,8 +45,13 @@ class Task0006ProductItemIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
 
+    /** Sessão real do Dono: endpoints mutadores agora exigem WORKORDER_MANAGE/CRM_MANAGE/PRODUCT_MANAGE/
+     * INVENTORY_MOVE reais; os casos de permissão em si vivem em ModulePermissionsIntegrationTest. */
+    private br.com.uberhidraulica.erp.support.ApiSessions api;
+    private br.com.uberhidraulica.erp.support.ApiSessions.Session owner;
+
     @BeforeEach
-    void clean() {
+    void clean() throws Exception {
         // O saldo e a movimentacao referenciam o produto: precisam sair antes do catalogo (TASK-0014).
         jdbc.update("delete from inventory.stock_movement");
         jdbc.update("delete from inventory.stock_balance");
@@ -56,6 +61,12 @@ class Task0006ProductItemIntegrationTest {
         jdbc.update("delete from crm.vehicle_ownership");jdbc.update("delete from crm.vehicle");
         jdbc.update("delete from crm.customer");
         jdbc.update("delete from productcatalog.product");
+        api = new br.com.uberhidraulica.erp.support.ApiSessions(mvc, "product-item-operational-password");
+        owner = api.owner("owner-product-item@example.test", "product-item-bootstrap-password");
+    }
+
+    private org.springframework.test.web.servlet.ResultActions send(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request, String body) throws Exception {
+        return api.send(owner, request, body);
     }
 
     @Test
@@ -75,7 +86,7 @@ class Task0006ProductItemIntegrationTest {
         String product = createProduct("Óleo ATF Dexron III", "ATF-D3", "LITRO", "42.90");
         stockUp(product, "10");
 
-        mvc.perform(addProduct(order, product, "2.500")).andExpect(status().isCreated())
+        addProduct(order, product, "2.500").andExpect(status().isCreated())
                 .andExpect(jsonPath("$.products.length()").value(1))
                 .andExpect(jsonPath("$.products[0].productId").value(product))
                 .andExpect(jsonPath("$.products[0].description").value("Óleo ATF Dexron III"))
@@ -85,10 +96,9 @@ class Task0006ProductItemIntegrationTest {
                 .andExpect(jsonPath("$.products[0].unitPrice").value(42.90));
 
         // Alterar o catálogo depois do lançamento não pode reescrever a OS.
-        mvc.perform(put("/api/products/{id}", product).with(user("operator")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"description\":\"Óleo ATF renomeado\",\"internalCode\":\"ATF-NOVO\",\"type\":\"SUPPLY\","
-                                + "\"unit\":\"LITRO\",\"salePrice\":\"99.90\",\"active\":false}"))
+        send(put("/api/products/{id}", product),
+                "{\"description\":\"Óleo ATF renomeado\",\"internalCode\":\"ATF-NOVO\",\"type\":\"SUPPLY\","
+                        + "\"unit\":\"LITRO\",\"salePrice\":\"99.90\",\"active\":false}")
                 .andExpect(status().isOk());
 
         mvc.perform(get("/api/work-orders/{id}", order).with(user("operator"))).andExpect(status().isOk())
@@ -105,8 +115,8 @@ class Task0006ProductItemIntegrationTest {
         stockUp(first, "5");
         stockUp(second, "5");
 
-        mvc.perform(addProduct(order, first, "2")).andExpect(status().isCreated());
-        mvc.perform(addProduct(order, second, "1.750")).andExpect(status().isCreated())
+        addProduct(order, first, "2").andExpect(status().isCreated());
+        addProduct(order, second, "1.750").andExpect(status().isCreated())
                 .andExpect(jsonPath("$.products.length()").value(2))
                 .andExpect(jsonPath("$.products[0].description").value("Retentor"))
                 .andExpect(jsonPath("$.products[1].description").value("Mangueira"))
@@ -118,31 +128,30 @@ class Task0006ProductItemIntegrationTest {
     void rejectsUnknownInactiveAndUnpricedProductAndInvalidQuantity() throws Exception {
         String order = openWorkOrder();
 
-        mvc.perform(addProduct(order, UUID.randomUUID().toString(), "1")).andExpect(status().isNotFound())
+        addProduct(order, UUID.randomUUID().toString(), "1").andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"));
 
         String unpriced = createProduct("Sem preço", "SEM-PRECO", "UNIDADE", null);
-        mvc.perform(addProduct(order, unpriced, "1")).andExpect(status().isConflict())
+        addProduct(order, unpriced, "1").andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("PRODUCT_WITHOUT_SALE_PRICE"));
 
         String inactive = createProduct("Inativo", "INAT", "UNIDADE", "10.00");
-        mvc.perform(put("/api/products/{id}", inactive).with(user("operator")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"description\":\"Inativo\",\"internalCode\":\"INAT\",\"type\":\"PART\","
-                                + "\"unit\":\"UNIDADE\",\"salePrice\":\"10.00\",\"active\":false}"))
+        send(put("/api/products/{id}", inactive),
+                "{\"description\":\"Inativo\",\"internalCode\":\"INAT\",\"type\":\"PART\","
+                        + "\"unit\":\"UNIDADE\",\"salePrice\":\"10.00\",\"active\":false}")
                 .andExpect(status().isOk());
-        mvc.perform(addProduct(order, inactive, "1")).andExpect(status().isConflict())
+        addProduct(order, inactive, "1").andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("PRODUCT_INACTIVE"));
 
         String valid = createProduct("Válido", "VAL", "UNIDADE", "10.00");
-        mvc.perform(addProduct(order, valid, "0")).andExpect(status().isBadRequest())
+        addProduct(order, valid, "0").andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-        mvc.perform(addProduct(order, valid, "-1")).andExpect(status().isBadRequest())
+        addProduct(order, valid, "-1").andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-        mvc.perform(addProduct(order, valid, "1.0001")).andExpect(status().isBadRequest())
+        addProduct(order, valid, "1.0001").andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
-        mvc.perform(addProduct(UUID.randomUUID().toString(), valid, "1")).andExpect(status().isNotFound())
+        addProduct(UUID.randomUUID().toString(), valid, "1").andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("WORK_ORDER_NOT_FOUND"));
 
         assertThat(jdbc.queryForObject("select count(*) from workorder.work_order_product", Long.class)).isZero();
@@ -192,15 +201,13 @@ class Task0006ProductItemIntegrationTest {
      * mantem o assunto deles intacto e ainda exercita a configuracao padrao de producao.</p>
      */
     private void stockUp(String product, String quantity) throws Exception {
-        mvc.perform(post("/api/inventory/products/{id}/entries", product).with(user("operator")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"quantity\":\"" + quantity + "\",\"reason\":\"Saldo inicial do teste\"}"))
+        send(post("/api/inventory/products/{id}/entries", product),
+                "{\"quantity\":\"" + quantity + "\",\"reason\":\"Saldo inicial do teste\"}")
                 .andExpect(status().isCreated());
     }
 
-    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder addProduct(String order, String product, String quantity) {
-        return post("/api/work-orders/{id}/products", order).with(user("operator")).with(csrf())
-                .contentType(MediaType.APPLICATION_JSON).content(quantity(product, quantity));
+    private org.springframework.test.web.servlet.ResultActions addProduct(String order, String product, String quantity) throws Exception {
+        return send(post("/api/work-orders/{id}/products", order), quantity(product, quantity));
     }
 
     private static String quantity(String product, String value) {
@@ -208,18 +215,15 @@ class Task0006ProductItemIntegrationTest {
     }
 
     private String openWorkOrder() throws Exception {
-        String customer = JsonPath.read(mvc.perform(post("/api/customers").with(user("operator")).with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"personType\":\"PF\",\"name\":\"Cliente Item\",\"phone\":\"34999990000\",\"document\":\"55566677788\"}"))
+        String customer = JsonPath.read(send(post("/api/customers"),
+                "{\"personType\":\"PF\",\"name\":\"Cliente Item\",\"phone\":\"34999990000\",\"document\":\"55566677788\"}")
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
-        String vehicle = JsonPath.read(mvc.perform(post("/api/vehicles").with(user("operator")).with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"customerId\":\"" + customer + "\",\"plate\":\"ITM1A23\",\"manufacturer\":\"Ford\","
-                        + "\"model\":\"Cargo\",\"modelYear\":2022,\"mileage\":9000}"))
+        String vehicle = JsonPath.read(send(post("/api/vehicles"),
+                "{\"customerId\":\"" + customer + "\",\"plate\":\"ITM1A23\",\"manufacturer\":\"Ford\","
+                        + "\"model\":\"Cargo\",\"modelYear\":2022,\"mileage\":9000}")
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
-        return JsonPath.read(mvc.perform(post("/api/work-orders").with(user("operator")).with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"customerId\":\"" + customer + "\",\"vehicleId\":\"" + vehicle + "\",\"entryMileage\":9000,\"complaint\":\"Ruído na direção\"}"))
+        return JsonPath.read(send(post("/api/work-orders"),
+                "{\"customerId\":\"" + customer + "\",\"vehicleId\":\"" + vehicle + "\",\"entryMileage\":9000,\"complaint\":\"Ruído na direção\"}")
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
     }
 
@@ -228,8 +232,7 @@ class Task0006ProductItemIntegrationTest {
                 + (internalCode == null ? "" : ",\"internalCode\":\"" + internalCode + "\"")
                 + ",\"type\":\"PART\",\"unit\":\"" + unit + "\""
                 + (salePrice == null ? "" : ",\"salePrice\":\"" + salePrice + "\"") + "}";
-        return JsonPath.read(mvc.perform(post("/api/products").with(user("operator")).with(csrf())
-                .contentType(MediaType.APPLICATION_JSON).content(body))
+        return JsonPath.read(send(post("/api/products"), body)
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
     }
 }

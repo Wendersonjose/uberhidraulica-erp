@@ -45,14 +45,25 @@ class Task0009Task0010CrmIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
 
+    /** Sessão real do Dono: os endpoints mutadores agora exigem CRM_MANAGE/WORKORDER_MANAGE reais; os
+     * casos de permissão em si vivem em ModulePermissionsIntegrationTest. */
+    private br.com.uberhidraulica.erp.support.ApiSessions api;
+    private br.com.uberhidraulica.erp.support.ApiSessions.Session owner;
+
     @BeforeEach
-    void clean() {
+    void clean() throws Exception {
         jdbc.update("delete from workorder.work_order_product");
         jdbc.update("delete from workorder.work_order_service");
         jdbc.update("delete from workorder.work_order_status_history");jdbc.update("delete from workorder.work_order");
         jdbc.update("delete from crm.vehicle_ownership");
         jdbc.update("delete from crm.vehicle");
         jdbc.update("delete from crm.customer");
+        api = new br.com.uberhidraulica.erp.support.ApiSessions(mvc, "crm-operational-password");
+        owner = api.owner("owner-crm@example.test", "crm-bootstrap-password");
+    }
+
+    private ResultActions send(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request, String body) throws Exception {
+        return api.send(owner, request, body);
     }
 
     // ---------------------------------------------------------------- TASK-0009 — clientes
@@ -106,26 +117,23 @@ class Task0009Task0010CrmIntegrationTest {
         String second = id(createCustomer(pf("Segundo", null, "34999990002")).andExpect(status().isCreated()));
         createCustomer(pf("Duplicado", "11122233344", "34999990003")).andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("CUSTOMER_DOCUMENT_ALREADY_EXISTS"));
-        mvc.perform(put("/api/customers/{id}", second).with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content(pf("Segundo", "11122233344", "34999990002")))
+        send(put("/api/customers/{id}", second), pf("Segundo", "11122233344", "34999990002"))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CUSTOMER_DOCUMENT_ALREADY_EXISTS"));
     }
 
     @Test
     void updatesCustomerKeepingStatusAndRequiresPhone() throws Exception {
         String id = id(createCustomer(pf("Original", null, "34999990000")));
-        mvc.perform(post("/api/customers/{id}/inactivate", id).with(user("operator")).with(csrf())).andExpect(status().isOk());
-        mvc.perform(put("/api/customers/{id}", id).with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"personType\":\"PJ\",\"name\":\"Renomeada Ltda\",\"phone\":\"3432101010\",\"document\":\"12.345.678/0001-90\",\"status\":\"ACTIVE\"}"))
+        send(post("/api/customers/{id}/inactivate", id), "").andExpect(status().isOk());
+        send(put("/api/customers/{id}", id),
+                        "{\"personType\":\"PJ\",\"name\":\"Renomeada Ltda\",\"phone\":\"3432101010\",\"document\":\"12.345.678/0001-90\",\"status\":\"ACTIVE\"}")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.personType").value("PJ"))
                 .andExpect(jsonPath("$.document").value("12345678000190"))
                 .andExpect(jsonPath("$.status").value("INACTIVE"));
-        mvc.perform(put("/api/customers/{id}", id).with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"personType\":\"PJ\",\"name\":\"Sem telefone\"}"))
+        send(put("/api/customers/{id}", id), "{\"personType\":\"PJ\",\"name\":\"Sem telefone\"}")
                 .andExpect(status().isBadRequest());
-        mvc.perform(put("/api/customers/{id}", UUID.randomUUID()).with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content(pf("Inexistente", null, "34999990000")))
+        send(put("/api/customers/{id}", UUID.randomUUID()), pf("Inexistente", null, "34999990000"))
                 .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("CUSTOMER_NOT_FOUND"));
     }
 
@@ -133,16 +141,16 @@ class Task0009Task0010CrmIntegrationTest {
     void inactivatesAndReactivatesWithoutDeletingHistory() throws Exception {
         String id = id(createCustomer(pf("Cliente Ciclo", null, "34999990000")));
         String vehicle = id(createVehicle(id, "CIC1A23"));
-        mvc.perform(post("/api/customers/{id}/inactivate", id).with(user("operator")).with(csrf()))
+        send(post("/api/customers/{id}/inactivate", id), "")
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("INACTIVE"));
-        mvc.perform(post("/api/customers/{id}/inactivate", id).with(user("operator")).with(csrf()))
+        send(post("/api/customers/{id}/inactivate", id), "")
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CUSTOMER_ALREADY_INACTIVE"));
         mvc.perform(get("/api/customers/{id}/vehicles", id).with(user("operator")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$[0].id").value(vehicle));
         createVehicle(id, "OUT9Z99").andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CUSTOMER_INACTIVE"));
-        mvc.perform(post("/api/customers/{id}/reactivate", id).with(user("operator")).with(csrf()))
+        send(post("/api/customers/{id}/reactivate", id), "")
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ACTIVE"));
-        mvc.perform(post("/api/customers/{id}/reactivate", id).with(user("operator")).with(csrf()))
+        send(post("/api/customers/{id}/reactivate", id), "")
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CUSTOMER_ALREADY_ACTIVE"));
         assertThat(jdbc.queryForObject("select count(*) from crm.customer", Long.class)).isEqualTo(1);
     }
@@ -153,7 +161,7 @@ class Task0009Task0010CrmIntegrationTest {
         createCustomer(pf("Bruno Freios", null, "34993334444")).andExpect(status().isCreated());
         String carla = id(createCustomer("{\"personType\":\"PJ\",\"name\":\"carla transportes\",\"phone\":\"3432225555\"}"));
         createVehicle(carla, "TRK-2B45").andExpect(status().isCreated());
-        mvc.perform(post("/api/customers/{id}/inactivate", ana).with(user("operator")).with(csrf())).andExpect(status().isOk());
+        send(post("/api/customers/{id}/inactivate", ana), "").andExpect(status().isOk());
 
         search("q=ANA").andExpect(jsonPath("$.totalItems").value(1)).andExpect(jsonPath("$.items[0].id").value(ana));
         search("q=987.654").andExpect(jsonPath("$.items[0].id").value(ana));
@@ -205,8 +213,8 @@ class Task0009Task0010CrmIntegrationTest {
         String first = id(createCustomer(pf("Primeiro Dono", null, "34999990001")));
         String second = id(createCustomer(pf("Segundo Dono", null, "34999990002")));
         String vehicle = id(createVehicle(first, "TRF1A11"));
-        String order = JsonPath.read(mvc.perform(post("/api/work-orders").with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"customerId\":\"" + first + "\",\"vehicleId\":\"" + vehicle + "\",\"entryMileage\":1000,\"complaint\":\"Ruído na direção\"}"))
+        String order = JsonPath.read(send(post("/api/work-orders"),
+                        "{\"customerId\":\"" + first + "\",\"vehicleId\":\"" + vehicle + "\",\"entryMileage\":1000,\"complaint\":\"Ruído na direção\"}")
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
 
         transfer(vehicle, second).andExpect(status().isOk()).andExpect(jsonPath("$.customerId").value(second));
@@ -236,13 +244,13 @@ class Task0009Task0010CrmIntegrationTest {
         String scania = id(createVehicle(owner, "{\"customerId\":\"" + owner + "\",\"plate\":\"SCA1N00\",\"manufacturer\":\"Scania\",\"model\":\"R 450\",\"modelYear\":2021}"));
         createVehicle(other, "{\"customerId\":\"" + other + "\",\"plate\":\"MBZ2C11\",\"manufacturer\":\"Mercedes-Benz\",\"model\":\"Atego\"}").andExpect(status().isCreated());
 
-        mvc.perform(put("/api/vehicles/{id}", scania).with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"plate\":\"SCA-1N00\",\"manufacturer\":\"Scania\",\"model\":\"R 500\",\"color\":\"Vermelho\",\"mileage\":250000}"))
+        send(put("/api/vehicles/{id}", scania),
+                        "{\"plate\":\"SCA-1N00\",\"manufacturer\":\"Scania\",\"model\":\"R 500\",\"color\":\"Vermelho\",\"mileage\":250000}")
                 .andExpect(status().isOk()).andExpect(jsonPath("$.model").value("R 500")).andExpect(jsonPath("$.modelYear").doesNotExist())
                 .andExpect(jsonPath("$.customerId").value(owner));
-        mvc.perform(post("/api/vehicles/{id}/inactivate", scania).with(user("operator")).with(csrf()))
+        send(post("/api/vehicles/{id}/inactivate", scania), "")
                 .andExpect(status().isOk()).andExpect(jsonPath("$.active").value(false));
-        mvc.perform(post("/api/vehicles/{id}/inactivate", scania).with(user("operator")).with(csrf()))
+        send(post("/api/vehicles/{id}/inactivate", scania), "")
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("VEHICLE_ALREADY_INACTIVE"));
         mvc.perform(get("/api/vehicles/{id}", scania).with(user("operator"))).andExpect(status().isOk());
 
@@ -254,7 +262,7 @@ class Task0009Task0010CrmIntegrationTest {
         vehicles("customerId=" + other).andExpect(jsonPath("$.items[0].vehicle.plate").value("MBZ2C11"));
         vehicles("size=1").andExpect(jsonPath("$.items[0].vehicle.plate").value("MBZ2C11")).andExpect(jsonPath("$.totalPages").value(2));
 
-        mvc.perform(post("/api/vehicles/{id}/reactivate", scania).with(user("operator")).with(csrf()))
+        send(post("/api/vehicles/{id}/reactivate", scania), "")
                 .andExpect(status().isOk()).andExpect(jsonPath("$.active").value(true));
     }
 
@@ -268,18 +276,17 @@ class Task0009Task0010CrmIntegrationTest {
     }
 
     private ResultActions createCustomer(String json) throws Exception {
-        return mvc.perform(post("/api/customers").with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(json));
+        return send(post("/api/customers"), json);
     }
 
     private ResultActions createVehicle(String customer, String plateOrJson) throws Exception {
         String json = plateOrJson.startsWith("{") ? plateOrJson
                 : "{\"customerId\":\"" + customer + "\",\"plate\":\"" + plateOrJson + "\",\"manufacturer\":\"Ford\",\"model\":\"Cargo\",\"modelYear\":2022}";
-        return mvc.perform(post("/api/vehicles").with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(json));
+        return send(post("/api/vehicles"), json);
     }
 
     private ResultActions transfer(String vehicle, String customer) throws Exception {
-        return mvc.perform(post("/api/vehicles/{id}/owner", vehicle).with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"customerId\":\"" + customer + "\"}"));
+        return send(post("/api/vehicles/{id}/owner", vehicle), "{\"customerId\":\"" + customer + "\"}");
     }
 
     private ResultActions search(String query) throws Exception {

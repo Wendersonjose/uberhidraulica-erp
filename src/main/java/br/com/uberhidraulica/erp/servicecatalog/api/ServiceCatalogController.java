@@ -8,6 +8,7 @@ import br.com.uberhidraulica.erp.servicecatalog.domain.CatalogSetup;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import org.springframework.http.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.net.URI;
@@ -30,6 +31,7 @@ public class ServiceCatalogController {
     }
 
     @PostMapping
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'SERVICE_MANAGE')")
     ResponseEntity<Response> create(@Valid @RequestBody Request request) {
         Response response = responses(List.of(application.create(request.name(), request.description(), request.categoryId(),
                 request.basePrice(), request.defaultWarrantyDays(), request.active()))).get(0);
@@ -51,13 +53,18 @@ public class ServiceCatalogController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'SERVICE_MANAGE')")
     Response update(@PathVariable UUID id, @Valid @RequestBody Request request) {
         return responses(List.of(application.update(id, request.name(), request.description(), request.categoryId(),
                 request.basePrice(), request.defaultWarrantyDays(), request.active()))).get(0);
     }
 
-    @PostMapping("/{id}/inactivate") Response inactivate(@PathVariable UUID id) { return responses(List.of(application.inactivate(id))).get(0); }
-    @PostMapping("/{id}/reactivate") Response reactivate(@PathVariable UUID id) { return responses(List.of(application.reactivate(id))).get(0); }
+    @PostMapping("/{id}/inactivate")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'SERVICE_MANAGE')")
+    Response inactivate(@PathVariable UUID id) { return responses(List.of(application.inactivate(id))).get(0); }
+    @PostMapping("/{id}/reactivate")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'SERVICE_MANAGE')")
+    Response reactivate(@PathVariable UUID id) { return responses(List.of(application.reactivate(id))).get(0); }
 
     @GetMapping("/{id}/prices")
     List<PriceResponse> prices(@PathVariable UUID id) {
@@ -66,16 +73,19 @@ public class ServiceCatalogController {
     }
 
     @PutMapping("/{id}/prices/vehicles/{vehicleId}")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'SERVICE_PRICE_MANAGE')")
     PriceResponse setVehiclePrice(@PathVariable UUID id, @PathVariable UUID vehicleId, @Valid @RequestBody PriceRequest request) {
         return PriceResponse.from(application.setVehiclePrice(id, vehicleId, request.price()), null);
     }
 
     @PutMapping("/{id}/prices/groups/{groupId}")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'SERVICE_PRICE_MANAGE')")
     PriceResponse setGroupPrice(@PathVariable UUID id, @PathVariable UUID groupId, @Valid @RequestBody PriceRequest request) {
         return PriceResponse.from(application.setGroupPrice(id, groupId, request.price()), setup.group(groupId).name());
     }
 
     @DeleteMapping("/{id}/prices/{priceId}")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'SERVICE_PRICE_MANAGE')")
     ResponseEntity<Void> deletePrice(@PathVariable UUID id, @PathVariable UUID priceId) {
         application.deletePrice(id, priceId);
         return ResponseEntity.noContent().build();

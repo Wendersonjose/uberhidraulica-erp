@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -28,20 +29,29 @@ public class WorkflowStatusController {
     }
 
     @PostMapping
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'WORKORDER_CONFIG')")
     ResponseEntity<WorkOrderController.StatusResponse> create(@Valid @RequestBody CreateRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(WorkOrderController.StatusResponse.from(application.create(request.name(), request.stage())));
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'WORKORDER_CONFIG')")
     WorkOrderController.StatusResponse rename(@PathVariable UUID id, @Valid @RequestBody RenameRequest request) {
         return WorkOrderController.StatusResponse.from(application.rename(id, request.name()));
     }
 
-    @PostMapping("/{id}/inactivate") WorkOrderController.StatusResponse inactivate(@PathVariable UUID id) { return WorkOrderController.StatusResponse.from(application.setActive(id, false)); }
-    @PostMapping("/{id}/reactivate") WorkOrderController.StatusResponse reactivate(@PathVariable UUID id) { return WorkOrderController.StatusResponse.from(application.setActive(id, true)); }
-    @PostMapping("/{id}/make-default") WorkOrderController.StatusResponse makeDefault(@PathVariable UUID id) { return WorkOrderController.StatusResponse.from(application.makeDefault(id)); }
+    @PostMapping("/{id}/inactivate")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'WORKORDER_CONFIG')")
+    WorkOrderController.StatusResponse inactivate(@PathVariable UUID id) { return WorkOrderController.StatusResponse.from(application.setActive(id, false)); }
+    @PostMapping("/{id}/reactivate")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'WORKORDER_CONFIG')")
+    WorkOrderController.StatusResponse reactivate(@PathVariable UUID id) { return WorkOrderController.StatusResponse.from(application.setActive(id, true)); }
+    @PostMapping("/{id}/make-default")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'WORKORDER_CONFIG')")
+    WorkOrderController.StatusResponse makeDefault(@PathVariable UUID id) { return WorkOrderController.StatusResponse.from(application.makeDefault(id)); }
 
     @PutMapping("/order")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'WORKORDER_CONFIG')")
     List<WorkOrderController.StatusResponse> reorder(@Valid @RequestBody ReorderRequest request) {
         return application.reorder(request.statusIds()).stream().map(WorkOrderController.StatusResponse::from).toList();
     }
@@ -49,6 +59,7 @@ public class WorkflowStatusController {
     @GetMapping("/automations") Map<String, Boolean> automations() { return application.automations(); }
 
     @PutMapping("/automations/{event}")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'WORKORDER_CONFIG')")
     Map<String, Boolean> setAutomation(@PathVariable String event, @Valid @RequestBody AutomationRequest request) {
         return application.setAutomation(event, request.enabled());
     }

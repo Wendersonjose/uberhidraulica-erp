@@ -30,6 +30,7 @@ public class QuoteController {
     }
 
     @PostMapping
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'QUOTE_MANAGE')")
     ResponseEntity<Response> open(@PathVariable UUID workOrderId) {
         Response response = respond(application.open(workOrderId));
         return ResponseEntity
@@ -53,6 +54,7 @@ public class QuoteController {
     }
 
     @PostMapping("/{quoteId}/revisions")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'QUOTE_MANAGE')")
     ResponseEntity<Response> createRevision(@PathVariable UUID workOrderId, @PathVariable UUID quoteId,
                                             @Valid @RequestBody RevisionRequest request) {
         Quote quote = application.createRevision(workOrderId, quoteId, request.items().stream()

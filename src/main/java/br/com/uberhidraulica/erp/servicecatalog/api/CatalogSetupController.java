@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -23,19 +24,23 @@ public class CatalogSetupController {
     List<CategoryResponse> categories() { return application.categories().stream().map(CategoryResponse::from).toList(); }
 
     @PostMapping("/api/service-categories")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'SERVICE_MANAGE')")
     ResponseEntity<CategoryResponse> createCategory(@Valid @RequestBody CategoryRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(CategoryResponse.from(application.createCategory(request.name())));
     }
 
     @PutMapping("/api/service-categories/{id}")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'SERVICE_MANAGE')")
     CategoryResponse renameCategory(@PathVariable UUID id, @Valid @RequestBody CategoryRequest request) {
         return CategoryResponse.from(application.renameCategory(id, request.name()));
     }
 
     @PostMapping("/api/service-categories/{id}/inactivate")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'SERVICE_MANAGE')")
     CategoryResponse inactivateCategory(@PathVariable UUID id) { return CategoryResponse.from(application.setCategoryActive(id, false)); }
 
     @PostMapping("/api/service-categories/{id}/reactivate")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'SERVICE_MANAGE')")
     CategoryResponse reactivateCategory(@PathVariable UUID id) { return CategoryResponse.from(application.setCategoryActive(id, true)); }
 
     @GetMapping("/api/vehicle-groups")
@@ -45,19 +50,23 @@ public class CatalogSetupController {
     }
 
     @PostMapping("/api/vehicle-groups")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'SERVICE_MANAGE')")
     ResponseEntity<GroupResponse> createGroup(@Valid @RequestBody GroupRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(GroupResponse.from(application.createGroup(request.name(), request.description()), 0));
     }
 
     @PutMapping("/api/vehicle-groups/{id}")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'SERVICE_MANAGE')")
     GroupResponse updateGroup(@PathVariable UUID id, @Valid @RequestBody GroupRequest request) {
         return withCount(application.updateGroup(id, request.name(), request.description()));
     }
 
     @PostMapping("/api/vehicle-groups/{id}/inactivate")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'SERVICE_MANAGE')")
     GroupResponse inactivateGroup(@PathVariable UUID id) { return withCount(application.setGroupActive(id, false)); }
 
     @PostMapping("/api/vehicle-groups/{id}/reactivate")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'SERVICE_MANAGE')")
     GroupResponse reactivateGroup(@PathVariable UUID id) { return withCount(application.setGroupActive(id, true)); }
 
     @GetMapping("/api/vehicle-groups/{id}/vehicles")
@@ -67,12 +76,14 @@ public class CatalogSetupController {
     }
 
     @PutMapping("/api/vehicle-groups/{id}/vehicles/{vehicleId}")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'SERVICE_MANAGE')")
     ResponseEntity<Void> assignVehicle(@PathVariable UUID id, @PathVariable UUID vehicleId) {
         application.assignVehicle(id, vehicleId);
         return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/api/vehicle-groups/{id}/vehicles/{vehicleId}")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'SERVICE_MANAGE')")
     ResponseEntity<Void> removeVehicle(@PathVariable UUID id, @PathVariable UUID vehicleId) {
         application.removeVehicle(id, vehicleId);
         return ResponseEntity.noContent().build();

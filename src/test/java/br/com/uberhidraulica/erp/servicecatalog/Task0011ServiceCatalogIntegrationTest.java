@@ -1,5 +1,7 @@
 package br.com.uberhidraulica.erp.servicecatalog;
 
+import br.com.uberhidraulica.erp.support.ApiSessions;
+import br.com.uberhidraulica.erp.support.ApiSessions.Session;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,26 +29,39 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** TASK-0011: categorias, busca, inativação, grupos de veículos e prioridade de preço. */
+/**
+ * TASK-0011: categorias, busca, inativação, grupos de veículos e prioridade de preço.
+ *
+ * <p>Desde a auditoria de permissões dos módulos, os endpoints mutadores exigem sessão real do IAM
+ * (SERVICE_MANAGE, SERVICE_PRICE_MANAGE, CRM_MANAGE, WORKORDER_MANAGE); os casos de permissão em si são
+ * cobertos por {@code ModulePermissionsIntegrationTest}, então aqui tudo autentica como Dono.</p>
+ */
 @Testcontainers
 @SpringBootTest
 @AutoConfigureMockMvc
 class Task0011ServiceCatalogIntegrationTest {
+    private static final String OWNER_EMAIL = "owner-services@example.test";
+    private static final String BOOTSTRAP_PASSWORD = "services-bootstrap-password";
+    private static final String PASSWORD = "services-operational-password";
+
     @Container @ServiceConnection
     static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:18-alpine");
 
     @DynamicPropertySource
     static void bootstrap(DynamicPropertyRegistry properties) {
         properties.add("IAM_BOOTSTRAP_OWNER_NAME", () -> "Owner Services");
-        properties.add("IAM_BOOTSTRAP_OWNER_EMAIL", () -> "owner-services@example.test");
-        properties.add("IAM_BOOTSTRAP_OWNER_PASSWORD", () -> "services-bootstrap-password");
+        properties.add("IAM_BOOTSTRAP_OWNER_EMAIL", () -> OWNER_EMAIL);
+        properties.add("IAM_BOOTSTRAP_OWNER_PASSWORD", () -> BOOTSTRAP_PASSWORD);
     }
 
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
 
+    private ApiSessions api;
+    private Session owner;
+
     @BeforeEach
-    void clean() {
+    void clean() throws Exception {
         jdbc.update("delete from workorder.work_order_product");
         jdbc.update("delete from workorder.work_order_service");
         jdbc.update("delete from workorder.work_order_status_history");jdbc.update("delete from workorder.work_order");
@@ -58,6 +73,8 @@ class Task0011ServiceCatalogIntegrationTest {
         jdbc.update("delete from crm.vehicle_ownership");
         jdbc.update("delete from crm.vehicle");
         jdbc.update("delete from crm.customer");
+        api = new ApiSessions(mvc, PASSWORD);
+        owner = api.owner(OWNER_EMAIL, BOOTSTRAP_PASSWORD);
     }
 
     @Test
@@ -193,9 +210,7 @@ class Task0011ServiceCatalogIntegrationTest {
     }
 
     private ResultActions send(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request, String body) throws Exception {
-        request.with(user("operator")).with(csrf());
-        if (!body.isEmpty()) request.contentType(MediaType.APPLICATION_JSON).content(body);
-        return mvc.perform(request);
+        return api.send(owner, request, body);
     }
 
     private ResultActions search(String query) throws Exception {
