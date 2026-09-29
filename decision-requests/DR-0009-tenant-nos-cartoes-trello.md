@@ -1,7 +1,7 @@
 # DR-0009 — "Tenant" nos cartões do Trello versus MVP de oficina única
 
 - Tipo: `ARCHITECTURE`
-- Status: `DECIDED_PROVISIONALLY` — aguardando ratificação do Owner
+- Status: `DECIDED` — ratificada em 2026-09-29 (auditoria das TASK-0009/0010 confirmou a implementação fiel à decisão provisória, sem divergências; coerente com `DR-0002` — piloto de oficina única)
 - Task: `TASK-0009` e todas as Tasks originadas do quadro Trello "Projetos wenderson"
 - Origem: `AG-00 — Orquestrador` / `AG-02 — Arquitetura`
 - Responsável pela decisão: proprietário do produto

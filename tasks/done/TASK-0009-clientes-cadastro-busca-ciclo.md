@@ -2,7 +2,7 @@
 
 ## Identificação
 
-- Status: `REVIEW`
+- Status: `DONE`
 - Prioridade: `HIGH`
 - Criada em: `2026-09-17`
 - Origem: quadro Trello "Projetos wenderson", lista "A fazer"
@@ -65,3 +65,5 @@ Dígito verificador de CPF/CNPJ; consulta automática de CEP; mascaramento de do
 ## Histórico
 
 - 2026-09-17 — Task criada a partir do Trello, DRs provisórias registradas, backend, frontend e testes implementados; movida para `REVIEW`.
+- 2026-09-29 — Revisão externa independente: critérios de aceite comprovados em código real (arquivo:linha),
+  sem divergência. `DR-0010` ratificada (estava `DECIDED_PROVISIONALLY`). Task movida para `DONE`.

@@ -1,7 +1,7 @@
 # DR-0010 — Dados cadastrais do cliente: documento opcional, telefone e endereço
 
 - Tipo: `FUNCTIONAL`
-- Status: `DECIDED_PROVISIONALLY` — aguardando ratificação do Owner
+- Status: `DECIDED` — ratificada em 2026-09-29 (auditoria da TASK-0009 confirmou a implementação fiel à decisão provisória, sem divergências)
 - Task: `TASK-0009`
 - Origem: `AG-01 — Produto & Requisitos` / `AG-10 — Banco de Dados`
 - Responsável pela decisão: proprietário do produto

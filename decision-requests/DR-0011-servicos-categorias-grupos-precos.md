@@ -1,7 +1,7 @@
 # DR-0011 — Serviços: categorias, grupos de veículos e prioridade de preço
 
 - Tipo: `FUNCTIONAL`
-- Status: `DECIDED_PROVISIONALLY` — aguardando ratificação do Owner
+- Status: `DECIDED` — ratificada em 2026-09-29 (auditoria da TASK-0011 confirmou a implementação fiel à decisão provisória, sem divergências)
 - Task: `TASK-0011`
 - Origem: `AG-04 — Catálogo` / `AG-03 — Oficina`
 - Responsável pela decisão: proprietário do produto

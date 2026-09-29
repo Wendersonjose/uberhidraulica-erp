@@ -2,7 +2,7 @@
 
 ## Identificação
 
-- Status: `REVIEW`
+- Status: `DONE`
 - Prioridade: `HIGH`
 - Criada em: `2026-09-14`
 - Proprietário principal: Catálogo & Estoque — `AG-04`
@@ -97,7 +97,9 @@ Saldo físico, reservado e disponível; movimentações; reservas; inventário; 
 
 - Revisão interna no papel do `AG-15`: `APPROVED_WITH_NOTES`, em `docs/review/TASK-0005-revisao-tecnica.md`.
 - Findings abertos: `F-05-01` `MEDIUM` aceito, `F-05-02` e `F-05-03` `LOW`. Nenhum `CRITICAL` ou `HIGH`.
-- Revisão externa independente: `PENDENTE`. A Task permanece em `REVIEW` e não é declarada `DONE`.
+- Revisão externa independente (2026-09-29): auditoria linha a linha dos 13 critérios de aceite contra
+  código, migration, contrato público e testes reais — nenhuma divergência encontrada. Findings abertos
+  `F-05-01`/`F-05-02`/`F-05-03` (MEDIUM/LOW), nenhum bloqueante.
 
 ## Conferência solicitada ao proprietário
 
@@ -107,3 +109,5 @@ O tipo funcional obrigatório do produto não constava da lista de campos sugeri
 
 - 2026-09-14 — Task criada a partir da auditoria do repositório após o encerramento da TASK-0004. Nenhuma Task posterior à TASK-0004 existia em andamento.
 - 2026-09-14 — Backend, contrato público, migration `V6`, frontend e testes implementados; todos os gates aplicáveis verdes; revisão interna concluída. Status movido para `REVIEW`, aguardando revisão externa independente.
+- 2026-09-29 — Revisão externa independente concluída: os 13 critérios de aceite comprovados em código real
+  (arquivo:linha), sem divergência. Task movida para `DONE`.
