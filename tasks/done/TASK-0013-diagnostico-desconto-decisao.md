@@ -2,7 +2,7 @@
 
 ## Identificação
 
-- Status: `REVIEW`
+- Status: `DONE`
 - Prioridade: `HIGH`
 - Criada em: `2026-09-17`
 - Origem: quadro Trello "Projetos wenderson", lista "A fazer"
@@ -63,3 +63,6 @@ Desconto percentual ou no total do orçamento; desconto em item físico lançado
 ## Histórico
 
 - 2026-09-17 — Task criada a partir do Trello; backend, frontend e testes implementados; movida para `REVIEW`.
+- 2026-09-29 — Revisão externa independente: 17 critérios de aceite (task + `DR-0013`) comprovados em
+  código real (arquivo:linha), sem divergência. `DR-0013` ratificada (estava `DECIDED_PROVISIONALLY`).
+  Task movida para `DONE`.

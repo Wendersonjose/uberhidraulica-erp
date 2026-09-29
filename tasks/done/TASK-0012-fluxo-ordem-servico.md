@@ -2,7 +2,7 @@
 
 ## Identificação
 
-- Status: `REVIEW`
+- Status: `DONE`
 - Prioridade: `CRITICAL`
 - Criada em: `2026-09-17`
 - Origem: quadro Trello "Projetos wenderson", lista "A fazer"
@@ -74,3 +74,6 @@ Regras automáticas de aprovação/reprovação do orçamento (Task do orçament
 ## Histórico
 
 - 2026-09-17 — Task criada a partir do Trello; backend, frontend e testes implementados; movida para `REVIEW`.
+- 2026-09-29 — Revisão externa independente: todos os critérios de aceite comprovados em código real
+  (arquivo:linha), sem divergência. `DR-0012` ratificada (estava `DECIDED_PROVISIONALLY`). Task movida
+  para `DONE`.

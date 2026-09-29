@@ -2,7 +2,7 @@
 
 ## Identificação
 
-- Status: `REVIEW` — F1–F4 corrigidos; checkpoint PostgreSQL pendente
+- Status: `DONE` — F1–F4 corrigidos; checkpoint PostgreSQL executado em 2026-09-29
 - Prioridade: `HIGH`
 - Criada em: `2026-09-22`
 - Origem: quadro Trello "Projetos wenderson", lista "A fazer", cartões 31 a 34
@@ -177,7 +177,6 @@ após a meia-noite.
 
 ## Pendências
 
-- Rodar o checkpoint PostgreSQL da revisão (integração do Financeiro, Estoque, fluxo da OS, IAM e suíte completa).
 - `TASK-0016` — Caixa físico / sessão de caixa (`BACKLOG`), pré-requisito para aceitar `DINHEIRO`.
 - Sem CI remoto configurado nesta branch; tratado fora desta Task.
 
@@ -186,6 +185,10 @@ após a meia-noite.
 Docker fechado no desenvolvimento. No checkpoint: integração do Financeiro e do Orçamento (incluindo
 concorrência e idempotência), suíte backend completa, `npm test -- --run`, `tsc`, `build`, `lint`,
 `git diff --check`. Docker fechado em seguida.
+
+Checkpoint final (2026-09-29): `mvn test` sem exclusões — 230 testes, 0 falhas, 0 erros, `BUILD SUCCESS`,
+incluindo `Task0015FinanceIntegrationTest` (37) e `ModularityTest`. Frontend: 110 testes, `tsc`, `build`,
+`lint` limpos. Detalhes: `docs/review/TASK-0015-revisao-tecnica.md`.
 
 ## Histórico
 
@@ -198,3 +201,5 @@ concorrência e idempotência), suíte backend completa, `npm test -- --run`, `t
   corrigidos (`V19`). Checkpoint PostgreSQL não executado por falha do Docker; Task mantida em `REVIEW`.
 - 2026-09-22 — Nova revisão externa: F1–F3 confirmados; F4 (identidade do pedido idempotente) corrigido sem migration.
   Checkpoint PostgreSQL ainda pendente; Task mantida em `REVIEW`.
+- 2026-09-29 — Checkpoint PostgreSQL executado: suíte completa (230 testes) e frontend verdes. `CommercialFixtures`
+  corrigida (`receivable_adjustment_reversal` faltava na ordem de limpeza). Task movida para `DONE`.

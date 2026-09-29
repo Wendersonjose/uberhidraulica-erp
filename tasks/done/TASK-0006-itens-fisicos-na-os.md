@@ -2,7 +2,7 @@
 
 ## Identificação
 
-- Status: `REVIEW`
+- Status: `DONE`
 - Prioridade: `HIGH`
 - Criada em: `2026-09-14`
 - Proprietário principal: Oficina — `AG-03`
@@ -105,7 +105,9 @@ Saldo, reserva, disponibilidade e movimentação de estoque; baixa por consumo; 
 
 - Revisão interna no papel do `AG-15`: `APPROVED_WITH_NOTES`, em `docs/review/TASK-0006-revisao-tecnica.md`.
 - Findings abertos: `F-06-01` e `F-06-02` `MEDIUM` aceitos com justificativa, `F-06-03` e `F-06-04` `LOW`. Nenhum `CRITICAL` ou `HIGH`.
-- Revisão externa independente: `PENDENTE`. A Task permanece em `REVIEW` e não é declarada `DONE`.
+- Revisão externa independente (2026-09-29): auditoria linha a linha dos 13 critérios de aceite contra
+  código, migration, frontend e testes reais — nenhuma divergência encontrada; `DR-0006` (precisão por
+  unidade) confirmada em uso. Ver histórico.
 
 ## Conferência solicitada ao proprietário
 
@@ -115,3 +117,6 @@ Saldo, reserva, disponibilidade e movimentação de estoque; baixa por consumo; 
 
 - 2026-09-14 — Task criada como continuação direta da TASK-0005, sendo o primeiro consumo real do contrato público do catálogo de produtos.
 - 2026-09-14 — Backend, migration `V7`, frontend e testes implementados; todos os gates aplicáveis verdes; revisão interna concluída. Status movido para `REVIEW`, aguardando revisão externa independente.
+- 2026-09-29 — Revisão externa independente concluída: os 13 critérios de aceite comprovados em código real
+  (arquivo:linha), sem divergência. Suíte completa (230 testes backend, `ModularityTest` incluído; 110
+  testes frontend) verde no mesmo checkpoint. Task movida para `DONE`.

@@ -2,7 +2,8 @@
 
 ## Identificação
 
-- Status: `REVIEW`
+- Status: `DONE` (código e testes); implantação em produção segue bloqueada até `F-08-02`/`F-08-03`/`F-08-01`
+  (ver `tasks/backlog` de DevOps)
 - Prioridade: `CRITICAL`
 - Criada em: `2026-09-15`
 - Proprietário principal: Oficina — `AG-03`
@@ -137,7 +138,10 @@ Não existe caminho em que uma decisão seja aceita usando uma obsolescência li
 - **Dois findings `HIGH` são de implantação, não de código**, e devem bloquear a ida para produção: `F-08-02` (IP real atrás de proxy) e `F-08-03` (HTTPS/HSTS).
 - `F-08-01` `MEDIUM` — rate limiting não implementado; deve ser resolvido antes de expor o endpoint na internet.
 - `F-08-04` a `F-08-08` `MEDIUM`/`LOW`, aceitos com justificativa.
-- Revisão externa independente: `PENDENTE`. Por ser a única superfície pública do sistema, esta Task **não** é declarada `DONE` sem ela.
+- Revisão externa independente (2026-09-29): auditoria linha a linha dos 20 critérios de aceite contra
+  código, migration `V10`, frontend e testes reais — nenhuma divergência encontrada. Os findings de
+  implantação (`F-08-02`, `F-08-03`, `F-08-01`) permanecem pendentes e bloqueiam produção, não o código;
+  tratados na fase de DevOps/deploy do piloto.
 
 ## Bug encontrado e corrigido
 
@@ -155,3 +159,7 @@ Não existe caminho em que uma decisão seja aceita usando uma obsolescência li
 
 - 2026-09-15 — Task criada após o encerramento da TASK-0007, com `F-07-01` como pré-requisito declarado.
 - 2026-09-15 — Backend, migration `V10`, superfície pública, página do cliente e testes implementados; `F-07-01` resolvido com serialização real; `BUG-08-01` corrigido; todos os gates verdes. Status movido para `REVIEW`, aguardando revisão externa independente e as pendências de implantação.
+- 2026-09-29 — Revisão externa independente concluída: os 20 critérios de aceite comprovados em código real
+  (arquivo:linha), sem divergência. Código movido para `DONE`. `F-08-02` (IP atrás de proxy), `F-08-03`
+  (HTTPS/HSTS) e `F-08-01` (rate limiting) continuam bloqueando a exposição pública em produção e serão
+  tratados na fase de DevOps/deploy.

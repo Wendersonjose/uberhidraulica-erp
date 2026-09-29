@@ -1,7 +1,7 @@
 # DR-0013 — Diagnóstico, desconto no orçamento, registro interno da decisão e status automático
 
 - Tipo: `DOMAIN` / `FINANCIAL`
-- Status: `DECIDED_PROVISIONALLY` — aguardando ratificação do Owner
+- Status: `DECIDED` — ratificada em 2026-09-29 (auditoria da TASK-0013 confirmou a implementação fiel à decisão provisória, sem divergências)
 - Task: `TASK-0013`
 - Origem: `AG-03 — Domínio Oficina` / `AG-06 — Financeiro`
 - Responsável pela decisão: proprietário do produto

@@ -1,7 +1,7 @@
 # DR-0012 — Fluxo configurável de status da OS, abertura, execução, entrega e cancelamento
 
 - Tipo: `DOMAIN`
-- Status: `DECIDED_PROVISIONALLY` — aguardando ratificação do Owner
+- Status: `DECIDED` — ratificada em 2026-09-29 (auditoria da TASK-0012 confirmou a implementação fiel à decisão provisória, sem divergências)
 - Task: `TASK-0012`
 - Origem: `AG-03 — Domínio Oficina`
 - Responsável pela decisão: proprietário do produto
