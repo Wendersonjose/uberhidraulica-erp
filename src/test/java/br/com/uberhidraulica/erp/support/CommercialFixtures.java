@@ -49,7 +49,8 @@ public final class CommercialFixtures {
 
     /** Ordem de remoção que respeita as FKs entre Financeiro, Orçamento e OS. */
     public static final String[] FINANCE_AND_QUOTE_TABLES = {
-            "finance.receipt_reversal", "finance.receipt", "finance.receivable_adjustment", "finance.receivable_due_date_change",
+            "finance.receipt_reversal", "finance.receipt",
+            "finance.receivable_adjustment_reversal", "finance.receivable_adjustment", "finance.receivable_due_date_change",
             "finance.receivable_line", "finance.receivable",
             "finance.payable_payment_reversal", "finance.payable_payment", "finance.payable",
             "workshop.quote_decision", "workshop.quote_decision_submission", "workshop.public_quote_access",
