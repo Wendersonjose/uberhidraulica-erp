@@ -160,14 +160,31 @@ e três unitários em `FinanceDomainTest`.
 | `npm test -- --run` | 12 arquivos, 110 testes verdes |
 | `npx tsc --noEmit`, `npm run build`, `npm run lint` | limpos (aviso de chunk > 500 kB preexistente) |
 | `git diff --check` | limpo |
-| **Testes de integração PostgreSQL e suíte backend completa** | **não executados no checkpoint** — o Docker Desktop 4.48.0 não iniciou o engine nesta sessão |
+| **Testes de integração PostgreSQL e suíte backend completa** | **executados em 2026-09-29** — ver checkpoint abaixo |
 
-Sobre o Docker: o log (`%LOCALAPPDATA%\Docker\log\host\com.docker.backend.exe.log`) mostra
-`monitor exited: exit status 150` e diálogos de erro na abertura; às 16:04 UTC (13:04 no horário local)
-uma ação **"Reset to factory defaults"** foi disparada a partir do diálogo da interface — não por esta
-sessão. Uma reinicialização limpa (processos encerrados, `wsl --shutdown`) repetiu o erro. Não foi feito
-nenhum clique em diálogo do Docker. Conforme a instrução do Owner, isto é **"não executado no
-checkpoint"**, não falha funcional — e também não é evidência de que os testes passam.
+### Checkpoint PostgreSQL (2026-09-29)
+
+Docker Desktop reaberto para o checkpoint (estava fechado desde a sessão anterior) e fechado em seguida.
+Uma primeira rodada com `mvn test` sem exclusões, disparada logo após o engine subir, teve 2 classes com
+`ContainerLaunchException` (`Task0009Task0010CrmIntegrationTest`, `Task0015FinanceIntegrationTest`) — o
+engine ainda estava alocando memória (WSL2) para os primeiros containers, não pressão sustentada: o
+`forkCount=1`/`reuseForks=false` do `pom.xml` já roda as classes em série. As duas classes rodadas
+isoladas em seguida passaram integralmente. Com o engine estável, a suíte completa rodou de novo sem
+exclusões e fechou 100% verde:
+
+| Gate | Resultado |
+| --- | --- |
+| `Task0015FinanceIntegrationTest` (isolado, PostgreSQL) | 37 testes, 0 falhas — inclui F1–F4, `DR-0017` (estorno de ajuste) e os 6 casos novos de identidade do pedido idempotente reutilizada |
+| `Task0009Task0010CrmIntegrationTest` (isolado, PostgreSQL) | 12 testes, 0 falhas |
+| `mvn test` — suíte backend completa, sem exclusões | **230 testes, 0 falhas, 0 erros, 0 ignorados, `BUILD SUCCESS`**, incluindo `ModularityTest` (`ApplicationModules.verify()`) |
+| `npm test -- --run` | 12 arquivos, 110 testes verdes |
+| `npx tsc --noEmit`, `npm run build`, `npm run lint` | limpos (aviso de chunk > 500 kB preexistente) |
+| `git diff --check` | limpo |
+
+Achado incorporado ao checkpoint: `CommercialFixtures.FINANCE_AND_QUOTE_TABLES` não listava
+`finance.receivable_adjustment_reversal` (tabela da `V19`/`DR-0017`), deixado pendente sem commit desde a
+sessão de F4. Corrigido e commitado (`f2ff004`) antes do checkpoint — sem esse ajuste a limpeza entre
+testes de integração que exercitam o estorno de ajuste ficaria incompleta.
 
 ---
 
@@ -175,11 +192,11 @@ checkpoint"**, não falha funcional — e também não é evidência de que os t
 
 | Critério | Situação |
 | --- | --- |
-| 1. Findings F1–F4 corrigidos | feito (F1–F3 confirmados pela revisão externa; F4 aguarda o checkpoint) |
-| 2. DR-0017 `DECIDED` e implementada | feito |
-| 3. Testes concorrentes PostgreSQL verdes | **pendente** — não executados |
-| 4. Suíte backend completa verde | **pendente** — não executada |
+| 1. Findings F1–F4 corrigidos | feito, confirmado pelo checkpoint PostgreSQL |
+| 2. DR-0017 `DECIDED` e implementada | feito, confirmado pelo checkpoint PostgreSQL |
+| 3. Testes concorrentes PostgreSQL verdes | feito — 2026-09-29 |
+| 4. Suíte backend completa verde | feito — 230 testes, 2026-09-29 |
 | 5. Frontend verde | feito |
-| 6. AG-15 sem HIGH/CRITICAL remanescente | feito no código; verificação depende de 3 e 4 |
+| 6. AG-15 sem HIGH/CRITICAL remanescente | feito — código e verificação (3 e 4) concluídos |
 
-**A TASK-0015 permanece em `REVIEW`.** Não pode ir para `DONE` antes dos itens 3 e 4.
+**TASK-0015 concluída — `DONE`.**
