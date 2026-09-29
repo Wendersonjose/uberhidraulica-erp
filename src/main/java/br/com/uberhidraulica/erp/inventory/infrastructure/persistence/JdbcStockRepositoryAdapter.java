@@ -121,4 +121,21 @@ class JdbcStockRepositoryAdapter implements StockRepositoryPort {
                 Map.of("key", key, "value", value)) == 0)
             throw new InventoryException("SETTING_NOT_FOUND", "Configuração não encontrada");
     }
+
+    @Override
+    public java.math.BigDecimal partsCostForWorkOrders(java.util.Collection<UUID> workOrderIds) {
+        if (workOrderIds == null || workOrderIds.isEmpty()) return java.math.BigDecimal.ZERO;
+        // A devolução (WORK_ORDER_RETURN) não grava custo próprio: reverte pelo custo histórico do
+        // movimento original, nunca pelo custo atual do catálogo.
+        java.math.BigDecimal total = jdbc.queryForObject("""
+                select coalesce(sum(
+                    case when m.movement_type = 'WORK_ORDER_OUT' then m.quantity * m.unit_cost
+                         when m.movement_type = 'WORK_ORDER_RETURN' then -(m.quantity * orig.unit_cost)
+                         else 0 end), 0)
+                from inventory.stock_movement m
+                left join inventory.stock_movement orig on orig.id = m.reverses_movement_id
+                where m.work_order_id in (:ids) and m.movement_type in ('WORK_ORDER_OUT', 'WORK_ORDER_RETURN')""",
+                Map.of("ids", workOrderIds), java.math.BigDecimal.class);
+        return total == null ? java.math.BigDecimal.ZERO : total;
+    }
 }

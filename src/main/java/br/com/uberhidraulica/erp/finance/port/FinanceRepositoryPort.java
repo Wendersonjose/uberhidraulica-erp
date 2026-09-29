@@ -124,6 +124,14 @@ public interface FinanceRepositoryPort {
 
     List<DailyAmount> forecastOutflows(LocalDate from, LocalDate to, UUID categoryId);
 
+    // ---------------------------------------------------------------- resumo gerencial
+
+    /** Totais de recebíveis não cancelados emitidos no período, para o resumo financeiro gerencial. */
+    DashboardReceivableTotals dashboardReceivableTotals(LocalDate from, LocalDate to, LocalDate today);
+
+    /** Despesas registradas (não canceladas) no período, pela data de criação da conta a pagar. */
+    BigDecimal dashboardExpensesRegistered(LocalDate from, LocalDate to);
+
     // ---------------------------------------------------------------- tipos de consulta
 
     record PageResult<T>(List<T> items, long totalItems, int page, int size) {
@@ -145,6 +153,9 @@ public interface FinanceRepositoryPort {
 
     /** Identidade persistida dos pedidos idempotentes (revisão TASK-0015, F4). */
     record DueDateChangeRef(UUID receivableId, LocalDate newDueDate, String reason) {}
+
+    /** Base do faturamento, a receber e vencido, todos restritos aos recebíveis emitidos no período. */
+    record DashboardReceivableTotals(BigDecimal revenue, BigDecimal receivableOpen, BigDecimal overdue, List<UUID> workOrderIds) {}
 
     record KeyedReversal(UUID targetId, String reason) {}
 

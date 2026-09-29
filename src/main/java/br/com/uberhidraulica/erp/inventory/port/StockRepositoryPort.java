@@ -3,6 +3,8 @@ package br.com.uberhidraulica.erp.inventory.port;
 import br.com.uberhidraulica.erp.inventory.domain.Stock;
 import br.com.uberhidraulica.erp.inventory.domain.StockMovement;
 
+import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -36,4 +38,7 @@ public interface StockRepositoryPort {
     String setting(String key);
 
     void saveSetting(String key, String value);
+
+    /** Custo histórico (baixas menos devoluções) das Ordens de Serviço informadas, pelo `unit_cost` gravado na movimentação. */
+    BigDecimal partsCostForWorkOrders(Collection<UUID> workOrderIds);
 }

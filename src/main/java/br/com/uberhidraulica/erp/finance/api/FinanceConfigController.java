@@ -2,6 +2,7 @@ package br.com.uberhidraulica.erp.finance.api;
 
 import br.com.uberhidraulica.erp.finance.application.CashFlowService;
 import br.com.uberhidraulica.erp.finance.application.FinanceConfigService;
+import br.com.uberhidraulica.erp.finance.application.FinanceDashboardService;
 import br.com.uberhidraulica.erp.finance.domain.ExpenseCategory;
 import br.com.uberhidraulica.erp.finance.domain.PaymentMethod;
 import jakarta.validation.Valid;
@@ -23,16 +24,24 @@ import java.util.UUID;
 class FinanceConfigController {
     private final FinanceConfigService config;
     private final CashFlowService cashFlow;
+    private final FinanceDashboardService dashboard;
 
-    FinanceConfigController(FinanceConfigService config, CashFlowService cashFlow) {
+    FinanceConfigController(FinanceConfigService config, CashFlowService cashFlow, FinanceDashboardService dashboard) {
         this.config = config;
         this.cashFlow = cashFlow;
+        this.dashboard = dashboard;
     }
 
     @GetMapping("/cash-flow")
     @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'FINANCE_VIEW')")
     CashFlowService.CashFlow cashFlow(@RequestParam LocalDate from, @RequestParam LocalDate to, @RequestParam(required = false) UUID categoryId) {
         return cashFlow.cashFlow(from, to, categoryId);
+    }
+
+    @GetMapping("/dashboard")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'FINANCE_VIEW')")
+    FinanceDashboardService.Dashboard dashboard(@RequestParam LocalDate from, @RequestParam LocalDate to) {
+        return dashboard.dashboard(from, to);
     }
 
     @GetMapping("/payment-methods")

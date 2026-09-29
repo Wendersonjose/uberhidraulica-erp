@@ -7,5 +7,5 @@
  */
 @org.springframework.modulith.ApplicationModule(
         displayName = "Financeiro",
-        allowedDependencies = {"workorder", "quote", "crm", "iam"})
+        allowedDependencies = {"workorder", "quote", "crm", "iam", "inventory"})
 package br.com.uberhidraulica.erp.finance;

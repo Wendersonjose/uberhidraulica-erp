@@ -1,6 +1,7 @@
 package br.com.uberhidraulica.erp.inventory.application;
 
 import br.com.uberhidraulica.erp.iam.CurrentUser;
+import br.com.uberhidraulica.erp.inventory.InventoryCostQuery;
 import br.com.uberhidraulica.erp.inventory.domain.InventoryException;
 import br.com.uberhidraulica.erp.inventory.domain.Stock;
 import br.com.uberhidraulica.erp.inventory.domain.StockMovement;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.*;
@@ -22,7 +24,7 @@ import java.util.*;
  * médio resultantes e nunca altera um lançamento anterior (DR-0014).</p>
  */
 @Service
-public class InventoryApplicationService {
+public class InventoryApplicationService implements InventoryCostQuery {
     public static final String WRITE_OFF_SETTING = "WORK_ORDER_WRITE_OFF";
     public static final int MAX_PAGE_SIZE = 100;
 
@@ -191,6 +193,12 @@ public class InventoryApplicationService {
 
     private ProductCatalogQuery.ProductReference requireProduct(UUID productId) {
         return catalog.product(productId).orElseThrow(() -> new InventoryException("PRODUCT_NOT_FOUND", "Produto não encontrado"));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public BigDecimal partsCostForWorkOrders(Collection<UUID> workOrderIds) {
+        return repository.partsCostForWorkOrders(workOrderIds).setScale(2, RoundingMode.HALF_UP);
     }
 
     public record Page<T>(List<T> items, long totalItems, int page, int size) {

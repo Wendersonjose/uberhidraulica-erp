@@ -464,6 +464,29 @@ class JdbcFinanceRepositoryAdapter implements FinanceRepositoryPort {
                 + " group by due_date order by due_date", params);
     }
 
+    // ================================================================ resumo gerencial
+
+    @Override
+    public DashboardReceivableTotals dashboardReceivableTotals(LocalDate from, LocalDate to, LocalDate today) {
+        MapSqlParameterSource params = period(from, to).addValue("today", Date.valueOf(today));
+        List<UUID> workOrderIds = jdbc.queryForList(RECEIVABLE_TOTALS
+                + " select work_order_id from classified where cancelled_at is null and issued_on between :from and :to",
+                params, UUID.class);
+        Map<String, Object> totals = jdbc.queryForMap(RECEIVABLE_TOTALS
+                + " select coalesce(sum(original_amount), 0) as revenue,"
+                + " coalesce(sum(case when outstanding > 0 then outstanding else 0 end), 0) as receivable_open,"
+                + " coalesce(sum(case when status = 'VENCIDO' then outstanding else 0 end), 0) as overdue"
+                + " from classified where cancelled_at is null and issued_on between :from and :to", params);
+        return new DashboardReceivableTotals((BigDecimal) totals.get("revenue"), (BigDecimal) totals.get("receivable_open"),
+                (BigDecimal) totals.get("overdue"), workOrderIds);
+    }
+
+    @Override
+    public BigDecimal dashboardExpensesRegistered(LocalDate from, LocalDate to) {
+        return jdbc.queryForObject("select coalesce(sum(amount), 0) from finance.payable"
+                + " where cancelled_at is null and created_at::date between :from and :to", period(from, to), BigDecimal.class);
+    }
+
     private List<DailyAmount> daily(String sql, MapSqlParameterSource params) {
         return jdbc.query(sql, params, (rs, i) -> new DailyAmount(date(rs, "day"), rs.getBigDecimal("amount")));
     }
