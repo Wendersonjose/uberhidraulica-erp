@@ -26,6 +26,9 @@ public interface CashSessionRepositoryPort {
     List<CashMovement> listMovements(UUID sessionId);
     Optional<CashMovement> findMovement(UUID movementId);
     Optional<CashMovement> findMovementByIdempotencyKey(String key);
+    Optional<CashMovement> findReceiptMovement(UUID receiptId);
+    Optional<CashMovement> findChangeMovement(UUID receiptId);
+    Optional<CashMovement> findPayablePaymentMovement(UUID paymentId);
     boolean isReversed(UUID movementId);
     void insertMovement(CashMovement movement);
 }
