@@ -109,14 +109,34 @@ class JdbcCashSessionRepositoryAdapter implements CashSessionRepositoryPort {
 
     @Override
     public Optional<CashMovement> findMovement(UUID movementId) {
-        return jdbc.query("select * from finance.cash_movement where id=:id", Map.of("id", movementId),
-                (rs, row) -> movement(rs)).stream().findFirst();
+        return oneMovement("select * from finance.cash_movement where id=:id", Map.of("id", movementId));
     }
 
     @Override
     public Optional<CashMovement> findMovementByIdempotencyKey(String key) {
-        return jdbc.query("select * from finance.cash_movement where idempotency_key=:key", Map.of("key", key),
-                (rs, row) -> movement(rs)).stream().findFirst();
+        return oneMovement("select * from finance.cash_movement where idempotency_key=:key", Map.of("key", key));
+    }
+
+    @Override
+    public Optional<CashMovement> findReceiptMovement(UUID receiptId) {
+        return oneMovement("select * from finance.cash_movement where movement_type='RECEIPT' and receipt_id=:id",
+                Map.of("id", receiptId));
+    }
+
+    @Override
+    public Optional<CashMovement> findChangeMovement(UUID receiptId) {
+        return oneMovement("select * from finance.cash_movement where movement_type='CHANGE' and receipt_id=:id",
+                Map.of("id", receiptId));
+    }
+
+    @Override
+    public Optional<CashMovement> findPayablePaymentMovement(UUID paymentId) {
+        return oneMovement("select * from finance.cash_movement where movement_type='PAYABLE_PAYMENT' and payable_payment_id=:id",
+                Map.of("id", paymentId));
+    }
+
+    private Optional<CashMovement> oneMovement(String sql, Map<String, ?> params) {
+        return jdbc.query(sql, params, (rs, row) -> movement(rs)).stream().findFirst();
     }
 
     @Override
