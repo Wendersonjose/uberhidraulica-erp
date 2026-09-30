@@ -55,6 +55,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class IamAuthenticationIntegrationTest {
     private static final java.util.List<String> FINANCE = java.util.List.of("FINANCE_VIEW", "FINANCE_RECEIVE", "FINANCE_REVERSE",
             "FINANCE_ADJUST", "FINANCE_PAYABLE", "FINANCE_CONFIG", "FINANCE_BILL");
+    // V20: rotina de módulo vai para DONO + GERENTE_ADMINISTRATIVO; sensível vai para DONO + GERENTE_FINANCEIRO.
+    private static final java.util.List<String> MODULE_ROUTINE = java.util.List.of("PRODUCT_MANAGE", "INVENTORY_MOVE",
+            "WORKORDER_MANAGE", "WORKORDER_CONFIG", "CRM_MANAGE", "SERVICE_MANAGE", "QUOTE_MANAGE");
+    private static final java.util.List<String> MODULE_SENSITIVE = java.util.List.of("PRODUCT_COST_MANAGE", "INVENTORY_ADJUST",
+            "SERVICE_PRICE_MANAGE");
 
     private static final String OWNER_EMAIL = "owner@example.test";
     private static final String OWNER_PASSWORD = "bootstrap-secret-for-test";
@@ -92,12 +97,15 @@ class IamAuthenticationIntegrationTest {
         assertThat(authorizations.profilePermissions(ProfileCode.DONO))
                 .containsAll(br.com.uberhidraulica.erp.iam.domain.IamPermissions.ALL);
         assertThat(authorizations.profilePermissions(ProfileCode.DONO)).containsExactlyInAnyOrderElementsOf(
-                Stream.concat(br.com.uberhidraulica.erp.iam.domain.IamPermissions.ALL.stream(),
-                        Stream.concat(Stream.of("QUOTE_PRESENT", "QUOTE_DISCOUNT"), FINANCE.stream())).toList());
-        assertThat(authorizations.profilePermissions(ProfileCode.GERENTE_ADMINISTRATIVO))
-                .containsExactlyInAnyOrder("QUOTE_PRESENT", "QUOTE_DISCOUNT", "FINANCE_VIEW", "FINANCE_RECEIVE", "FINANCE_BILL");
-        // DR-0015, F-13: o Gerente Financeiro recebe todas as permissões do Financeiro e nada mais por padrão.
-        assertThat(authorizations.profilePermissions(ProfileCode.GERENTE_FINANCEIRO)).containsExactlyInAnyOrderElementsOf(FINANCE);
+                Stream.of(br.com.uberhidraulica.erp.iam.domain.IamPermissions.ALL.stream(),
+                        Stream.of("QUOTE_PRESENT", "QUOTE_DISCOUNT"), FINANCE.stream(), MODULE_ROUTINE.stream(), MODULE_SENSITIVE.stream())
+                        .flatMap(s -> s).toList());
+        assertThat(authorizations.profilePermissions(ProfileCode.GERENTE_ADMINISTRATIVO)).containsExactlyInAnyOrderElementsOf(
+                Stream.concat(Stream.of("QUOTE_PRESENT", "QUOTE_DISCOUNT", "FINANCE_VIEW", "FINANCE_RECEIVE", "FINANCE_BILL"),
+                        MODULE_ROUTINE.stream()).toList());
+        // DR-0015, F-13: o Gerente Financeiro recebe todas as permissões do Financeiro e nada mais por padrão (mais as sensíveis do V20).
+        assertThat(authorizations.profilePermissions(ProfileCode.GERENTE_FINANCEIRO)).containsExactlyInAnyOrderElementsOf(
+                Stream.concat(FINANCE.stream(), MODULE_SENSITIVE.stream()).toList());
         assertThat(jdbc.queryForObject("select count(*) from iam.audit_event where action='FIRST_OWNER_BOOTSTRAPPED'", Long.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("select must_change_password from iam.credential", Boolean.class)).isTrue();
         assertThat(jdbc.queryForObject("select password_hash from iam.credential", String.class))
