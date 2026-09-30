@@ -72,7 +72,8 @@ class ReceivableController {
     @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'FINANCE_RECEIVE')")
     ResponseEntity<SettlementResponse> receive(@PathVariable UUID id, @RequestHeader(value = IDEMPOTENCY_HEADER, required = false) String key,
                                                @Valid @RequestBody ReceiptRequest request) {
-        return settled(receivables.receive(id, request.amount(), request.paymentMethodId(), request.receivedOn(), request.notes(), key));
+        return settled(receivables.receive(id, request.amount(), request.paymentMethodId(), request.receivedOn(), request.notes(),
+                request.cashTendered(), key));
     }
 
     @PostMapping("/receipts/{id}/reversal")
@@ -99,7 +100,6 @@ class ReceivableController {
         return ResponseEntity.ok().header(REPLAY_HEADER, String.valueOf(result.replayed())).body(respond(result.value()));
     }
 
-    /** DR-0017: estorno total do desconto ou acréscimo; o ajuste original não é editado. */
     @PostMapping("/adjustments/{id}/reversal")
     @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'FINANCE_REVERSE')")
     ResponseEntity<ReceivableResponse> reverseAdjustment(@PathVariable UUID id, @RequestHeader(value = IDEMPOTENCY_HEADER, required = false) String key,
@@ -122,7 +122,8 @@ class ReceivableController {
         return customers.customer(customerId).map(CustomerVehicleQuery.CustomerReference::name).orElse(null);
     }
 
-    record ReceiptRequest(@NotNull BigDecimal amount, @NotNull UUID paymentMethodId, LocalDate receivedOn, @Size(max = 500) String notes) {}
+    record ReceiptRequest(@NotNull BigDecimal amount, @NotNull UUID paymentMethodId, LocalDate receivedOn,
+                          @Size(max = 500) String notes, BigDecimal cashTendered) {}
 
     record ReversalRequest(@NotBlank @Size(max = 500) String reason) {}
 
