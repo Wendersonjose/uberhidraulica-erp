@@ -125,12 +125,14 @@ class JdbcStockRepositoryAdapter implements StockRepositoryPort {
     @Override
     public java.math.BigDecimal partsCostForWorkOrders(java.util.Collection<UUID> workOrderIds) {
         if (workOrderIds == null || workOrderIds.isEmpty()) return java.math.BigDecimal.ZERO;
-        // A devolução (WORK_ORDER_RETURN) não grava custo próprio: reverte pelo custo histórico do
-        // movimento original, nunca pelo custo atual do catálogo.
+        // Saída não grava custo próprio (unit_cost é nulo em toda movimentação de saída, Stock#remove):
+        // o custo histórico da baixa é o average_cost_after, que a saída nunca altera. A devolução
+        // (WORK_ORDER_RETURN) não grava custo próprio: reverte pelo average_cost_after do movimento
+        // original, nunca pelo custo atual do catálogo.
         java.math.BigDecimal total = jdbc.queryForObject("""
                 select coalesce(sum(
-                    case when m.movement_type = 'WORK_ORDER_OUT' then m.quantity * m.unit_cost
-                         when m.movement_type = 'WORK_ORDER_RETURN' then -(m.quantity * orig.unit_cost)
+                    case when m.movement_type = 'WORK_ORDER_OUT' then m.quantity * m.average_cost_after
+                         when m.movement_type = 'WORK_ORDER_RETURN' then -(m.quantity * orig.average_cost_after)
                          else 0 end), 0)
                 from inventory.stock_movement m
                 left join inventory.stock_movement orig on orig.id = m.reverses_movement_id
