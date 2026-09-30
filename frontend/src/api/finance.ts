@@ -8,6 +8,11 @@ export const FINANCE_ADJUST = 'FINANCE_ADJUST'
 export const FINANCE_PAYABLE = 'FINANCE_PAYABLE'
 export const FINANCE_CONFIG = 'FINANCE_CONFIG'
 export const FINANCE_BILL = 'FINANCE_BILL'
+export const CASH_SESSION_OPEN = 'CASH_SESSION_OPEN'
+export const CASH_SESSION_CLOSE = 'CASH_SESSION_CLOSE'
+export const CASH_SUPPLY = 'CASH_SUPPLY'
+export const CASH_WITHDRAWAL = 'CASH_WITHDRAWAL'
+export const CASH_REVERSAL = 'CASH_REVERSAL'
 
 export type FinancialStatus = 'ABERTO' | 'PARCIAL' | 'VENCIDO' | 'QUITADO' | 'CANCELADO'
 export const RECEIVABLE_STATUS_LABELS: Record<FinancialStatus, string> = {
@@ -60,6 +65,21 @@ export type FinanceDashboard = {
   partsCost: number; expensesRegistered: number; expensesPaid: number
   grossProfit: number; operatingResult: number; grossMargin: number; operatingMargin: number
 }
+export type CashSessionStatus = 'OPEN' | 'CLOSED' | 'AUTO_CLOSED'
+export type CashConferenceStatus = 'CHECKED' | 'NOT_CHECKED'
+export type CashMovementType = 'RECEIPT' | 'CHANGE' | 'PAYABLE_PAYMENT' | 'SUPPLY' | 'WITHDRAWAL' | 'ADJUSTMENT' | 'REVERSAL'
+export type CashMovement = {
+  id: string; cashSessionId: string; type: CashMovementType; direction: 'IN' | 'OUT'; amount: number
+  reason: string | null; receiptId: string | null; payablePaymentId: string | null; reversedMovementId: string | null
+  recordedAt: string; recordedBy: string
+}
+export type CashSession = {
+  id: string; status: CashSessionStatus; conferenceStatus: CashConferenceStatus
+  openedAt: string; openedBy: string; openingExpectedBalance: number; openingCountedBalance: number; openingDifferenceReason: string | null
+  closedAt: string | null; closedBy: string | null; closingExpectedBalance: number | null; closingCountedBalance: number | null
+  closingDifferenceReason: string | null; checkedAt: string | null; checkedBy: string | null; checkedCountedBalance: number | null
+  checkedDifferenceReason: string | null; currentExpectedBalance: number
+}
 
 /** Uma chave por intenção de envio: o retry da mesma intenção reaproveita a chave e não duplica o lançamento. */
 export const newIdempotencyKey = () =>
@@ -80,7 +100,7 @@ export const financeApi = {
     api<Page<ReceivableSummary>>('/api/finance/receivables' + query({ ...filter, size: 20 })),
   receivable: (id: string) => api<Receivable>(`/api/finance/receivables/${id}`),
   workOrderReceivable: (workOrderId: string) => api<Receivable>(`/api/finance/work-orders/${workOrderId}/receivable`),
-  receive: (id: string, body: { amount: number; paymentMethodId: string; receivedOn?: string; notes?: string | null }, key: string) =>
+  receive: (id: string, body: { amount: number; paymentMethodId: string; receivedOn?: string; notes?: string | null; cashTendered?: number }, key: string) =>
     idempotent<Settlement>(`/api/finance/receivables/${id}/receipts`, body, key),
   reverseReceipt: (id: string, reason: string, key: string) => idempotent<Settlement>(`/api/finance/receipts/${id}/reversal`, { reason }, key),
   adjust: (id: string, body: { type: 'DISCOUNT' | 'SURCHARGE'; amount: number; reason: string }, key: string) =>
@@ -98,6 +118,20 @@ export const financeApi = {
     idempotent<Settlement>(`/api/finance/payables/${id}/payments`, body, key),
   reversePayment: (id: string, reason: string, key: string) => idempotent<Settlement>(`/api/finance/payments/${id}/reversal`, { reason }, key),
   cancelPayable: (id: string, reason: string) => api<Payable>(`/api/finance/payables/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
+
+  cashSuggestedOpeningBalance: () => api<{ amount: number }>('/api/finance/cash/suggested-opening-balance'),
+  openCashSession: () => api<CashSession>('/api/finance/cash/sessions/open'),
+  cashSession: (id: string) => api<CashSession>(`/api/finance/cash/sessions/${id}`),
+  cashMovements: (id: string) => api<CashMovement[]>(`/api/finance/cash/sessions/${id}/movements`),
+  createCashSession: (countedBalance: number, differenceReason?: string | null) =>
+    api<CashSession>('/api/finance/cash/sessions', { method: 'POST', body: JSON.stringify({ countedBalance, differenceReason }) }),
+  closeCashSession: (id: string, countedBalance: number, differenceReason?: string | null) =>
+    api<CashSession>(`/api/finance/cash/sessions/${id}/close`, { method: 'POST', body: JSON.stringify({ countedBalance, differenceReason }) }),
+  checkCashSession: (id: string, countedBalance: number, differenceReason?: string | null) =>
+    api<CashSession>(`/api/finance/cash/sessions/${id}/check`, { method: 'POST', body: JSON.stringify({ countedBalance, differenceReason }) }),
+  cashSupply: (amount: number, reason: string, key: string) => idempotent<CashMovement>('/api/finance/cash/movements/supply', { amount, reason }, key),
+  cashWithdrawal: (amount: number, reason: string, key: string) => idempotent<CashMovement>('/api/finance/cash/movements/withdrawal', { amount, reason }, key),
+  reverseCashMovement: (id: string, reason: string, key: string) => idempotent<CashMovement>(`/api/finance/cash/movements/${id}/reversal`, { reason }, key),
 
   cashFlow: (from: string, to: string, categoryId?: string) => api<CashFlow>('/api/finance/cash-flow' + query({ from, to, categoryId })),
   dashboard: (from: string, to: string) => api<FinanceDashboard>('/api/finance/dashboard' + query({ from, to })),
@@ -122,6 +156,9 @@ export const financeKeys = {
   methods: ['finance', 'payment-methods'] as const,
   categories: ['finance', 'categories'] as const,
   settings: ['finance', 'settings'] as const,
+  cashSession: ['finance', 'cash-session'] as const,
+  cashSuggestedOpening: ['finance', 'cash-session', 'suggested-opening'] as const,
+  cashMovements: (id: string) => ['finance', 'cash-session', id, 'movements'] as const,
   cashFlow: (from: string, to: string, categoryId: string) => ['finance', 'cash-flow', from, to, categoryId] as const,
   dashboard: (from: string, to: string) => ['finance', 'dashboard', from, to] as const,
 }
