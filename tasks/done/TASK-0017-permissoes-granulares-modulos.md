@@ -2,8 +2,8 @@
 
 ## Identificação
 
-- Status: `REVIEW` — código implementado e compilando limpo; checkpoint PostgreSQL pendente (Docker
-  indisponível nesta sessão, ver seção de bloqueio)
+- Status: `DONE` — checkpoint PostgreSQL executado com sucesso no GitHub Actions (runner remoto,
+  Docker real), ver seção de checkpoint
 - Prioridade: `HIGH`
 - Criada em: `2026-09-29`
 - Origem: auditoria de segurança da sprint de piloto (AGENTS.md, "Segurança") — nenhum dos módulos
@@ -63,27 +63,33 @@ declaravam `iam`). Pego pelo próprio `ModularityTest`, exatamente a função qu
   independente foi recriado com um `GERENTE_ADMINISTRATIVO` com exceção individual `DENY` em
   `QUOTE_DISCOUNT`, preservando a intenção original do teste.
 
-## Checkpoint (2026-09-29)
+## Checkpoint (2026-09-30)
 
 | Gate | Resultado |
 | --- | --- |
 | `mvn compile`, `mvn test-compile` | verdes |
-| Suíte sem Docker (`!*IntegrationTest`, `!UberhidraulicaErpApplicationTest`) — 69 testes, inclui `ModularityTest` corrigido | **verde, 0 falhas** |
-| `ModulePermissionsIntegrationTest` (PostgreSQL) | **não executado** |
-| Bateria de regressão dos testes ajustados (PostgreSQL) | **não executada** |
+| Suíte completa no GitHub Actions (runner remoto, PostgreSQL real via Testcontainers) | **243 testes, 0 falhas, 0 erros, 0 skipped — BUILD SUCCESS** ([run](https://github.com/Wendersonjose/uberhidraulica-erp/actions/runs/36735299234)) |
+| `ModulePermissionsIntegrationTest` (PostgreSQL) | **verde, 7/7** — cada uma das 10 permissões provada com caso permitido e negado |
+| Bateria de regressão dos testes ajustados (PostgreSQL) | **verde**, incluída na suíte completa acima |
 
-**Bloqueio de ambiente, não de código**: Docker Desktop 4.48.0 travou repetidamente nesta sessão com
-sockets AF_UNIX presos (`dockerInference`, depois `docker-secrets-engine\engine.sock`) que as APIs do
-Windows não conseguem remover — só `wsl -e rm` remove, mas o processo recria o problema a cada
-tentativa. Em paralelo, a máquina entrou em pressão severa de memória (PowerShell chegou a lançar
-`OutOfMemoryException` ao carregar um módulo próprio; `git status` falhou uma vez com
-"fatal: inflate: out of memory"). Depois de ~6 ciclos de tentativa em duas sessões diferentes, o WSL
-`docker-desktop` permaneceu `Stopped` mesmo com o backend relatando `"state":"starting"` — sintoma de
-falha na própria virtualização, que normalmente só se resolve com reinício completo da máquina.
+**Bloqueio de ambiente resolvido pela troca de estratégia**: Docker Desktop local seguiu instável
+(socket AF_UNIX preso + pressão de memória, ver `docker-desktop-socket-crash` na memória persistente),
+mas o checkpoint real não depende mais do Docker local — o GitHub Actions (`ubuntu-latest`) roda o
+Docker/Testcontainers da suíte no runner remoto, sem esse problema. A suíte local sem Docker (69
+testes) e a suíte completa remota (243 testes) já cobriam a implementação; dois problemas reais foram
+achados e corrigidos ao rodar a suíte completa contra PostgreSQL real (nenhum era falha de ambiente):
 
-Revisão manual (linha a linha, todos os controllers e a migration) confirma que a implementação segue
-exatamente o padrão especificado; a suíte sem Docker cobre compilação, `ArchUnit` monetário e
-`ModularityTest`. **A suíte de integração continua pendente e é pré-requisito para `DONE`.**
+1. `IamAuthenticationIntegrationTest.bootstrapCreatesFixedCatalogOwnerAndOnlyHashesTheSecret` esperava
+   o catálogo de permissões de antes da `V20` — DONO, GERENTE_ADMINISTRATIVO e GERENTE_FINANCEIRO
+   passaram a receber as novas permissões de rotina/sensíveis e a asserção não foi atualizada. Teste
+   corrigido para refletir o catálogo real pós-`V20` (nenhuma autorização foi removida do produto).
+2. `Task0015FinanceIntegrationTest.dashboardMatchesTheUnderlyingLedgersForThePeriod` (TASK-0018):
+   `partsCost` retornava `0.00` em vez de `40.00` — bug real em `partsCostForWorkOrders`, ver detalhe
+   no Histórico da TASK-0018.
+
+Revisão manual (linha a linha, todos os controllers e a migration) já havia confirmado que a
+implementação segue exatamente o padrão especificado; o checkpoint real confirma isso contra
+PostgreSQL de verdade.
 
 ## Fora do escopo
 
@@ -98,3 +104,9 @@ limite de segurança real; UX de esconder botões pode vir depois, sem urgência
   encontrou e motivou a correção de uma dependência de módulo não declarada. Suíte sem Docker verde.
   Checkpoint PostgreSQL pendente por indisponibilidade do Docker Desktop nesta máquina (falha de
   ambiente documentada, não de código). Task mantida em `REVIEW`.
+- 2026-09-30 — Backend conectado ao Supabase (migrations V1-V20 aplicadas lá) e GitHub Actions
+  configurado para rodar a suíte completa contra PostgreSQL real no runner remoto, contornando a
+  instabilidade do Docker local. Suíte completa executada: 243 testes, 0 falhas, 0 erros. Corrigido
+  teste de catálogo de permissões (`IamAuthenticationIntegrationTest`) desatualizado após a `V20`.
+  Checkpoint PostgreSQL de `ModulePermissionsIntegrationTest` confirmado verde (7/7). Task movida
+  para `DONE`.
