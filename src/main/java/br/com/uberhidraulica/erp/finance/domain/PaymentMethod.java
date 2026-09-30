@@ -6,8 +6,9 @@ import java.util.UUID;
 /**
  * Forma de pagamento configurável (DR-0015, F-09): cadastrada, renomeada e inativada, nunca excluída.
  *
- * <p>{@code cashSessionRequired} marca o dinheiro: sem sessão de caixa, a forma não pode ser usada em
- * novo recebimento ou pagamento (F-10). A marca não é editável pela API.</p>
+ * <p>{@code cashSessionRequired} identifica formas que exigem custódia física em sessão de caixa. A
+ * validação da sessão é responsabilidade do fluxo de liquidação, para que o lançamento financeiro e o
+ * movimento físico sejam gravados na mesma transação.</p>
  */
 public record PaymentMethod(UUID id, String code, String name, boolean active, boolean cashSessionRequired,
                             Instant createdAt, Instant updatedAt) {
@@ -25,11 +26,8 @@ public record PaymentMethod(UUID id, String code, String name, boolean active, b
         return new PaymentMethod(id, code, newName, newActive, cashSessionRequired, createdAt, now);
     }
 
-    /** Forma utilizável agora em nova liquidação. */
+    /** Forma configurada e ativa para nova liquidação. */
     public void requireUsable() {
         if (!active) throw new FinanceException("PAYMENT_METHOD_INACTIVE", "Forma de pagamento inativa");
-        if (cashSessionRequired)
-            throw new FinanceException("CASH_SESSION_REQUIRED",
-                    "Recebimento e pagamento em dinheiro exigem sessão de caixa, ainda indisponível; use outra forma");
     }
 }
