@@ -4,6 +4,7 @@ import {
   CASH_REVERSAL, CASH_SESSION_CLOSE, CASH_SESSION_OPEN, CASH_SUPPLY, CASH_WITHDRAWAL,
   financeApi, financeKeys, type CashMovement, type CashSession,
 } from '../../api/finance'
+import { cashApi, cashKeys } from '../../api/cash'
 import { ApiError } from '../../api/http'
 import { Badge, PageHeader } from '../../components/ui'
 import { QueryState } from '../../components/QueryState'
@@ -24,6 +25,7 @@ export function CashSessionPage() {
       catch (error) { if (error instanceof ApiError && error.code === 'CASH_SESSION_REQUIRED') return null; throw error }
     },
   })
+  const pending = useQuery({ queryKey: cashKeys.pendingCheck, queryFn: cashApi.pendingCheck })
   const suggested = useQuery({ queryKey: financeKeys.cashSuggestedOpening, queryFn: financeApi.cashSuggestedOpeningBalance })
   const movements = useQuery({
     queryKey: financeKeys.cashMovements(session.data?.id ?? ''),
@@ -33,18 +35,49 @@ export function CashSessionPage() {
     await Promise.all([
       client.invalidateQueries({ queryKey: financeKeys.cashSession }),
       client.invalidateQueries({ queryKey: financeKeys.cashSuggestedOpening }),
+      client.invalidateQueries({ queryKey: cashKeys.pendingCheck }),
       session.data?.id ? client.invalidateQueries({ queryKey: financeKeys.cashMovements(session.data.id) }) : Promise.resolve(),
     ])
   }
 
   return <>
     <PageHeader title="Caixa físico" subtitle="Custódia do dinheiro em espécie, separada dos lançamentos financeiros." />
-    <QueryState label="o caixa" loading={session.isLoading || suggested.isLoading} error={session.error ?? suggested.error} retry={() => { session.refetch(); suggested.refetch() }}>
-      {session.data
-        ? <OpenSession session={session.data} movements={movements.data ?? []} movementsLoading={movements.isLoading} onChange={refresh} />
-        : <ClosedState suggested={suggested.data?.amount ?? 0} onChange={refresh} />}
+    <QueryState label="o caixa" loading={session.isLoading || suggested.isLoading || pending.isLoading}
+                error={session.error ?? suggested.error ?? pending.error} retry={() => { session.refetch(); suggested.refetch(); pending.refetch() }}>
+      <div className="stack">
+        {pending.data && <PendingCheck session={pending.data} onChange={refresh} />}
+        {session.data
+          ? <OpenSession session={session.data} movements={movements.data ?? []} movementsLoading={movements.isLoading} onChange={refresh} />
+          : <ClosedState suggested={suggested.data?.amount ?? 0} onChange={refresh} />}
+      </div>
     </QueryState>
   </>
+}
+
+function PendingCheck({ session, onChange }: { session: CashSession; onChange: () => Promise<unknown> }) {
+  const allowed = useCan(CASH_SESSION_CLOSE)
+  const expected = session.closingExpectedBalance ?? session.currentExpectedBalance
+  const [counted, setCounted] = useState(String(expected))
+  const [reason, setReason] = useState('')
+  const [error, setError] = useState('')
+  const divergent = Number(counted) !== expected
+  const mutation = useMutation({
+    mutationFn: () => financeApi.checkCashSession(session.id, Number(counted), reason.trim() || null),
+    onSuccess: async () => { setError(''); await onChange() },
+    onError: e => setError(e instanceof Error ? e.message : 'Não foi possível conferir o fechamento automático'),
+  })
+  return <section className="card">
+    <h2>Conferência pendente <Badge tone="warning">Fechado automaticamente</Badge></h2>
+    <p className="muted">Sessão encerrada em {session.closedAt ? formatDate(session.closedAt) : '—'} com saldo esperado de {formatBrl(expected)}.</p>
+    {!allowed ? <p className="notice">Seu perfil não possui permissão para conferir e fechar sessões.</p> : <>
+      {error && <div role="alert" className="notice error">{error}</div>}
+      <div className="inline-form">
+        <label>Saldo físico contado *<input className="input" type="number" min="0" step="0.01" value={counted} onChange={e => setCounted(e.target.value)} /></label>
+        {divergent && <label>Justificativa da divergência *<input className="input" value={reason} onChange={e => setReason(e.target.value)} /></label>}
+        <button type="button" className="btn" disabled={counted.trim() === '' || Number(counted) < 0 || (divergent && reason.trim().length < 3) || mutation.isPending} onClick={() => mutation.mutate()}>Conferir sessão</button>
+      </div>
+    </>}
+  </section>
 }
 
 function ClosedState({ suggested, onChange }: { suggested: number; onChange: () => Promise<unknown> }) {
