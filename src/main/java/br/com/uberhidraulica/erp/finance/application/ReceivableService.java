@@ -37,17 +37,19 @@ public class ReceivableService {
     private final WorkOrderQuery workOrders;
     private final CurrentUser currentUser;
     private final br.com.uberhidraulica.erp.iam.IamAuthorization authorization;
+    private final CashSessionService cash;
     private final Clock clock = Clock.systemUTC();
 
     public static final String BILL_PERMISSION = "FINANCE_BILL";
 
     public ReceivableService(FinanceRepositoryPort repository, QuoteBillingQuery billing, WorkOrderQuery workOrders, CurrentUser currentUser,
-                             br.com.uberhidraulica.erp.iam.IamAuthorization authorization) {
+                             br.com.uberhidraulica.erp.iam.IamAuthorization authorization, CashSessionService cash) {
         this.repository = repository;
         this.billing = billing;
         this.workOrders = workOrders;
         this.currentUser = currentUser;
         this.authorization = authorization;
+        this.cash = cash;
     }
 
     public LocalDate today() { return LocalDate.now(clock.withZone(Money.WORKSHOP_ZONE)); }
@@ -69,15 +71,12 @@ public class ReceivableService {
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public Receivable generateForFinishedWorkOrder(UUID workOrderId, UUID billingQuoteId, Instant finishedAt, UUID finishedBy) {
-        // Revisão TASK-0015, F3: gerar recebível é mutação financeira. Além do @PreAuthorize do endpoint, este
-        // caminho recusa qualquer finalização sem ator autorizado — inclusive chamadas internas.
         if (finishedBy == null || !authorization.hasPermission(finishedBy, BILL_PERMISSION))
             throw new FinanceException("FINANCE_BILL_REQUIRED", "Seu perfil não pode gerar o faturamento da OS");
         var existing = repository.findReceivableByWorkOrder(workOrderId);
         if (existing.isPresent()) return existing.get();
         var order = workOrders.workOrder(workOrderId)
                 .orElseThrow(() -> new FinanceException("WORK_ORDER_NOT_FOUND", "Ordem de Serviço não encontrada"));
-        // Revisão TASK-0015, F1: a base é obtida com os orçamentos da OS bloqueados até o commit deste recebível.
         QuoteBillingQuery.BillingCandidate source = selected(billing.billingBasisForFinalization(workOrderId, billingQuoteId));
         LocalDate issuedOn = LocalDate.ofInstant(finishedAt, Money.WORKSHOP_ZONE);
         List<Receivable.Line> lines = new ArrayList<>();
@@ -92,7 +91,6 @@ public class ReceivableService {
         return receivable;
     }
 
-    /** Resultado da seleção feita sob bloqueio: nunca o último, nunca a soma, nunca o total bruto da OS. */
     static QuoteBillingQuery.BillingCandidate selected(QuoteBillingQuery.BillingBasis basis) {
         return switch (basis.outcome()) {
             case SELECTED -> basis.selected();
@@ -105,7 +103,6 @@ public class ReceivableService {
         };
     }
 
-    /** F-08: com recebimento não estornado, recusa; sem recebimentos, cancela preservando o histórico. */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public void cancelForWorkOrder(UUID workOrderId, String reason) {
         repository.lockReceivableByWorkOrder(workOrderId).ifPresent(receivable -> {
@@ -119,7 +116,7 @@ public class ReceivableService {
 
     @Transactional
     public Recorded<Settlement> receive(UUID receivableId, BigDecimal amount, UUID paymentMethodId, LocalDate receivedOn,
-                                        String notes, String idempotencyKey) {
+                                        String notes, BigDecimal cashTendered, String idempotencyKey) {
         String key = Idempotency.require(idempotencyKey);
         BigDecimal value = Money.positive(amount, "Valor recebido");
         LocalDate effectiveOn = Money.effectiveDate(receivedOn, today());
@@ -127,15 +124,22 @@ public class ReceivableService {
         Receivable receivable = lock(receivableId);
         var previous = repository.findReceiptByKey(key);
         if (previous.isPresent()) {
-            if (!previous.get().sameRequest(receivableId, value, paymentMethodId, receivedOn, notes)) throw Idempotency.reused();
-            return new Recorded<>(previous.get(), true);
+            Settlement receipt = previous.get();
+            if (!receipt.sameRequest(receivableId, value, paymentMethodId, receivedOn, notes)) throw Idempotency.reused();
+            PaymentMethod method = repository.paymentMethod(paymentMethodId)
+                    .orElseThrow(() -> new FinanceException("PAYMENT_METHOD_NOT_FOUND", "Forma de pagamento não encontrada"));
+            if (method.cashSessionRequired()) cash.recordCashReceipt(receipt, cashTendered);
+            else requireNoCashTendered(cashTendered);
+            return new Recorded<>(receipt, true);
         }
         PaymentMethod method = usableMethod(paymentMethodId);
+        if (!method.cashSessionRequired()) requireNoCashTendered(cashTendered);
         receivable.checkReceipt(value);
         Settlement receipt = new Settlement(UUID.randomUUID(), receivableId, value, method.id(), method.name(), effectiveOn, notes,
                 clock.instant(), currentUser.requireId(), key, null);
         try {
             repository.insertReceipt(receipt);
+            if (method.cashSessionRequired()) cash.recordCashReceipt(receipt, cashTendered);
         } catch (DataIntegrityViolationException collision) {
             throw Idempotency.reused();
         }
@@ -157,6 +161,7 @@ public class ReceivableService {
         }
         Settlement receipt = repository.findReceipt(receiptId).orElseThrow();
         if (receipt.reversed()) throw new FinanceException("RECEIPT_ALREADY_REVERSED", "Este recebimento já foi estornado");
+        cash.reverseCashReceipt(receiptId, normalized);
         Settlement.Reversal reversal = new Settlement.Reversal(UUID.randomUUID(), normalized, clock.instant(), currentUser.requireId(), key);
         try {
             repository.insertReceiptReversal(receiptId, reversal);
@@ -190,7 +195,6 @@ public class ReceivableService {
         return new Recorded<>(repository.findReceivable(receivableId).orElseThrow(), false);
     }
 
-    /** DR-0017: estorno total do ajuste, com motivo, autor, instante do servidor e chave de idempotência. */
     @Transactional
     public Recorded<Receivable> reverseAdjustment(UUID adjustmentId, String reason, String idempotencyKey) {
         String key = Idempotency.require(idempotencyKey);
@@ -214,7 +218,6 @@ public class ReceivableService {
         return new Recorded<>(repository.findReceivable(receivableId).orElseThrow(), false);
     }
 
-    /** Alteração de vencimento idempotente: o retry da mesma intenção devolve o que já foi aplicado. */
     @Transactional
     public Recorded<Receivable> changeDueDate(UUID receivableId, LocalDate newDueDate, String reason, String idempotencyKey) {
         String key = Idempotency.require(idempotencyKey);
@@ -273,5 +276,10 @@ public class ReceivableService {
                 .orElseThrow(() -> new FinanceException("PAYMENT_METHOD_NOT_FOUND", "Forma de pagamento não encontrada"));
         method.requireUsable();
         return method;
+    }
+
+    private static void requireNoCashTendered(BigDecimal cashTendered) {
+        if (cashTendered != null)
+            throw new FinanceException("CASH_TENDERED_NOT_ALLOWED", "Valor entregue em dinheiro só pode ser informado para pagamento em dinheiro");
     }
 }
