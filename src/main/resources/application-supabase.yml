@@ -1,0 +1,14 @@
+spring:
+  datasource:
+    # Use a Session pooler (porta 5432) ou conexão direta. Não use Transaction pooler (6543)
+    # como datasource principal do Spring/Hibernate, pois prepared statements são necessários.
+    url: ${SUPABASE_DB_URL}
+    username: ${SUPABASE_DB_USERNAME}
+    password: ${SUPABASE_DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  flyway:
+    # O projeto Supabase já possui tabelas do módulo de salários no schema public.
+    # Mantemos o histórico Flyway do ERP isolado para evitar baseline/conflitos com esse módulo.
+    default-schema: ${FLYWAY_DEFAULT_SCHEMA:erp_meta}
+    create-schemas: true
