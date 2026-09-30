@@ -41,7 +41,7 @@ public class CashSessionService {
 
         BigDecimal expected = suggestedOpeningBalance();
         String reason = differenceReason(expected, counted, differenceReason, "Justificativa da divergência de abertura");
-        CashSession session = new CashSession(UUID.randomUUID(), CashSession.Status.OPEN, CashSession.ConferenceStatus.CHECKED,
+        CashSession session = new CashSession(UUID.randomUUID(), CashSession.Status.OPEN, CashSession.ConferenceStatus.NOT_CHECKED,
                 clock.instant(), currentUser.requireId(), expected, counted, reason,
                 null, null, null, null, null, null, null, null, null);
         try {
