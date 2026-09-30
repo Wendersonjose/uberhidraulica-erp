@@ -4,10 +4,13 @@ import br.com.uberhidraulica.erp.finance.domain.CashMovement;
 import br.com.uberhidraulica.erp.finance.domain.CashSession;
 import br.com.uberhidraulica.erp.finance.domain.FinanceException;
 import br.com.uberhidraulica.erp.finance.domain.Money;
+import br.com.uberhidraulica.erp.finance.domain.Settlement;
 import br.com.uberhidraulica.erp.finance.port.CashSessionRepositoryPort;
 import br.com.uberhidraulica.erp.iam.CurrentUser;
+import br.com.uberhidraulica.erp.iam.IamAuthorization;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -19,13 +22,17 @@ import java.util.UUID;
 /** Regras de custódia física de dinheiro aprovadas na DR-0018. */
 @Service
 public class CashSessionService {
+    public static final String REVERSAL_PERMISSION = "CASH_REVERSAL";
+
     private final CashSessionRepositoryPort repository;
     private final CurrentUser currentUser;
+    private final IamAuthorization authorization;
     private final Clock clock = Clock.systemUTC();
 
-    public CashSessionService(CashSessionRepositoryPort repository, CurrentUser currentUser) {
+    public CashSessionService(CashSessionRepositoryPort repository, CurrentUser currentUser, IamAuthorization authorization) {
         this.repository = repository;
         this.currentUser = currentUser;
+        this.authorization = authorization;
     }
 
     @Transactional(readOnly = true)
@@ -87,6 +94,7 @@ public class CashSessionService {
 
     @Transactional
     public Recorded<CashMovement> reverse(UUID movementId, String reason, String idempotencyKey) {
+        requireReversalPermission();
         String key = Idempotency.require(idempotencyKey);
         String normalized = Money.requiredText(reason, "Motivo do estorno", 500);
         CashMovement original = repository.findMovement(movementId)
@@ -104,20 +112,76 @@ public class CashSessionService {
         if (repository.isReversed(movementId))
             throw new FinanceException("CASH_MOVEMENT_ALREADY_REVERSED", "Esta movimentação de caixa já foi estornada");
 
+        return new Recorded<>(compensate(original, normalized, key), false);
+    }
+
+    /** Grava a custódia física do recebimento e, quando houver, o troco explícito na mesma transação. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordCashReceipt(Settlement receipt, BigDecimal cashTendered) {
+        BigDecimal tendered = cashTendered == null ? receipt.amount() : Money.positive(cashTendered, "Valor entregue em dinheiro");
+        if (tendered.compareTo(receipt.amount()) < 0)
+            throw new FinanceException("CASH_TENDERED_INSUFFICIENT", "Valor entregue em dinheiro não pode ser menor que o recebimento");
+        BigDecimal change = tendered.subtract(receipt.amount()).setScale(Money.SCALE, RoundingMode.UNNECESSARY);
+
         CashSession open = requireOpenSession();
-        CashMovement.Direction direction = original.direction() == CashMovement.Direction.IN
-                ? CashMovement.Direction.OUT : CashMovement.Direction.IN;
-        if (direction == CashMovement.Direction.OUT) requireAvailable(open.id(), original.amount());
-        CashMovement reversal = new CashMovement(UUID.randomUUID(), open.id(), CashMovement.Type.REVERSAL, direction,
-                original.amount(), normalized, null, null, original.id(), clock.instant(), currentUser.requireId(), key);
-        try {
-            repository.insertMovement(reversal);
-        } catch (DataIntegrityViolationException collision) {
-            if (repository.isReversed(movementId))
-                throw new FinanceException("CASH_MOVEMENT_ALREADY_REVERSED", "Esta movimentação de caixa já foi estornada");
-            throw Idempotency.reused();
+        CashMovement previousReceipt = repository.findReceiptMovement(receipt.id()).orElse(null);
+        CashMovement previousChange = repository.findChangeMovement(receipt.id()).orElse(null);
+        if (previousReceipt != null) {
+            if (previousReceipt.amount().compareTo(tendered) != 0 || previousReceipt.cashSessionId() == null)
+                throw Idempotency.reused();
+            if (change.signum() == 0 && previousChange != null) throw Idempotency.reused();
+            if (change.signum() > 0 && (previousChange == null || previousChange.amount().compareTo(change) != 0)) throw Idempotency.reused();
+            return;
         }
-        return new Recorded<>(reversal, false);
+
+        repository.insertMovement(new CashMovement(UUID.randomUUID(), open.id(), CashMovement.Type.RECEIPT,
+                CashMovement.Direction.IN, tendered, null, receipt.id(), null, null, receipt.recordedAt(),
+                receipt.recordedBy(), internalKey("receipt", receipt.id())));
+        if (change.signum() > 0) {
+            repository.insertMovement(new CashMovement(UUID.randomUUID(), open.id(), CashMovement.Type.CHANGE,
+                    CashMovement.Direction.OUT, change, null, receipt.id(), null, null, receipt.recordedAt(),
+                    receipt.recordedBy(), internalKey("change", receipt.id())));
+        }
+    }
+
+    /** Registra saída física referente a conta a pagar em dinheiro. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordCashPayment(Settlement payment) {
+        CashMovement previous = repository.findPayablePaymentMovement(payment.id()).orElse(null);
+        if (previous != null) {
+            if (previous.amount().compareTo(payment.amount()) != 0) throw Idempotency.reused();
+            return;
+        }
+        CashSession open = requireOpenSession();
+        requireAvailable(open.id(), payment.amount());
+        repository.insertMovement(new CashMovement(UUID.randomUUID(), open.id(), CashMovement.Type.PAYABLE_PAYMENT,
+                CashMovement.Direction.OUT, payment.amount(), null, null, payment.id(), null, payment.recordedAt(),
+                payment.recordedBy(), internalKey("payment", payment.id())));
+    }
+
+    /** Compensa fisicamente um recebimento estornado; o movimento original nunca é apagado. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void reverseCashReceipt(UUID receiptId, String reason) {
+        CashMovement receiptMovement = repository.findReceiptMovement(receiptId).orElse(null);
+        if (receiptMovement == null) return;
+        requireReversalPermission();
+        String normalized = Money.requiredText(reason, "Motivo do estorno", 500);
+        CashMovement change = repository.findChangeMovement(receiptId).orElse(null);
+        if (change != null && !repository.isReversed(change.id()))
+            compensate(change, normalized, internalKey("reverse", change.id()));
+        if (!repository.isReversed(receiptMovement.id()))
+            compensate(receiptMovement, normalized, internalKey("reverse", receiptMovement.id()));
+    }
+
+    /** Compensa fisicamente um pagamento estornado. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void reverseCashPayment(UUID paymentId, String reason) {
+        CashMovement movement = repository.findPayablePaymentMovement(paymentId).orElse(null);
+        if (movement == null) return;
+        requireReversalPermission();
+        String normalized = Money.requiredText(reason, "Motivo do estorno", 500);
+        if (!repository.isReversed(movement.id()))
+            compensate(movement, normalized, internalKey("reverse", movement.id()));
     }
 
     @Transactional
@@ -175,6 +239,24 @@ public class CashSessionService {
         return new Recorded<>(movement, false);
     }
 
+    private CashMovement compensate(CashMovement original, String reason, String key) {
+        CashSession open = requireOpenSession();
+        CashMovement.Direction direction = original.direction() == CashMovement.Direction.IN
+                ? CashMovement.Direction.OUT : CashMovement.Direction.IN;
+        if (direction == CashMovement.Direction.OUT) requireAvailable(open.id(), original.amount());
+        CashMovement reversal = new CashMovement(UUID.randomUUID(), open.id(), CashMovement.Type.REVERSAL, direction,
+                original.amount(), reason, null, null, original.id(), clock.instant(), currentUser.requireId(), key);
+        try {
+            repository.insertMovement(reversal);
+        } catch (DataIntegrityViolationException collision) {
+            if (repository.isReversed(original.id()))
+                return repository.findMovementByIdempotencyKey(key)
+                        .orElseThrow(() -> new FinanceException("CASH_MOVEMENT_ALREADY_REVERSED", "Esta movimentação de caixa já foi estornada"));
+            throw Idempotency.reused();
+        }
+        return reversal;
+    }
+
     private CashSession requireOpenSession() {
         return repository.lockOpenSession()
                 .orElseThrow(() -> new FinanceException("CASH_SESSION_REQUIRED", "Operação em dinheiro exige sessão de caixa aberta"));
@@ -192,6 +274,12 @@ public class CashSessionService {
             throw new FinanceException("CASH_AMOUNT_EXCEEDS_BALANCE", "A saída excede o saldo físico esperado do caixa");
     }
 
+    private void requireReversalPermission() {
+        UUID userId = currentUser.requireId();
+        if (!authorization.hasPermission(userId, REVERSAL_PERMISSION))
+            throw new FinanceException("CASH_REVERSAL_REQUIRED", "Seu perfil não pode estornar movimentações de caixa");
+    }
+
     private static BigDecimal nonNegativeMoney(BigDecimal value, String label) {
         if (value == null || value.signum() < 0 || value.stripTrailingZeros().scale() > Money.SCALE)
             throw new FinanceException("INVALID_FINANCE_ENTRY", label + " deve ser maior ou igual a zero e possuir no máximo duas casas decimais");
@@ -201,5 +289,9 @@ public class CashSessionService {
     private static String differenceReason(BigDecimal expected, BigDecimal counted, String reason, String label) {
         if (expected.compareTo(counted) == 0) return Money.optionalText(reason, label, 500);
         return Money.requiredText(reason, label, 500);
+    }
+
+    private static String internalKey(String operation, UUID id) {
+        return "cash:" + operation + ":" + id;
     }
 }
