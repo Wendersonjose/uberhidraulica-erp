@@ -44,6 +44,13 @@ class JdbcCashSessionRepositoryAdapter implements CashSessionRepositoryPort {
     }
 
     @Override
+    public Optional<CashSession> findLatestPendingCheck() {
+        return jdbc.query("select * from finance.cash_session where status='AUTO_CLOSED' and conference_status='NOT_CHECKED' " +
+                        "order by closed_at desc, id desc limit 1", Map.of(),
+                (rs, row) -> session(rs)).stream().findFirst();
+    }
+
+    @Override
     public BigDecimal suggestedOpeningBalance() {
         return jdbc.query("select closing_expected_balance from finance.cash_session where status <> 'OPEN' " +
                         "order by closed_at desc nulls last, opened_at desc limit 1", Map.of(),
