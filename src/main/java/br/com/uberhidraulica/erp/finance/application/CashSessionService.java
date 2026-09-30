@@ -123,7 +123,6 @@ public class CashSessionService {
             throw new FinanceException("CASH_TENDERED_INSUFFICIENT", "Valor entregue em dinheiro não pode ser menor que o recebimento");
         BigDecimal change = tendered.subtract(receipt.amount()).setScale(Money.SCALE, RoundingMode.UNNECESSARY);
 
-        CashSession open = requireOpenSession();
         CashMovement previousReceipt = repository.findReceiptMovement(receipt.id()).orElse(null);
         CashMovement previousChange = repository.findChangeMovement(receipt.id()).orElse(null);
         if (previousReceipt != null) {
@@ -134,6 +133,7 @@ public class CashSessionService {
             return;
         }
 
+        CashSession open = requireOpenSession();
         repository.insertMovement(new CashMovement(UUID.randomUUID(), open.id(), CashMovement.Type.RECEIPT,
                 CashMovement.Direction.IN, tendered, null, receipt.id(), null, null, receipt.recordedAt(),
                 receipt.recordedBy(), internalKey("receipt", receipt.id())));
