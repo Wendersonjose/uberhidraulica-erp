@@ -13,6 +13,7 @@ public interface CashSessionRepositoryPort {
     Optional<CashSession> findSession(UUID id);
     Optional<CashSession> findOpenSession();
     Optional<CashSession> lockOpenSession();
+    Optional<CashSession> findLatestPendingCheck();
     BigDecimal suggestedOpeningBalance();
     BigDecimal expectedBalance(UUID sessionId);
 
