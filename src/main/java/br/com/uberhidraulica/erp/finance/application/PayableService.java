@@ -24,12 +24,15 @@ public class PayableService {
     private final FinanceRepositoryPort repository;
     private final ReceivableService receivables;
     private final CurrentUser currentUser;
+    private final CashSessionService cash;
     private final Clock clock = Clock.systemUTC();
 
-    public PayableService(FinanceRepositoryPort repository, ReceivableService receivables, CurrentUser currentUser) {
+    public PayableService(FinanceRepositoryPort repository, ReceivableService receivables, CurrentUser currentUser,
+                          CashSessionService cash) {
         this.repository = repository;
         this.receivables = receivables;
         this.currentUser = currentUser;
+        this.cash = cash;
     }
 
     @Transactional
@@ -67,8 +70,12 @@ public class PayableService {
         Payable payable = lock(payableId);
         var previous = repository.findPaymentByKey(key);
         if (previous.isPresent()) {
-            if (!previous.get().sameRequest(payableId, value, paymentMethodId, paidOn, notes)) throw Idempotency.reused();
-            return new Recorded<>(previous.get(), true);
+            Settlement payment = previous.get();
+            if (!payment.sameRequest(payableId, value, paymentMethodId, paidOn, notes)) throw Idempotency.reused();
+            PaymentMethod method = repository.paymentMethod(paymentMethodId)
+                    .orElseThrow(() -> new FinanceException("PAYMENT_METHOD_NOT_FOUND", "Forma de pagamento não encontrada"));
+            if (method.cashSessionRequired()) cash.recordCashPayment(payment);
+            return new Recorded<>(payment, true);
         }
         PaymentMethod method = receivables.usableMethod(paymentMethodId);
         payable.checkPayment(value);
@@ -76,6 +83,7 @@ public class PayableService {
                 clock.instant(), currentUser.requireId(), key, null);
         try {
             repository.insertPayment(payment);
+            if (method.cashSessionRequired()) cash.recordCashPayment(payment);
         } catch (DataIntegrityViolationException collision) {
             throw Idempotency.reused();
         }
@@ -97,6 +105,7 @@ public class PayableService {
         }
         Settlement payment = repository.findPayment(paymentId).orElseThrow();
         if (payment.reversed()) throw new FinanceException("PAYMENT_ALREADY_REVERSED", "Este pagamento já foi estornado");
+        cash.reverseCashPayment(paymentId, normalized);
         try {
             repository.insertPaymentReversal(paymentId, new Settlement.Reversal(UUID.randomUUID(), normalized, clock.instant(),
                     currentUser.requireId(), key));
