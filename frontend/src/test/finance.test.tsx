@@ -55,7 +55,7 @@ test('recebível mostra valores derivados e registra recebimento com chave de id
   const form = screen.getByRole('region', { name: 'Registrar recebimento' })
   const method = within(form).getByLabelText(/Forma de pagamento/)
   await within(form).findByRole('option', { name: /PIX/ })
-  expect(within(form).getByRole('option', { name: /Dinheiro — exige sessão de caixa/ })).toBeDisabled()
+  expect(within(form).getByRole('option', { name: /Dinheiro — dinheiro em caixa/ })).not.toBeDisabled()
   expect(within(form).queryByRole('option', { name: 'Vale' })).not.toBeInTheDocument()
   await userEvent.selectOptions(method, 'm-pix')
   await userEvent.click(within(form).getByRole('button', { name: 'Registrar recebimento' }))
