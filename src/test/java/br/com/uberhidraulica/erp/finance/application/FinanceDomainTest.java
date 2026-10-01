@@ -112,9 +112,10 @@ class FinanceDomainTest {
     }
 
     @Test
-    void cashIsRefusedUntilACashSessionExistsAndInactiveMethodsToo() {
+    void cashNatureIsPreservedAndSessionValidationBelongsToSettlementFlow() {
         PaymentMethod cash = new PaymentMethod(UUID.randomUUID(), "DINHEIRO", "Dinheiro", true, true, NOW, NOW);
-        assertThatThrownBy(cash::requireUsable).extracting("code").isEqualTo("CASH_SESSION_REQUIRED");
+        assertThat(cash.cashSessionRequired()).isTrue();
+        cash.requireUsable();
         PaymentMethod inactive = new PaymentMethod(UUID.randomUUID(), "PIX", "PIX", false, false, NOW, NOW);
         assertThatThrownBy(inactive::requireUsable).extracting("code").isEqualTo("PAYMENT_METHOD_INACTIVE");
         new PaymentMethod(UUID.randomUUID(), "PIX", "PIX", true, false, NOW, NOW).requireUsable();
@@ -217,7 +218,7 @@ class FinanceDomainTest {
         PaymentMethod cash = new PaymentMethod(UUID.randomUUID(), "DINHEIRO_BALCAO", "Dinheiro balcão", true, true, NOW, NOW);
         PaymentMethod renamed = cash.withNameAndActive("Balcão", false, NOW).withNameAndActive("Balcão", true, NOW);
         assertThat(renamed.cashSessionRequired()).isTrue();
-        assertThatThrownBy(renamed::requireUsable).extracting("code").isEqualTo("CASH_SESSION_REQUIRED");
+        renamed.requireUsable();
     }
 
     // ------------------------------------------------------------------ seleção do orçamento de faturamento (F-02)
