@@ -51,7 +51,7 @@ class JdbcSupplierRepositoryAdapter implements SupplierRepositoryPort {
 
     @Override
     public Optional<Supplier> findById(UUID id) {
-        return jdbc.query("select * from purchasing.supplier where id=:id", new MapSqlParameterSource("id", id), MAPPER)
+        return querySuppliers("select * from purchasing.supplier where id=:id", new MapSqlParameterSource("id", id))
                 .stream().findFirst();
     }
 
@@ -68,8 +68,8 @@ class JdbcSupplierRepositoryAdapter implements SupplierRepositoryPort {
         }
         Long total = jdbc.queryForObject("select count(*) from purchasing.supplier" + where, p, Long.class);
         p.addValue("limit", size).addValue("offset", (long) page * size);
-        List<Supplier> items = jdbc.query("select * from purchasing.supplier" + where +
-                " order by lower(legal_name), id limit :limit offset :offset", p, MAPPER);
+        List<Supplier> items = querySuppliers("select * from purchasing.supplier" + where +
+                " order by lower(legal_name), id limit :limit offset :offset", p);
         return new Page<>(items, total == null ? 0 : total, page, size);
     }
 
@@ -81,6 +81,10 @@ class JdbcSupplierRepositoryAdapter implements SupplierRepositoryPort {
                 where document=:document and (:excludedId is null or id<>:excludedId)
                 """, p, Integer.class);
         return count != null && count > 0;
+    }
+
+    private List<Supplier> querySuppliers(String sql, MapSqlParameterSource params) {
+        return jdbc.query(sql, params, MAPPER);
     }
 
     private static MapSqlParameterSource params(Supplier s) {
