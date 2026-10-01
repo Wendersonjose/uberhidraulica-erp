@@ -35,6 +35,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.*;
+import java.util.stream.Stream;
 import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -52,6 +53,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @ExtendWith(OutputCaptureExtension.class)
 class IamAuthenticationIntegrationTest {
+    private static final java.util.List<String> FINANCE = java.util.List.of("FINANCE_VIEW", "FINANCE_RECEIVE", "FINANCE_REVERSE",
+            "FINANCE_ADJUST", "FINANCE_PAYABLE", "FINANCE_CONFIG", "FINANCE_BILL");
+    private static final java.util.List<String> CASH = java.util.List.of("CASH_SESSION_OPEN", "CASH_SESSION_CLOSE",
+            "CASH_SUPPLY", "CASH_WITHDRAWAL", "CASH_REVERSAL");
+    // V20: rotina de módulo vai para DONO + GERENTE_ADMINISTRATIVO; sensível vai para DONO + GERENTE_FINANCEIRO.
+    private static final java.util.List<String> MODULE_ROUTINE = java.util.List.of("PRODUCT_MANAGE", "INVENTORY_MOVE",
+            "WORKORDER_MANAGE", "WORKORDER_CONFIG", "CRM_MANAGE", "SERVICE_MANAGE", "QUOTE_MANAGE");
+    private static final java.util.List<String> MODULE_SENSITIVE = java.util.List.of("PRODUCT_COST_MANAGE", "INVENTORY_ADJUST",
+            "SERVICE_PRICE_MANAGE");
+
     private static final String OWNER_EMAIL = "owner@example.test";
     private static final String OWNER_PASSWORD = "bootstrap-secret-for-test";
 
@@ -83,10 +94,20 @@ class IamAuthenticationIntegrationTest {
         assertThat(jdbc.queryForObject("select count(*) from iam.profile", Long.class)).isEqualTo(3);
         assertThat(jdbc.queryForList("select code from iam.profile order by code", String.class))
                 .containsExactly("DONO", "GERENTE_ADMINISTRATIVO", "GERENTE_FINANCEIRO");
+        // O catálogo do IAM continua inteiro no DONO; permissões de outros módulos entram pelas
+        // migrations desses módulos, e por isso a lista esperada é declarada por extenso.
+        assertThat(authorizations.profilePermissions(ProfileCode.DONO))
+                .containsAll(br.com.uberhidraulica.erp.iam.domain.IamPermissions.ALL);
         assertThat(authorizations.profilePermissions(ProfileCode.DONO)).containsExactlyInAnyOrderElementsOf(
-                br.com.uberhidraulica.erp.iam.domain.IamPermissions.ALL);
-        assertThat(authorizations.profilePermissions(ProfileCode.GERENTE_ADMINISTRATIVO)).isEmpty();
-        assertThat(authorizations.profilePermissions(ProfileCode.GERENTE_FINANCEIRO)).isEmpty();
+                Stream.of(br.com.uberhidraulica.erp.iam.domain.IamPermissions.ALL.stream(),
+                        Stream.of("QUOTE_PRESENT", "QUOTE_DISCOUNT"), FINANCE.stream(), CASH.stream(), MODULE_ROUTINE.stream(), MODULE_SENSITIVE.stream())
+                        .flatMap(s -> s).toList());
+        assertThat(authorizations.profilePermissions(ProfileCode.GERENTE_ADMINISTRATIVO)).containsExactlyInAnyOrderElementsOf(
+                Stream.concat(Stream.of("QUOTE_PRESENT", "QUOTE_DISCOUNT", "FINANCE_VIEW", "FINANCE_RECEIVE", "FINANCE_BILL"),
+                        MODULE_ROUTINE.stream()).toList());
+        // DR-0015/DR-0018: o Gerente Financeiro recebe Financeiro + Caixa e as permissões sensíveis do V20.
+        assertThat(authorizations.profilePermissions(ProfileCode.GERENTE_FINANCEIRO)).containsExactlyInAnyOrderElementsOf(
+                Stream.of(FINANCE.stream(), CASH.stream(), MODULE_SENSITIVE.stream()).flatMap(s -> s).toList());
         assertThat(jdbc.queryForObject("select count(*) from iam.audit_event where action='FIRST_OWNER_BOOTSTRAPPED'", Long.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("select must_change_password from iam.credential", Boolean.class)).isTrue();
         assertThat(jdbc.queryForObject("select password_hash from iam.credential", String.class))

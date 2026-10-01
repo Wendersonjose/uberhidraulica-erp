@@ -1,4 +1,4 @@
 @org.springframework.modulith.ApplicationModule(
         displayName = "Catálogo de Serviços",
-        allowedDependencies = {})
+        allowedDependencies = {"crm"})
 package br.com.uberhidraulica.erp.servicecatalog;

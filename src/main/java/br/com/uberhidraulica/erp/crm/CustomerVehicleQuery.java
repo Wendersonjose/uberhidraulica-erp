@@ -8,7 +8,7 @@ public interface CustomerVehicleQuery {
     Optional<VehicleReference> vehicle(UUID id);
 
     record CustomerReference(UUID id, String name, boolean active) {}
-    record VehicleReference(UUID id, UUID customerId, String plate, String manufacturer, String model) {
+    record VehicleReference(UUID id, UUID customerId, String plate, String manufacturer, String model, boolean active) {
         public boolean belongsTo(UUID expectedCustomerId) { return customerId.equals(expectedCustomerId); }
     }
 }

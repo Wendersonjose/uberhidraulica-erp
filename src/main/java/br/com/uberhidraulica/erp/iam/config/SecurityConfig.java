@@ -22,6 +22,12 @@ import java.util.Map;
 @Configuration
 @EnableMethodSecurity
 public class SecurityConfig {
+    /** Superfície pública do orçamento: sem sessão, sem CSRF e sem acesso a nada além dela. */
+    private static final String PUBLIC_QUOTE = "/api/public/quotes/**";
+
+    private static final org.slf4j.Logger LOGGER =
+            org.slf4j.LoggerFactory.getLogger(SecurityConfig.class);
+
     @Bean PasswordEncoder passwordEncoder() { return PasswordEncoderFactories.createDelegatingPasswordEncoder(); }
     @Bean AuthenticationManager authenticationManager(IamUserDetailsService users, PasswordEncoder encoder) {
         DaoAuthenticationProvider provider = new DaoAuthenticationProvider(users);
@@ -44,8 +50,14 @@ public class SecurityConfig {
                                             DeniedOperationAuditService deniedAudit) throws Exception {
         http.authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/iam/auth/login", "/api/iam/csrf", "/actuator/health").permitAll()
+                        // O cliente externo não tem conta: a autorização do orçamento público é o token
+                        // opaco do caminho, verificado pelo próprio módulo de Orçamento.
+                        .requestMatchers(PUBLIC_QUOTE).permitAll()
                         .anyRequest().authenticated())
-                .csrf(csrf -> {})
+                // CSRF protege credencial ambiente do navegador. No fluxo público não existe credencial
+                // ambiente: quem não tem o token não consegue nada, e quem tem não precisa da vítima.
+                // Exigir CSRF aqui só tornaria o fluxo impossível, sem remover ataque nenhum.
+                .csrf(csrf -> csrf.ignoringRequestMatchers(PUBLIC_QUOTE))
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable())
                 .logout(logout -> logout.disable())
@@ -56,7 +68,15 @@ public class SecurityConfig {
                             response.getWriter().write("{\"code\":\"AUTHENTICATION_REQUIRED\",\"message\":\"Autenticação necessária\",\"details\":[]}");
                         })
                         .accessDeniedHandler((request, response, exception) -> {
-                            deniedAudit.record(request, SecurityContextHolder.getContext().getAuthentication());
+                            // A negação precisa chegar ao cliente mesmo que a auditoria falhe: o acesso
+                            // foi barrado de qualquer forma, e devolver 500 esconderia isso. A falha de
+                            // auditoria fica registrada em log de erro para não passar despercebida.
+                            try {
+                                deniedAudit.record(request, SecurityContextHolder.getContext().getAuthentication());
+                            } catch (RuntimeException auditFailure) {
+                                LOGGER.error("Falha ao auditar acesso negado a {} {}",
+                                        request.getMethod(), request.getRequestURI(), auditFailure);
+                            }
                             response.setStatus(403); response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                             response.getWriter().write("{\"code\":\"ACCESS_DENIED\",\"message\":\"Acesso negado\",\"details\":[]}");
                         }))

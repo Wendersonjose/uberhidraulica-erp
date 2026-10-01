@@ -17,13 +17,13 @@ public class JpaServiceCatalogRepositoryAdapter implements ServiceCatalogReposit
 
     private ServiceEntity entity(CatalogService value) {
         ServiceEntity e = new ServiceEntity();
-        e.id=value.id(); e.name=value.name(); e.description=value.description(); e.category=value.category();
+        e.id=value.id(); e.name=value.name(); e.description=value.description(); e.categoryId=value.categoryId();
         e.basePrice=value.basePrice(); e.defaultWarrantyDays=value.defaultWarrantyDays(); e.active=value.active();
         e.createdAt=value.createdAt(); e.updatedAt=value.updatedAt(); return e;
     }
 
     private CatalogService map(ServiceEntity e) {
-        return new CatalogService(e.id, e.name, e.description, e.category, e.basePrice,
+        return new CatalogService(e.id, e.name, e.description, e.categoryId, e.basePrice,
                 e.defaultWarrantyDays, e.active, e.createdAt, e.updatedAt);
     }
 }

@@ -41,8 +41,21 @@ class ServiceCatalogIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
 
+    /** Sessão real do Dono: os endpoints mutadores agora exigem SERVICE_MANAGE real; os casos de permissão
+     * em si vivem em ModulePermissionsIntegrationTest. */
+    private br.com.uberhidraulica.erp.support.ApiSessions api;
+    private br.com.uberhidraulica.erp.support.ApiSessions.Session owner;
+
     @BeforeEach
-    void cleanCatalog() { jdbc.update("delete from servicecatalog.service"); }
+    void cleanCatalog() throws Exception {
+        jdbc.update("delete from servicecatalog.service");
+        api = new br.com.uberhidraulica.erp.support.ApiSessions(mvc, "service-operational-password");
+        owner = api.owner("owner-service@example.test", "service-bootstrap-password");
+    }
+
+    private org.springframework.test.web.servlet.ResultActions send(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request, String body) throws Exception {
+        return api.send(owner, request, body);
+    }
 
     @Test
     void endpointsRequireAuthentication() throws Exception {
@@ -59,8 +72,7 @@ class ServiceCatalogIntegrationTest {
 
     @Test
     void createsConsultsListsAndUpdatesService() throws Exception {
-        MvcResult created = mvc.perform(post("/api/services").with(user("operator")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content(validRequest()))
+        MvcResult created = send(post("/api/services"), validRequest())
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.name").value("Reparo da caixa"))
                 .andExpect(jsonPath("$.basePrice").value(500.25))
@@ -73,16 +85,15 @@ class ServiceCatalogIntegrationTest {
         mvc.perform(get("/api/services").with(user("operator"))).andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(id));
 
-        mvc.perform(put("/api/services/{id}", id).with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Reparo premium\",\"description\":\"Completo\",\"basePrice\":\"650.00\",\"defaultWarrantyDays\":120,\"active\":false}"))
+        send(put("/api/services/{id}", id),
+                        "{\"name\":\"Reparo premium\",\"description\":\"Completo\",\"basePrice\":\"650.00\",\"defaultWarrantyDays\":120,\"active\":false}")
                 .andExpect(status().isOk()).andExpect(jsonPath("$.active").value(false))
                 .andExpect(jsonPath("$.defaultWarrantyDays").value(120));
     }
 
     @Test
     void rejectsInvalidServiceAndMissingId() throws Exception {
-        mvc.perform(post("/api/services").with(user("operator")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\" \",\"description\":\"x\",\"basePrice\":-1,\"defaultWarrantyDays\":-1}"))
+        send(post("/api/services"), "{\"name\":\" \",\"description\":\"x\",\"basePrice\":-1,\"defaultWarrantyDays\":-1}")
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
         mvc.perform(get("/api/services/{id}", UUID.randomUUID()).with(user("operator"))).andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("SERVICE_NOT_FOUND"));

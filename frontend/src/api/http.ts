@@ -56,3 +56,17 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   return data
 }
 export const post = <T>(path: string, body: unknown) => api<T>(path, { method: 'POST', body: JSON.stringify(body) })
+
+/**
+ * Chamada da superfície pública do orçamento.
+ *
+ * <p>Não envia cookie nem token CSRF, e não participa do controle de sessão: o cliente externo não
+ * tem conta, e mandar credencial de sessão junto só criaria autoridade ambiente onde não deve haver.
+ */
+export async function publicApi<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const headers = new Headers(options.headers)
+  if (options.body) headers.set('Content-Type', 'application/json')
+  const response = await fetch(path, { ...options, headers, credentials: 'omit' })
+  if (!response.ok) throw await parseError(response)
+  return response.json() as Promise<T>
+}

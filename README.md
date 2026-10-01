@@ -2,7 +2,13 @@
 
 ERP em desenvolvimento para digitalizar e integrar a operação da Uber-Hidráulica, centralizando oficina, clientes, veículos, catálogo, estoque, compras, financeiro, comissões, conciliação, fiscal e rentabilidade.
 
-> A fundação executável do backend foi concluída na `TASK-0002`: Spring Boot, PostgreSQL, Flyway, Testcontainers e Spring Modulith estão funcionando e validados por testes automatizados. A `TASK-0001 — Aprovação Parcial de Orçamento` permanece concluída como especificação. Os módulos funcionais e o frontend React ainda não foram implementados.
+> **Estado em 2026-09-14.** A fundação executável do backend foi concluída na `TASK-0002` e o IAM na `TASK-0003`: Spring Boot, PostgreSQL, Flyway, Testcontainers, Spring Modulith, autenticação por sessão e CSRF estão funcionando e validados por testes automatizados.
+>
+> A `TASK-0004` entregou a vertical Cliente → Veículo → Serviço → Ordem de Serviço, com backend e frontend React integrados. A `TASK-0005` acrescentou o catálogo de produtos físicos (peças, fluidos e insumos), a `TASK-0006` passou a permitir o lançamento desses itens na OS com snapshot comercial, e a `TASK-0007` implementou o orçamento com versionamento comercial: apresentações versionadas, histórico imutável por item, validade de sete dias e obsolescência derivada por item.
+>
+> A `TASK-0008` fechou a `TASK-0001 — Aprovação Parcial de Orçamento`: o cliente abre um link seguro, vê a proposta que recebeu e decide item a item, sem conta interna, com evidências, idempotência e atomicidade. Estoque, compras, financeiro, comissão, conciliação, fiscal e rentabilidade ainda não foram implementados.
+>
+> **Antes de produção**, o fluxo público exige configuração de HTTPS, de proxies confiáveis para o IP real e de limitação de requisições — registrado em `docs/review/TASK-0008-revisao-tecnica.md`.
 
 ---
 
