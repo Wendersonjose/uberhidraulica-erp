@@ -5,8 +5,11 @@
 #   3. roda o fluxo E2E da oficina (scripts/e2e/workshop_flow.py) pelo nginx;
 #   4. confere que o nginx não deixa o cliente forjar o IP gravado na evidência do orçamento público;
 #   5. reinicia os containers e confere que os dados persistem;
-#   6. faz backup (pg_dump), destrói o volume, restaura em um volume novo e confere os dados;
-#   7. confere o limite de requisições do login (429).
+#   6. backup/verificação/restore com os scripts de operação (scripts/ops): backup, restauração em banco descartável,
+#      destruição do volume, restore e conferência dos dados;
+#   7. confere o limite de requisições do login (429);
+#   8. troca a homologação HTTP pela produção HTTPS (compose.https.yaml, Caddy) SOBRE OS MESMOS DADOS: redirect, HSTS,
+#      cookie Secure, nginx sem porta publicada, login com os dados anteriores e o preflight de produção.
 #
 # Uso:  scripts/deploy/compose-smoke.sh        (requer docker compose, curl, python3)
 # Não toca no seu .env: usa um arquivo temporário com segredos aleatórios e o projeto `erp-smoke`.
@@ -39,7 +42,9 @@ IAM_BOOTSTRAP_OWNER_EMAIL=${OWNER_EMAIL}
 IAM_BOOTSTRAP_OWNER_PASSWORD=${BOOTSTRAP_PASSWORD}
 EOF
 
+HTTPS_ENV="${WORK}/https.env"
 compose() { docker compose --env-file "${ENV_FILE}" -p "${PROJECT}" "$@"; }
+compose_https() { docker compose --env-file "${HTTPS_ENV}" -p "${PROJECT}" -f compose.yaml -f compose.https.yaml "$@"; }
 psql_q() { compose exec -T postgres psql -U uberhidraulica -d uberhidraulica -tA -c "$1"; }
 FAILURES=0
 ok()   { echo "  [OK]   $1"; }
@@ -51,6 +56,7 @@ cleanup() {
   if [ "${code}" -ne 0 ] || [ "${FAILURES}" -ne 0 ]; then
     echo; echo "== logs (falha)"; compose logs --no-color --tail 60 backend frontend postgres 2>&1 || true
   fi
+  [ -f "${HTTPS_ENV}" ] && compose_https down -v --remove-orphans >/dev/null 2>&1
   compose down -v --remove-orphans >/dev/null 2>&1 || true
   rm -rf "${WORK}"
 }
@@ -114,14 +120,18 @@ ORDERS_AFTER="$(psql_q 'select count(*) from workorder.work_order')"
 MIGRATIONS="$(psql_q 'select count(*) from flyway_schema_history where success')"
 echo "     migrations Flyway aplicadas: ${MIGRATIONS}"
 
-echo; echo "== 6. backup e restore em volume novo"
-compose exec -T postgres pg_dump -U uberhidraulica -F c -d uberhidraulica > "${WORK}/backup.dump"
-[ -s "${WORK}/backup.dump" ] && ok "backup gerado ($(wc -c < "${WORK}/backup.dump") bytes)" || fail "backup vazio"
+echo; echo "== 6. backup, verificação e restore (scripts/ops)"
+export COMPOSE_PROJECT_NAME="${PROJECT}" COMPOSE_ENV_FILES="${ENV_FILE}" BACKUP_DIR="${WORK}/backups"
+BACKUP_ALLOW_LOCAL_ONLY=1 scripts/ops/backup.sh >/dev/null && ok "backup.sh gerou e validou o backup" || fail "backup.sh falhou"
+BACKUP_FILE="$(ls -1t "${BACKUP_DIR}"/erp-*.dump | head -1)"
+[ -s "${BACKUP_FILE}" ] && ok "backup gerado ($(wc -c < "${BACKUP_FILE}") bytes)" || fail "backup vazio"
+code=0; scripts/ops/backup.sh >/dev/null 2>&1 || code=$?
+[ "${code}" = 3 ] && ok "backup sem cópia externa configurada sai com código 3 (falha fechada)" || fail "backup sem cópia externa saiu com ${code}"
+check "verify-backup restaura o backup em um banco descartável" scripts/ops/verify-backup.sh "${BACKUP_FILE}"
 compose down -v --remove-orphans
 compose up -d postgres --wait --wait-timeout 120
-compose exec -T postgres pg_restore -U uberhidraulica -d uberhidraulica --clean --if-exists < "${WORK}/backup.dump"
+scripts/ops/restore.sh "${BACKUP_FILE}" --yes >"${WORK}/restore.log" 2>&1 && ok "restore.sh concluiu" || { fail "restore.sh falhou"; tail -20 "${WORK}/restore.log"; }
 [ "$(psql_q 'select count(*) from workorder.work_order')" = "${ORDERS_AFTER}" ] && ok "restore trouxe as ${ORDERS_AFTER} OS de volta" || fail "restore não trouxe as OS"
-compose up -d --build --wait --wait-timeout 300
 [ "$(login_status "${OWNER_EMAIL}" "${OWNER_PASSWORD}")" = 200 ] && ok "login do Dono depois do restore" || fail "login do Dono depois do restore"
 [ "$(psql_q 'select count(*) from flyway_schema_history where success')" = "${MIGRATIONS}" ] && ok "histórico Flyway íntegro após o restore" || fail "histórico Flyway divergente"
 
@@ -129,6 +139,35 @@ echo; echo "== 7. limite de requisições do login"
 CODES=""
 for _ in $(seq 1 45); do CODES="${CODES} $(login_status "${OWNER_EMAIL}" "senha-errada-$RANDOM")"; done
 printf '%s' "${CODES}" | grep -q 429 && ok "login excedendo o limite responde 429" || fail "login nunca respondeu 429 (${CODES})"
+
+echo; echo "== 8. produção HTTPS (compose.https.yaml) sobre os mesmos dados"
+sed -e 's/^APP_ENVIRONMENT=.*/APP_ENVIRONMENT=production/' -e 's/^SESSION_COOKIE_SECURE=.*/SESSION_COOKIE_SECURE=true/' "${ENV_FILE}" > "${HTTPS_ENV}"
+echo "SITE_ADDRESS=localhost" >> "${HTTPS_ENV}"
+compose down --remove-orphans
+compose_https up -d --wait --wait-timeout 300
+SECURE_BASE="https://localhost"
+for _ in $(seq 1 30); do curl -sk -m 3 "${SECURE_BASE}/actuator/health" | grep -q '"status":"UP"' && break; sleep 2; done
+compose_https cp caddy:/data/caddy/pki/authorities/local/root.crt "${WORK}/caddy-root.crt"
+SCURL="curl -s --cacert ${WORK}/caddy-root.crt"
+check "HTTPS responde com o certificado do Caddy" bash -c "${SCURL} -o /dev/null -w '%{http_code}' ${SECURE_BASE}/ | grep -q 200"
+check "HTTP redireciona para HTTPS" bash -c "${SCURL} -o /dev/null -w '%{http_code} %{redirect_url}' http://localhost/ | grep -Eq '^30[178] https://localhost/'"
+check "HSTS presente" bash -c "${SCURL} -I ${SECURE_BASE}/ | grep -qi '^strict-transport-security:'"
+check "o nginx do ERP não publica porta no host" bash -c "[ -z \"\$(docker compose --env-file ${HTTPS_ENV} -p ${PROJECT} -f compose.yaml -f compose.https.yaml port frontend 80 2>/dev/null)\" ]"
+SECURE_JAR="${WORK}/secure-jar"
+CSRF="$(${SCURL} -c "${SECURE_JAR}" "${SECURE_BASE}/api/iam/csrf")"
+TOKEN="$(printf '%s' "${CSRF}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["token"])')"
+HEADER="$(printf '%s' "${CSRF}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["headerName"])')"
+LOGIN_HEADERS="$(${SCURL} -D - -o /dev/null -b "${SECURE_JAR}" -c "${SECURE_JAR}" -H "${HEADER}: ${TOKEN}" -H 'Content-Type: application/json' \
+  -d "{\"email\":\"${OWNER_EMAIL}\",\"password\":\"${OWNER_PASSWORD}\"}" "${SECURE_BASE}/api/iam/auth/login")"
+printf '%s' "${LOGIN_HEADERS}" | head -1 | grep -q ' 200' && ok "login do Dono pelo HTTPS, com os dados da homologação" || fail "login pelo HTTPS falhou"
+for flag in "Secure" "HttpOnly" "SameSite=Lax"; do
+  printf '%s' "${LOGIN_HEADERS}" | grep -i '^set-cookie:' | grep -qi "${flag}" && ok "cookie de sessão com ${flag}" || fail "cookie de sessão sem ${flag}"
+done
+[ "$(${SCURL} -o /dev/null -w '%{http_code}' -b "${SECURE_JAR}" "${SECURE_BASE}/api/customers")" = 200 ] && ok "consulta autenticada pelo HTTPS" || fail "consulta autenticada pelo HTTPS"
+[ "$(psql_q 'select count(*) from workorder.work_order')" = "${ORDERS_AFTER}" ] && ok "as ${ORDERS_AFTER} OS continuam lá depois de ir para HTTPS" || fail "OS mudaram na troca para HTTPS"
+COMPOSE_FILE=compose.yaml:compose.https.yaml COMPOSE_ENV_FILES="${HTTPS_ENV}" PUBLIC_URL="${SECURE_BASE}" \
+  PREFLIGHT_CURL_OPTS="--cacert ${WORK}/caddy-root.crt" scripts/ops/preflight.sh --homologation >"${WORK}/preflight.log" 2>&1 \
+  && ok "preflight (homologação) sem falhas" || { fail "preflight com falhas"; cat "${WORK}/preflight.log"; }
 
 echo
 if [ "${FAILURES}" -eq 0 ]; then echo "SMOKE OK"; else echo "SMOKE COM ${FAILURES} FALHA(S)"; exit 1; fi
