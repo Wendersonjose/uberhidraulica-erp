@@ -1,0 +1,62 @@
+# HTTPS turnkey para o piloto: um Caddy na frente do nginx do ERP, com certificado Let's Encrypt automático.
+# Use este arquivo quando o provedor NÃO terminar o HTTPS por você (VPS simples). Se o provedor tiver um
+# balanceador HTTPS próprio, não use este arquivo: aponte o balanceador para a porta HTTP do frontend e liste o IP/CIDR
+# dele em TRUSTED_PROXY_CIDRS (veja docs/architecture/devops/DEPLOY-piloto.md).
+#
+#   docker compose -f compose.yaml -f compose.https.yaml up -d --build
+#
+# Requer no .env: SITE_ADDRESS (domínio), SESSION_COOKIE_SECURE=true, APP_ENVIRONMENT=production.
+# Quem fala com o mundo é o Caddy (80/443). O nginx do ERP deixa de publicar porta no host: só o Caddy o alcança, e
+# só o Caddy é proxy confiável (X-Forwarded-For/Proto), pelo endereço fixo abaixo.
+#
+# A rede do compose passa a ter sub-rede fixa. O Docker distribui os endereços dos demais containers só na primeira
+# metade da sub-rede (ip_range) e o Caddy usa um endereço da segunda, para nunca colidirem. Se 172.31.250.0/24 já for
+# usada na sua rede, troque os TRÊS valores juntos no .env: ERP_NETWORK_SUBNET, ERP_NETWORK_IP_RANGE e ERP_CADDY_IP
+# (o Caddy precisa estar dentro da sub-rede e fora do ip_range).
+# Em uma instalação que já existia, rode `docker compose down` (preserva os volumes) antes do primeiro `up` com este
+# arquivo, para o compose recriar a rede.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?defina SITE_ADDRESS (o domínio público) no .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificados e a conta ACME: perder este volume obriga a emitir de novo (há limite semanal de emissões).
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      default:
+        ipv4_address: ${ERP_CADDY_IP:-172.31.250.250}
+    depends_on:
+      frontend:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  frontend:
+    # O nginx do ERP não é publicado: o único caminho de fora é o Caddy.
+    ports: !reset []
+    environment:
+      TRUSTED_PROXY_CIDRS: ${ERP_CADDY_IP:-172.31.250.250}/32
+    # O healthcheck do Dockerfile (wget em 127.0.0.1:80) segue valendo; o Caddy espera por ele.
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${ERP_NETWORK_SUBNET:-172.31.250.0/24}
+          ip_range: ${ERP_NETWORK_IP_RANGE:-172.31.250.0/25}
+
+volumes:
+  caddy_data:
+  caddy_config:

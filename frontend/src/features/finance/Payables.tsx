@@ -75,6 +75,9 @@ export function PayableFormPage() {
           <option value="">Selecione</option>
           {categories.data?.filter(c => c.active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select></label></div>
+        {categories.data && categories.data.filter(c => c.active).length === 0 && <div role="status" className="notice full">
+          Nenhuma categoria de despesa ativa. Cadastre uma em <Link to="/financeiro/configuracoes">Financeiro › Configurações</Link> antes de lançar a conta.
+        </div>}
         <div className="field"><label>Valor *<input className="input" type="number" step="0.01" min="0" value={form.amount} onChange={e => set({ amount: e.target.value })} /></label></div>
         <div className="field"><label>Vencimento *<input className="input" type="date" value={form.dueDate} onChange={e => set({ dueDate: e.target.value })} /></label></div>
         <div className="field full"><label>Observação<input className="input" value={form.notes} onChange={e => set({ notes: e.target.value })} /></label></div>

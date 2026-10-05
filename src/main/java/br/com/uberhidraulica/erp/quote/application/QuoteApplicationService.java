@@ -48,6 +48,7 @@ public class QuoteApplicationService {
     public Quote open(UUID workOrderId) {
         workOrders.workOrder(workOrderId)
                 .orElseThrow(() -> new QuoteException("WORK_ORDER_NOT_FOUND", "Ordem de Serviço não encontrada"));
+        lockOpenWorkOrder(workOrderId);
         return repository.create(Quote.open(workOrderId, Instant.now(clock), currentUser.requireId()));
     }
 
@@ -84,6 +85,7 @@ public class QuoteApplicationService {
     public Quote createRevision(UUID workOrderId, UUID quoteId, List<ItemSpec> specs) {
         if (specs == null || specs.isEmpty())
             throw new QuoteException("QUOTE_REVISION_EMPTY", "Revisão exige pelo menos um item comercial");
+        lockOpenWorkOrder(workOrderId);
         Quote quote = get(workOrderId, quoteId);
         Instant now = Instant.now(clock);
         UUID author = currentUser.requireId();
@@ -149,7 +151,7 @@ public class QuoteApplicationService {
     @Transactional
     public Quote present(UUID workOrderId, UUID quoteId, UUID revisionId) {
         // Serializa com a finalização da OS antes de ler o orçamento (revisão TASK-0015, F1).
-        workOrderEvents.lockForCommercialChange(workOrderId);
+        lockOpenWorkOrder(workOrderId);
         Quote quote = get(workOrderId, quoteId);
         QuoteRevision revision = quote.revision(revisionId)
                 .orElseThrow(() -> new QuoteException("QUOTE_REVISION_NOT_FOUND", "Revisão não encontrada"));
@@ -165,4 +167,14 @@ public class QuoteApplicationService {
     }
 
     public Instant now() { return Instant.now(clock); }
+
+    /**
+     * Bloqueia a OS e recusa a mudança comercial se ela já foi finalizada, entregue ou cancelada: orçamento novo,
+     * revisão ou apresentação em OS encerrada não tem para onde ir (o recebível já foi gerado ou a OS não existe mais).
+     */
+    private void lockOpenWorkOrder(UUID workOrderId) {
+        if (!workOrderEvents.lockForCommercialChange(workOrderId))
+            throw new QuoteException("WORK_ORDER_CLOSED",
+                    "OS finalizada, entregue ou cancelada não aceita mais alterações no orçamento");
+    }
 }

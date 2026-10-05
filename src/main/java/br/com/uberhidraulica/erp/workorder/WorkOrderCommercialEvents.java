@@ -15,8 +15,12 @@ public interface WorkOrderCommercialEvents {
      * <p>Apresentação e decisão chamam isto antes de ler o orçamento. A finalização também começa bloqueando a
      * OS, então as duas disputam os bloqueios na mesma ordem (OS, depois orçamento) — sem deadlock — e a
      * base comercial do recebível nunca é lida no meio de uma alteração comercial (revisão TASK-0015, F1).</p>
+     *
+     * @return {@code true} se a OS ainda está em atendimento e aceita mudança comercial; {@code false} se está
+     *         finalizada, entregue ou cancelada, quando criar, apresentar ou decidir orçamento já não faz sentido
+     *         (DR-0012 item 9: OS encerrada não aceita alterações). Quem chama decide como recusar.
      */
-    void lockForCommercialChange(UUID workOrderId);
+    boolean lockForCommercialChange(UUID workOrderId);
 
     void quotePresented(UUID workOrderId);
 

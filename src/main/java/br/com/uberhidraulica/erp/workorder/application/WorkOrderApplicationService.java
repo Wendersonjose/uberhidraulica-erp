@@ -82,7 +82,7 @@ public class WorkOrderApplicationService implements WorkOrderQuery, br.com.uberh
 
     @Override
     @Transactional
-    public void lockForCommercialChange(UUID workOrderId) { locked(workOrderId); }
+    public boolean lockForCommercialChange(UUID workOrderId) { return locked(workOrderId).stage().operational(); }
 
     @Override
     @Transactional

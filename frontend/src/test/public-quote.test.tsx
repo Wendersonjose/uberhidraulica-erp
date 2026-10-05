@@ -56,6 +56,16 @@ test('página pública não consulta sessão nem envia cookie', async () => {
     expect.objectContaining({ credentials: 'omit' }))
 })
 
+test('a tabela pública rotula cada célula para virar cartão no celular', async () => {
+  mock({ 'GET /api/public/quotes/tok-secreto': publicQuote })
+  renderPublic()
+
+  const row = (await screen.findByText('Recondicionamento da caixa')).closest('tr')!
+  expect(row.closest('table')).toHaveClass('table-cards')
+  expect([...row.querySelectorAll('td')].map(cell => cell.getAttribute('data-label')))
+    .toEqual(['Item', 'Qtd.', 'Valor unitário', 'Total', 'Situação', 'Sua decisão'])
+})
+
 test('item substituído e item já decidido não oferecem decisão', async () => {
   mock({ 'GET /api/public/quotes/tok-secreto': publicQuote })
   renderPublic()

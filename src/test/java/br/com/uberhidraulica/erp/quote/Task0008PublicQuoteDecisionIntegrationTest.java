@@ -75,6 +75,8 @@ class Task0008PublicQuoteDecisionIntegrationTest {
 
     @BeforeEach
     void clean() throws Exception {
+        jdbc.update("delete from finance.receivable_line");
+        jdbc.update("delete from finance.receivable");
         jdbc.update("delete from workshop.quote_decision");
         jdbc.update("delete from workshop.quote_decision_submission");
         jdbc.update("delete from workshop.public_quote_access");
@@ -170,6 +172,71 @@ class Task0008PublicQuoteDecisionIntegrationTest {
         mvc.perform(decision(scenario, "req-expirado", approve(scenario.firstItem())))
                 .andExpect(status().isGone());
         assertThat(jdbc.queryForObject("select count(*) from workshop.quote_decision", Long.class)).isZero();
+    }
+
+    /**
+     * Auditoria de homologação (D1): a OS cancelada continuava aceitando decisão pelo link já emitido, orçamento novo,
+     * revisão, apresentação e link novo. Uma OS encerrada não aceita alterações (DR-0012, item 9), e o orçamento é
+     * parte dela.
+     */
+    @Test
+    void aCancelledWorkOrderRefusesDecisionsAndEveryNewCommercialChange() throws Exception {
+        Scenario scenario = presentedQuote("11100022288", "PBF1A11");
+        String drafted = mvc.perform(authorized(post("/api/work-orders/{w}/quotes/{q}/revisions", scenario.workOrder(), scenario.quote()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"items\":[{\"description\":\"Rascunho\",\"quantity\":\"1\",\"unitPrice\":\"10.00\"}]}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        String draft = JsonPath.read(drafted, "$.revisions[1].id");
+        mvc.perform(authorized(post("/api/work-orders/{w}/cancel", scenario.workOrder()))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Cliente desistiu\"}"))
+                .andExpect(status().isOk());
+
+        mvc.perform(decision(scenario, "req-os-cancelada", approve(scenario.firstItem())))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("WORK_ORDER_CLOSED"));
+        mvc.perform(authorized(post("/api/work-orders/{w}/quotes", scenario.workOrder())))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("WORK_ORDER_CLOSED"));
+        mvc.perform(authorized(post("/api/work-orders/{w}/quotes/{q}/revisions", scenario.workOrder(), scenario.quote()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"items\":[{\"description\":\"Novo\",\"quantity\":\"1\",\"unitPrice\":\"10.00\"}]}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("WORK_ORDER_CLOSED"));
+        mvc.perform(authorized(post("/api/work-orders/{w}/quotes/{q}/revisions/{r}/present",
+                        scenario.workOrder(), scenario.quote(), draft)))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("WORK_ORDER_CLOSED"));
+        mvc.perform(authorized(post("/api/work-orders/{w}/quotes/{q}/revisions/{r}/public-access",
+                        scenario.workOrder(), scenario.quote(), scenario.revision())))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("WORK_ORDER_CLOSED"));
+        mvc.perform(authorized(post("/api/work-orders/{w}/quotes/{q}/revisions/{r}/decisions",
+                        scenario.workOrder(), scenario.quote(), scenario.revision()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"contactChannel\":\"PHONE\",\"decisions\":[{\"itemReference\":\""
+                                + scenario.firstItem() + "\",\"decision\":\"APPROVE\"}]}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("WORK_ORDER_CLOSED"));
+
+        assertThat(jdbc.queryForObject("select count(*) from workshop.quote_decision", Long.class)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from workshop.quote", Long.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from workshop.public_quote_access", Long.class)).isEqualTo(1);
+        // Revogar o link continua permitido: é a ação que protege, não a que altera a proposta.
+        mvc.perform(authorized(post("/api/work-orders/{w}/quotes/{q}/public-access/{a}/revoke",
+                        scenario.workOrder(), scenario.quote(), scenario.accessId())))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void aFinishedWorkOrderRefusesALateDecisionThatCouldNeverBeBilled() throws Exception {
+        Scenario scenario = presentedQuote("11100022299", "PBG1A11");
+        mvc.perform(decision(scenario, "req-antes", approve(scenario.firstItem()))).andExpect(status().isCreated());
+        mvc.perform(authorized(post("/api/work-orders/{w}/start-execution", scenario.workOrder())))
+                .andExpect(status().isOk());
+        mvc.perform(authorized(post("/api/work-orders/{w}/finish", scenario.workOrder())))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("FINALIZADA"));
+
+        mvc.perform(decision(scenario, "req-depois", approve(scenario.secondItem())))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("WORK_ORDER_CLOSED"))
+                .andExpect(jsonPath("$.message").value("Esta ordem de serviço já foi encerrada; o orçamento não aceita mais decisão"));
+
+        assertThat(jdbc.queryForObject("select count(*) from workshop.quote_decision", Long.class)).isEqualTo(1);
+        // A repetição exata do pedido que já tinha sido aceito continua respondendo igual (idempotência).
+        mvc.perform(decision(scenario, "req-antes", approve(scenario.firstItem()))).andExpect(status().isOk());
     }
 
     @Test

@@ -1,0 +1,2 @@
+# Falha fechada em produção: valida credenciais e cookie antes de qualquer bean (ver ProductionStartupGuard).
+org.springframework.boot.EnvironmentPostProcessor=br.com.uberhidraulica.erp.ProductionStartupGuard
