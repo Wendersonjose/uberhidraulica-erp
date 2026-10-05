@@ -228,6 +228,41 @@ class Task0014InventoryIntegrationTest {
         assertThat(jdbc.queryForObject("select count(*) from inventory.stock_movement where movement_type = 'WORK_ORDER_RETURN'", Long.class)).isEqualTo(1);
     }
 
+    /**
+     * Estorno manual de uma baixa da OS (ex.: item rejeitado pelo cliente) devolve o saldo e também sai do custo
+     * histórico de peças usado pelo painel financeiro; antes, o saldo voltava e o custo continuava contando o item.
+     */
+    @Test
+    void reversingAWorkOrderWriteOffAlsoRemovesItFromThePartsCostAndReversingTheReturnRestoresIt() throws Exception {
+        String product = createProduct("Kit de reparo", "UNIDADE", null);
+        entry(product, "10", "40.00").andExpect(status().isCreated());
+        String order = openWorkOrder();
+        addProduct(order, product, "2").andExpect(status().isCreated());
+        List<UUID> orders = List.of(UUID.fromString(order));
+        assertThat(inventory.partsCostForWorkOrders(orders)).isEqualByComparingTo("80.00");
+
+        String writeOff = jdbc.queryForObject("select id::text from inventory.stock_movement where work_order_id = ?::uuid "
+                + "and movement_type = 'WORK_ORDER_OUT'", String.class, order);
+        send(post("/api/inventory/movements/" + writeOff + "/reverse"), "{\"reason\":\"Item rejeitado pelo cliente\"}")
+                .andExpect(status().isCreated());
+
+        assertThat(balance(product)).isEqualByComparingTo("10.000");
+        assertThat(inventory.partsCostForWorkOrders(orders)).as("o item estornado deixou de ser custo da OS").isEqualByComparingTo("0.00");
+
+        // Cancelamento devolve a baixa (WORK_ORDER_RETURN); estornar essa devolução reinstala a baixa e o custo.
+        String second = openWorkOrder();
+        addProduct(second, product, "1").andExpect(status().isCreated());
+        send(post("/api/work-orders/" + second + "/cancel"), "{\"reason\":\"Cliente desistiu\"}").andExpect(status().isOk());
+        List<UUID> secondOrders = List.of(UUID.fromString(second));
+        assertThat(inventory.partsCostForWorkOrders(secondOrders)).isEqualByComparingTo("0.00");
+        String giveBack = jdbc.queryForObject("select id::text from inventory.stock_movement where work_order_id = ?::uuid "
+                + "and movement_type = 'WORK_ORDER_RETURN'", String.class, second);
+        send(post("/api/inventory/movements/" + giveBack + "/reverse"), "{\"reason\":\"Devolução lançada por engano\"}")
+                .andExpect(status().isCreated());
+        assertThat(inventory.partsCostForWorkOrders(secondOrders)).as("a devolução estornada volta a contar como custo")
+                .isEqualByComparingTo("40.00");
+    }
+
     @Test
     void writeOffModeChangesWhenTheStockMovesAndCanBeDisabled() throws Exception {
         send(put("/api/inventory/settings/write-off"), "{\"mode\":\"WORK_ORDER_FINISH\"}").andExpect(status().isOk())
