@@ -61,7 +61,8 @@ public final class ApiSessions {
         return mvc.perform(get(path).cookie(session.cookie()));
     }
 
-    private Session login(String email, String secret, boolean optional) throws Exception {
+    /** Login real (CSRF incluído); com {@code optional}, devolve nulo em vez de lançar quando o login falha. */
+    public Session login(String email, String secret, boolean optional) throws Exception {
         MvcResult csrf = mvc.perform(get("/api/iam/csrf")).andExpect(status().isOk()).andReturn();
         Cookie anonymous = csrf.getResponse().getCookie("SESSION");
         String token = JsonPath.read(csrf.getResponse().getContentAsString(), "$.token");

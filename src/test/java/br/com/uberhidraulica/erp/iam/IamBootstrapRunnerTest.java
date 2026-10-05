@@ -44,6 +44,35 @@ class IamBootstrapRunnerTest {
         assertInvalid("Owner", "owner@example.test", "x".repeat(1025));
     }
 
+    @Test
+    void bootstrapPasswordMustFollowThePasswordPolicyWithoutEchoingIt() {
+        for (String weak : new String[] {"1234567", "a".repeat(73), "ç".repeat(37)}) {
+            Environment environment = mock(Environment.class);
+            BootstrapService bootstrap = mock(BootstrapService.class);
+            when(environment.getProperty(IamBootstrapRunner.OWNER_NAME)).thenReturn("Owner");
+            when(environment.getProperty(IamBootstrapRunner.OWNER_EMAIL)).thenReturn("owner@example.test");
+            when(environment.getProperty(IamBootstrapRunner.OWNER_PASSWORD)).thenReturn(weak);
+            assertThatThrownBy(() -> new IamBootstrapRunner(environment, bootstrap, validator())
+                    .run(new DefaultApplicationArguments()))
+                    .isInstanceOfSatisfying(IamException.class, error -> {
+                        assertThat(error.code()).isEqualTo("BOOTSTRAP_CONFIGURATION_INVALID");
+                        assertThat(error.getMessage()).doesNotContain(weak);
+                    });
+            verifyNoInteractions(bootstrap);
+        }
+    }
+
+    @Test
+    void validConfigurationReachesTheBootstrap() {
+        Environment environment = mock(Environment.class);
+        BootstrapService bootstrap = mock(BootstrapService.class);
+        when(environment.getProperty(IamBootstrapRunner.OWNER_NAME)).thenReturn("Owner");
+        when(environment.getProperty(IamBootstrapRunner.OWNER_EMAIL)).thenReturn("owner@example.test");
+        when(environment.getProperty(IamBootstrapRunner.OWNER_PASSWORD)).thenReturn("uma-senha-inicial-valida");
+        new IamBootstrapRunner(environment, bootstrap, validator()).run(new DefaultApplicationArguments());
+        verify(bootstrap).bootstrap("Owner", "owner@example.test", "uma-senha-inicial-valida");
+    }
+
     private void assertInvalid(String name, String email, String password) {
         Environment environment = mock(Environment.class);
         BootstrapService bootstrap = mock(BootstrapService.class);

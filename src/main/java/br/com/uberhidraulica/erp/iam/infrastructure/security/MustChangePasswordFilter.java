@@ -24,7 +24,10 @@ public class MustChangePasswordFilter extends OncePerRequestFilter {
         Object principal = SecurityContextHolder.getContext().getAuthentication() == null ? null : SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         if (principal instanceof IamPrincipal iam && identities.passwordChangeRequired(iam.id()) && !allowed(request)) {
             deniedAudit.record(request, SecurityContextHolder.getContext().getAuthentication());
-            response.setStatus(403); response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            response.setStatus(403);
+            // Sem charset explícito o Writer sairia em ISO-8859-1 e "obrigatória" chegaria corrompido.
+            response.setCharacterEncoding(java.nio.charset.StandardCharsets.UTF_8);
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
             response.getWriter().write("{\"code\":\"PASSWORD_CHANGE_REQUIRED\",\"message\":\"Troca de senha obrigatória\",\"details\":[]}");
             return;
         }
