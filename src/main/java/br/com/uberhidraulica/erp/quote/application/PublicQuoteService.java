@@ -62,6 +62,7 @@ public class PublicQuoteService {
 
     @Transactional
     public IssuedAccess issue(Quote quote, UUID revisionId, Instant requestedValidUntil) {
+        lockOpenWorkOrder(quote.workOrderId(), "OS finalizada, entregue ou cancelada não aceita mais link de aprovação");
         QuoteRevision revision = quote.revision(revisionId)
                 .orElseThrow(() -> new QuoteException("QUOTE_REVISION_NOT_FOUND", "Revisão não encontrada"));
         String rawToken = PublicAccessToken.generate();
@@ -119,7 +120,8 @@ public class PublicQuoteService {
         if (previous.isPresent()) return replay(previous.get(), payloadDigest, access, now);
 
         // Serializa com a finalização da OS antes de ler o orçamento (revisão TASK-0015, F1).
-        workOrderEvents.lockForCommercialChange(loadQuote(access).workOrderId());
+        lockOpenWorkOrder(loadQuote(access).workOrderId(),
+                "Esta ordem de serviço já foi encerrada; o orçamento não aceita mais decisão");
         Quote quote = loadQuote(access);
         QuoteRevision revision = quote.revision(access.quoteRevisionId())
                 .orElseThrow(() -> new QuoteException("PUBLIC_QUOTE_NOT_AVAILABLE", "Orçamento indisponível"));
@@ -161,7 +163,7 @@ public class PublicQuoteService {
     public Quote registerInternal(Quote quote, UUID revisionId, String contactChannel, String authorizedBy, String notes,
                                   List<ItemDecision> items) {
         // Serializa com a finalização da OS e relê o orçamento depois do bloqueio (revisão TASK-0015, F1).
-        workOrderEvents.lockForCommercialChange(quote.workOrderId());
+        lockOpenWorkOrder(quote.workOrderId(), "OS finalizada, entregue ou cancelada não aceita mais decisão no orçamento");
         quote = quotes.findById(quote.id()).orElseThrow();
         Instant now = Instant.now(clock);
         QuoteRevision revision = quote.revision(revisionId)
@@ -311,5 +313,11 @@ public class PublicQuoteService {
 
     private static QuoteException notAvailable() {
         return new QuoteException("PUBLIC_QUOTE_NOT_AVAILABLE", "Orçamento indisponível");
+    }
+
+    /** Bloqueia a OS e recusa a operação se ela já foi finalizada, entregue ou cancelada (ver QuoteApplicationService). */
+    private void lockOpenWorkOrder(UUID workOrderId, String message) {
+        if (!workOrderEvents.lockForCommercialChange(workOrderId))
+            throw new QuoteException("WORK_ORDER_CLOSED", message);
     }
 }
