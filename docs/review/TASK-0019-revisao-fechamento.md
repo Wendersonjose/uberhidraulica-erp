@@ -52,12 +52,13 @@ Severidade: **A** alta, **M** média, **B** baixa. "Defeito" foi corrigido nesta
 | F13 | M | Segurança | `DB_PASSWORD` com padrão `uberhidraulica_dev` também em `prod`; `${VAR}` vazio passava no compose | Defeito — sem padrão em `prod`, `:?` no compose |
 | F5a | M | Estoque/Financeiro | estorno manual de baixa da OS devolvia o saldo mas não saía do custo de peças do painel | Defeito — SQL + teste em PostgreSQL (falha sem a correção) |
 | FE-2 | M | Frontend | celular (390 px): rolagem horizontal da página (sidebar e painel) | Defeito |
+| F15 | A | Deploy | healthcheck do nginx (`wget localhost` → `::1`; nginx só escuta IPv4) deixava o container `unhealthy` em runner com IPv6 e quebrava `docker compose up --wait` (visto só no CI) | Defeito — `127.0.0.1` nos healthchecks |
 | FE-3 | B | Frontend | contagem do fechamento/abertura do Caixa nascia com valor antigo e exigia justificativa inexistente | Defeito |
 | F5b | M | Domínio | item físico **rejeitado** pelo cliente continua baixado e entra no custo de peças; não há remoção de item da OS | **Decisão — DR-0019** (contorno: estornar a baixa) |
 | F7a | M | IAM | sem bloqueio de conta por tentativas (30 falhas seguidas → 401 e depois login OK) | Mitigação no nginx (6/min por IP); **Decisão — DR-0020** |
 | F7b | M | IAM | `IAM_USERS_MANAGE` permite criar usuário com perfil `DONO` (escalada se o Dono delegar) | **Decisão — DR-0020**; contorno: não delegar `IAM_*` |
 | F14 | B | Frontend/API | erros do framework (404/405/415/400 de UUID) fora do formato `{code,message,details}`; sufixo de unidade de galão/balde | Mensagens em português no frontend; sufixos corrigidos; formato do backend → pós-MVP |
-| — | B | Backend | aviso do Hibernate Validator `HV000271` (`@Valid` em `List`) | Pós-MVP (apenas ruído de log) |
+| F16 | B | Backend | aviso do Hibernate Validator `HV000271` (`@Valid` em `List`) a cada requisição | Defeito — `List<@Valid X>`, comportamento idêntico |
 | — | — | Escopo | Compras, Comissões, Conciliação, Fiscal sem Task/DR/código | **Decisão — DR-0021** |
 
 ## 4. O que foi verificado e está correto
@@ -96,7 +97,27 @@ Também corrigidos, sem reabrir: `TASK-0003` (política de senha, charset), `TAS
 
 ## 6. Resultado dos gates finais
 
-@@GATES@@
+Branch `feature/finalizacao-mvp-oficina`, commit `064f477` (CI) e a mesma árvore localmente.
+
+| Gate | Resultado |
+| --- | --- |
+| `mvn compile` | OK |
+| `mvn clean test` local (PostgreSQL 18 real, Testcontainers) | **259 testes, 0 falhas, 0 erros, 0 skips** — BUILD SUCCESS (9m56s) |
+| Testes de integração em PostgreSQL | todos executados (nenhum pulado); 259 = 247 do baseline + 12 novos |
+| Subconjunto sem Docker (inclui `ModularityTest`) | 74 testes, 0 falhas |
+| `ModularityTest` (Spring Modulith) | OK |
+| CI GitHub Actions — job `test` | **259 testes, 0 falhas, 0 erros, 0 skips** — BUILD SUCCESS (5m54s), [run 64](https://github.com/Wendersonjose/uberhidraulica-erp/actions/runs/37346397823) |
+| Frontend (local e CI) | 17 arquivos, **135 testes**, 0 falhas; `tsc --noEmit`, `oxlint` e `vite build` limpos |
+| CI — job `deploy-smoke` (runner com Docker) | **SMOKE OK**: builds do Maven e do Node, PG 18, 21 migrations do zero, healthchecks, E2E pelo nginx, IP forjado não gravado, reinício com dados, backup, `down -v`, restore, login após restore, 429 no login |
+| E2E por HTTP (`workshop_flow.py`) | 103/103 verificações (PG 16 direto e PG 18 atrás do nginx) |
+| Navegador (Chromium) | 48/48 verificações (CSP, 14 rotas, Caixa, link público, celular) |
+| `git diff --check` | limpo |
+
+Descoberto só no CI: o healthcheck do nginx falhava em runner com IPv6 (`wget localhost` → `::1`, nginx só IPv4) e
+travava o `docker compose up --wait` (**F15**, corrigido: `127.0.0.1`). O primeiro run do job (`7e14264`) falhou por
+isso; o run seguinte, com a correção, passou inteiro.
+
+O job `migrations-immutable` só roda em Pull Request.
 
 ## 7. Bloqueadores de produção
 
@@ -111,7 +132,7 @@ Também corrigidos, sem reabrir: `TASK-0003` (política de senha, charset), `TAS
 - `DR-0019`: item rejeitado × estoque/custo (contorno: estornar a baixa).
 - `DR-0021`: Compras, Comissões, Conciliação, Fiscal/NFS-e, rentabilidade avançada, garantia avançada.
 - Reserva de estoque/inventário; composição de kits e aplicações por veículo.
-- Formato de erro `{code,message,details}` para erros do framework; aviso `HV000271`.
+- Formato de erro `{code,message,details}` para erros do framework (404/405/415/400 de UUID).
 - Chunk do frontend de ~600 kB (code splitting).
 - Observabilidade avançada (métricas/tracing); OpenAPI gerado; Transactional Outbox quando houver integração externa.
 

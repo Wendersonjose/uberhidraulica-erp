@@ -24,7 +24,7 @@ Decision Request — sem inventar regra de negócio, financeira, fiscal ou de co
 | IAM | `PasswordPolicy` (8 caracteres a 72 bytes) na troca de senha e no bootstrap; respostas 401/403 em UTF-8 |
 | Estoque/Financeiro | estorno de baixa da OS passa a sair do custo histórico de peças |
 | Frontend | tela do Caixa corrigida (204), formulários do Caixa, layout mobile, guards de rota por permissão, mensagens de erro em português |
-| Deploy | `compose.yaml` é o stack do piloto; volume do PG18; `.env.example` sem segredo; perfil `prod` sem senha padrão; `SESSION_COOKIE_SECURE`; nginx (IP real, cabeçalhos, CSP, limite de login) |
+| Deploy | `compose.yaml` é o stack do piloto; volume do PG18; `.env.example` sem segredo; perfil `prod` sem senha padrão; `SESSION_COOKIE_SECURE`; nginx (IP real, cabeçalhos, CSP, limite de login); healthchecks por IPv4 |
 | CI | job `deploy-smoke` (stack Docker + E2E + reinício + backup + restore) e `migrations-immutable` (PR) |
 | Testes | `PasswordPolicyTest`, `Task0019SecurityHardeningIntegrationTest`, fechamento concorrente do caixa, custo × estorno, 15 testes frontend novos, `scripts/e2e/workshop_flow.py` (103 verificações) |
 | Documentação | README com o estado real, `DEPLOY-piloto.md` validado, `AGENTS.md` reconciliado, contrato IAM, relatório de revisão |
@@ -42,7 +42,20 @@ eles, e implementá-los "para constar" contraria a regra de escopo do `AG-00` (s
 
 ## Checkpoint
 
-@@CHECKPOINT@@
+| Gate | Resultado |
+| --- | --- |
+| `mvn compile` | verde |
+| `mvn clean test` (PostgreSQL 18 real, Testcontainers) | **259 testes, 0 falhas, 0 erros, 0 skips** — local (9m56s) e no GitHub Actions ([run 64](https://github.com/Wendersonjose/uberhidraulica-erp/actions/runs/37346397823), 5m54s) |
+| Suíte sem Docker (inclui `ModularityTest`) | 74 testes verdes |
+| Frontend | 17 arquivos, **135 testes** verdes; `tsc`, `oxlint`, `vite build` limpos |
+| Banco do zero | 21 migrations em PostgreSQL 16 e 18 vazios + `ddl-auto=validate`; reconstruído a cada classe de integração |
+| E2E por HTTP | 103/103 (direto e atrás do nginx) |
+| Navegador (Chromium) | 48/48 |
+| `deploy-smoke` no CI | SMOKE OK: build das imagens, saúde, E2E pelo nginx, reinício, backup, restore em volume novo, 429 no login |
+| `git diff --check` | limpo |
+
+Falhas observadas e corrigidas no caminho (nenhuma escondida): run `7e14264` do `deploy-smoke` falhou por healthcheck
+IPv6 do nginx — corrigido e reexecutado até passar.
 
 ## Histórico
 

@@ -87,7 +87,7 @@ python3 scripts/e2e/workshop_flow.py          # fluxo E2E da oficina por HTTP (v
 scripts/deploy/compose-smoke.sh               # stack do piloto com Docker: E2E pelo nginx, reinício, backup e restore
 ```
 
-Números de 2026-10-05 (ver o relatório de fechamento): backend @@BACKEND_TESTS@@; frontend 17 arquivos, 135 testes;
+Números de 2026-10-05 (ver o relatório de fechamento): backend 259 testes (74 deles sem Docker); frontend 17 arquivos, 135 testes;
 E2E 103 verificações; navegador (Chromium) 48 verificações. O CI (`.github/workflows/backend-ci.yml`) roda a suíte
 backend, o frontend, o smoke de deploy e, em PR, a imutabilidade das migrations.
 
@@ -114,7 +114,7 @@ Guia completo — HTTPS, backup, restore, atualização, rollback e checklist de
 - O painel financeiro não é DRE e não custeia mão de obra.
 - Erros do framework (rota inexistente, método, tipo de conteúdo) saem no formato padrão do Spring, não em
   `{code, message, details}`; o frontend mostra mensagem em português.
-- A suíte de integração precisa de Docker; sem ele só rodam os 69+ testes unitários e de arquitetura.
+- A suíte de integração precisa de Docker; sem ele só rodam os 74 testes unitários e de arquitetura.
 
 ## Próximos passos
 
