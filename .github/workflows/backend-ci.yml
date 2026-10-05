@@ -101,3 +101,8 @@ jobs:
 
       - name: Compose smoke (build, health, E2E, restart, backup, restore)
         run: scripts/deploy/compose-smoke.sh
+
+      - name: Proxy confiável (X-Forwarded-For forjado, falha fechada, limite por IP real)
+        run: |
+          docker build -f frontend/Dockerfile -t erp-frontend-ci .
+          scripts/deploy/proxy-trust-check.sh erp-frontend-ci

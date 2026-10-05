@@ -27,6 +27,8 @@ OWNER_EMAIL="dono-smoke@example.test"
 
 cat > "${ENV_FILE}" <<EOF
 SPRING_PROFILES_ACTIVE=prod
+# O smoke fala HTTP puro: o cookie sem Secure só é aceito com a homologação declarada de propósito (falha fechada).
+APP_ENVIRONMENT=homologation
 SESSION_COOKIE_SECURE=false
 HTTP_PORT=${HTTP_PORT}
 DB_NAME=uberhidraulica
