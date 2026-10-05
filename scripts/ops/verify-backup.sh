@@ -29,12 +29,13 @@ name="erp-verify-$$"
 trap 'docker rm -f "$name" >/dev/null 2>&1' EXIT
 password="$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | cut -c1-20)"
 docker run -d --name "$name" -e POSTGRES_PASSWORD="$password" -e POSTGRES_DB=verify "$IMAGE" >/dev/null
-for _ in $(seq 1 60); do
-    docker exec "$name" pg_isready -U postgres -d verify >/dev/null 2>&1 && break
+# Durante o initdb o entrypoint sobe um servidor TEMPORÁRIO que só atende no socket unix e depois o reinicia: um
+# pg_isready pelo socket passa cedo demais. Só o servidor definitivo escuta em TCP, então a espera é por 127.0.0.1.
+for _ in $(seq 1 90); do
+    docker exec "$name" pg_isready -h 127.0.0.1 -U postgres -d verify >/dev/null 2>&1 && break
     sleep 1
 done
-docker exec "$name" pg_isready -U postgres -d verify >/dev/null 2>&1 || die "o PostgreSQL descartável não subiu."
-sleep 2 # o entrypoint reinicia o servidor uma vez depois do initdb
+docker exec "$name" pg_isready -h 127.0.0.1 -U postgres -d verify >/dev/null 2>&1 || die "o PostgreSQL descartável não subiu."
 
 psql_v() { docker exec -i "$name" psql -U postgres -d verify -tA -v ON_ERROR_STOP=1 "$@"; }
 
