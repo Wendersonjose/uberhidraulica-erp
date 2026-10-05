@@ -146,6 +146,19 @@ for i in $(seq 1 30); do
 done
 check "D2 cliente comum girando X-Forwarded-For continua limitado como um só" "$([ "$limited" -gt 0 ] && echo sim || echo não)" sim
 
+echo "== E. o log de acesso não grava o token do link público"
+start_erp ""
+SECRET_PAGE="tokPAGINA$(head -c 12 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | cut -c1-16)"
+SECRET_API="tokAPI$(head -c 12 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | cut -c1-16)"
+from "$OUTSIDER_IP" -o /dev/null "http://$ERP/orcamento/$SECRET_PAGE"
+from "$OUTSIDER_IP" -o /dev/null -X POST -H "Referer: http://$ERP/orcamento/$SECRET_PAGE" "http://$ERP/api/public/quotes/$SECRET_API/decision?x=1"
+sleep 1
+access_log="$(docker logs "$ERP" 2>&1)"
+check "E1 o token da página não aparece no log" "$(printf '%s' "$access_log" | grep -c "$SECRET_PAGE")" 0
+check "E2 o token da API não aparece no log" "$(printf '%s' "$access_log" | grep -c "$SECRET_API")" 0
+check_contains "E3 a rota continua registrada, com o token mascarado" "$access_log" 'POST /api/public/quotes/[token]/decision?x=1'
+check_contains "E4 a página também, e o Referer mascarado" "$access_log" 'GET /orcamento/[token]'
+
 echo
 echo "proxy-trust-check: $pass ok, $fail falhas"
 [ "$fail" -eq 0 ]
