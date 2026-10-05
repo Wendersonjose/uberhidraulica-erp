@@ -47,7 +47,18 @@ public class ProductionStartupGuard implements EnvironmentPostProcessor, Ordered
 
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
-        if (!environment.acceptsProfiles(Profiles.of(PROD_PROFILE))) return;
+        if (!environment.acceptsProfiles(Profiles.of(PROD_PROFILE))) {
+            // APP_ENVIRONMENT só é declarado pelo deploy (compose.yaml). Declarado sem o perfil prod, quase certamente é um
+            // erro de digitação em SPRING_PROFILES_ACTIVE: valeriam os padrões de desenvolvimento (senha do banco
+            // conhecida, cookie sem Secure) em um servidor de verdade.
+            String declared = value(environment, ENVIRONMENT_PROPERTY);
+            if (declared != null && !declared.isBlank())
+                throw new IllegalStateException("Configuração recusada (o sistema falha fechado):\n - APP_ENVIRONMENT="
+                        + declared.trim() + " foi declarado, mas o perfil 'prod' não está ativo (perfis ativos: "
+                        + String.join(",", environment.getActiveProfiles()) + "). Sem ele valem os padrões de "
+                        + "desenvolvimento. Corrija SPRING_PROFILES_ACTIVE.");
+            return;
+        }
         List<String> violations = violations(environment);
         if (!violations.isEmpty()) {
             throw new IllegalStateException("Configuração de produção recusada (o sistema falha fechado):\n - "

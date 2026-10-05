@@ -129,6 +129,17 @@ class ProductionStartupGuardTest {
         new ProductionStartupGuard(new DeferredLogs()).postProcessEnvironment(environment, null);
     }
 
+    @Test
+    void aDeclaredEnvironmentWithoutTheProdProfileIsRefused() {
+        StandardEnvironment environment = new StandardEnvironment();
+        environment.setActiveProfiles("prd");
+        environment.getPropertySources().addFirst(new MapPropertySource("test", Map.of("app.environment", "production")));
+        assertThatThrownBy(() -> new ProductionStartupGuard(new DeferredLogs()).postProcessEnvironment(environment, null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("perfil 'prod' não está ativo")
+                .hasMessageContaining("prd");
+    }
+
     /** O registro em META-INF/spring.factories funciona: o app de verdade recusa subir, sem banco e sem Docker. */
     @Test
     void theRealApplicationRefusesToStartInProdWithAWeakPassword() {
