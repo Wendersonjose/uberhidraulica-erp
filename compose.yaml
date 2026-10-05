@@ -1,27 +1,87 @@
+# Stack do piloto de uma oficina: postgres + backend (Spring Boot) + frontend (nginx).
+#
+# Uso:
+#   cp .env.example .env        # preencha os valores; nunca commite o .env real
+#   docker compose up -d --build
+#
+# Este é o arquivo que o `docker compose` encontra por padrão na raiz do repositório. O PostgreSQL isolado
+# para desenvolvimento local fica em compose.dev.yaml (`docker compose -f compose.dev.yaml up -d`).
+# HTTPS, backup, restore e o passo a passo completo: docs/architecture/devops/DEPLOY-piloto.md
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:18-alpine
-    container_name: uberhidraulica-postgres
-
+    restart: unless-stopped
+    logging: *logging
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-uberhidraulica}
-      POSTGRES_USER: ${POSTGRES_USER:-uberhidraulica}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-uberhidraulica_dev}
-
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-
+      POSTGRES_DB: ${DB_NAME:?defina DB_NAME no .env}
+      POSTGRES_USER: ${DB_USERNAME:?defina DB_USERNAME no .env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?defina DB_PASSWORD no .env}
     volumes:
-      - uberhidraulica_postgres_data:/var/lib/postgresql
-
+      # PostgreSQL 18+ grava os dados em /var/lib/postgresql/<versão>/docker. O mount precisa ficar em
+      # /var/lib/postgresql: montar em /var/lib/postgresql/data faz o container abortar na subida.
+      - postgres_data:/var/lib/postgresql
     healthcheck:
-      test:
-        - CMD-SHELL
-        - pg_isready -U ${POSTGRES_USER:-uberhidraulica} -d ${POSTGRES_DB:-uberhidraulica}
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 10s
+    # Não publique 5432 para fora do host em produção; descomente só para depuração local.
+    # ports: ["127.0.0.1:5432:5432"]
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      # `prod` liga o cookie de sessão Secure (exige HTTPS na frente) e o IP real atrás do proxy.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      # Somente homologação em HTTP puro pode usar `false`; em produção o valor tem de ser `true`.
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:?defina DB_NAME no .env}
+      DB_USERNAME: ${DB_USERNAME:?defina DB_USERNAME no .env}
+      DB_PASSWORD: ${DB_PASSWORD:?defina DB_PASSWORD no .env}
+      SERVER_PORT: 8080
+      # Só têm efeito enquanto não existir nenhum usuário (DR-0002); podem ser removidas depois do primeiro login.
+      IAM_BOOTSTRAP_OWNER_NAME: ${IAM_BOOTSTRAP_OWNER_NAME:-}
+      IAM_BOOTSTRAP_OWNER_EMAIL: ${IAM_BOOTSTRAP_OWNER_EMAIL:-}
+      IAM_BOOTSTRAP_OWNER_PASSWORD: ${IAM_BOOTSTRAP_OWNER_PASSWORD:-}
+      # Somente com SPRING_PROFILES_ACTIVE=prod,supabase (banco gerenciado no lugar do container postgres).
+      SUPABASE_DB_URL: ${SUPABASE_DB_URL:-}
+      SUPABASE_DB_USERNAME: ${SUPABASE_DB_USERNAME:-}
+      SUPABASE_DB_PASSWORD: ${SUPABASE_DB_PASSWORD:-}
+      FLYWAY_DEFAULT_SCHEMA: ${FLYWAY_DEFAULT_SCHEMA:-erp_meta}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    logging: *logging
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
 
 volumes:
-  uberhidraulica_postgres_data:
+  postgres_data:

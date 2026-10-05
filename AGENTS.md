@@ -700,7 +700,7 @@ Primeira simulação completa:
 TASK-0001 — Aprovação Parcial de Orçamento
 ```
 
-Status:
+Status da especificação:
 
 ```text
 SPECIFICATION_DONE
@@ -712,13 +712,23 @@ Decision Request:
 DR-0001 — DECIDED — OPÇÃO B
 ```
 
-Implementação:
+Implementação (atualizado em 2026-10-05; este bloco dizia `NOT_IMPLEMENTED`, o que deixou de ser verdade):
 
 ```text
-NOT_IMPLEMENTED
+IMPLEMENTADA — TASK-0007 (versionamento comercial) e TASK-0008 (acesso público e decisão do cliente),
+com TASK-0013 (decisão interna) e TASK-0015 (recebível apenas do aprovado).
 ```
 
-O objetivo da TASK-0001 foi validar o processo de governança antes do início da implementação real.
+O objetivo da TASK-0001 foi validar o processo de governança antes da implementação real; a implementação seguiu
+o contrato aprovado.
+
+---
+
+# Estado do projeto
+
+O índice de Tasks concluídas está em `tasks/done/` (TASK-0001 a TASK-0019). O estado funcional, o que está
+pendente e as decisões em aberto estão no `README.md` (seção "Estado atual") e em `decision-requests/`.
+Pendências que dependem do proprietário: DR-0019, DR-0020 e DR-0021.
 
 ---
 

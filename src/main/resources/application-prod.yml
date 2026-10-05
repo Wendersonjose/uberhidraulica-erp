@@ -3,4 +3,12 @@ server:
   servlet:
     session:
       cookie:
-        secure: true
+        # Seguro por padrão: o cookie de sessão só trafega por HTTPS. Só uma homologação em HTTP puro
+        # desliga isto (SESSION_COOKIE_SECURE=false, ver DEPLOY-piloto.md); produção nunca.
+        secure: ${SESSION_COOKIE_SECURE:true}
+
+spring:
+  datasource:
+    # Sem valor padrão em produção: sem DB_PASSWORD o backend falha ao subir em vez de tentar a senha de
+    # desenvolvimento do application.yml. O perfil `supabase` sobrescreve esta propriedade.
+    password: ${DB_PASSWORD}

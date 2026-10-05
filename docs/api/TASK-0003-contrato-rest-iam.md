@@ -56,6 +56,10 @@ POST /api/iam/password/change
 
 Entrada conceitual: senha atual e nova senha. Remove troca obrigatória após sucesso. Não ecoa senhas.
 
+**Política de senha (TASK-0019).** A nova senha tem de 8 caracteres a 72 bytes em UTF-8 (limite do bcrypt); fora disso
+a resposta é `400 PASSWORD_POLICY_VIOLATION`, sem eco da senha. O mesmo vale para a senha do bootstrap do Dono. Não há
+regra de composição nem de expiração (decisão de produto em aberto: `DR-0020`).
+
 ### Redefinição administrativa
 
 ```http
@@ -108,6 +112,7 @@ AUTHENTICATION_REQUIRED
 ACCESS_DENIED
 PASSWORD_CHANGE_REQUIRED
 CURRENT_PASSWORD_INVALID
+PASSWORD_POLICY_VIOLATION
 USER_NOT_FOUND (somente em contexto administrativo autorizado)
 DUPLICATE_USER_EMAIL
 INVALID_PERMISSION_RESOLUTION
@@ -117,6 +122,10 @@ LAST_ACTIVE_OWNER_REQUIRED
 ```
 
 Lista e nomes são proposta técnica rastreável. Mensagens não expõem segredos nem permitem enumeração no login.
+Respostas `401` e `403` geradas pelo filtro de segurança são `application/json;charset=UTF-8`.
+
+Limite de tentativas de login: o nginx do piloto responde `429` acima de 6 requisições/minuto por IP (rajada 20);
+não existe bloqueio por conta no backend (`DR-0020`).
 
 ## Permissões administrativas
 

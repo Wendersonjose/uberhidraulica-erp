@@ -53,14 +53,14 @@ function DashboardView({ data }: { data: FinanceDashboard }) {
   return <div className="stack">
     <section className="card" aria-label="Resultado do período">
       <h2>Resultado do período</h2>
-      <div className="metrics" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+      <div className="metrics metrics-2">
         <div className="metric" data-testid="dashboard-gross-profit">
           <span className="muted">Lucro bruto</span>
-          <strong style={{ fontSize: 32 }}>{formatBrl(data.grossProfit)}</strong>
+          <strong className="metric-large">{formatBrl(data.grossProfit)}</strong>
         </div>
         <div className="metric" data-testid="dashboard-operating-result">
           <span className="muted">Resultado operacional</span>
-          <strong style={{ fontSize: 32 }}>{formatBrl(data.operatingResult)}</strong>
+          <strong className="metric-large">{formatBrl(data.operatingResult)}</strong>
         </div>
       </div>
     </section>
@@ -78,7 +78,7 @@ function DashboardView({ data }: { data: FinanceDashboard }) {
     </section>
     <section className="card" aria-label="Custos e despesas">
       <h2>Custos e despesas</h2>
-      <div className="metrics" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+      <div className="metrics metrics-3">
         <div className="metric" data-testid="dashboard-parts-cost"><span className="muted">Custo de peças</span><strong>{formatBrl(data.partsCost)}</strong></div>
         <div className="metric" data-testid="dashboard-expenses-registered"><span className="muted">Despesas registradas</span><strong>{formatBrl(data.expensesRegistered)}</strong></div>
         <div className="metric" data-testid="dashboard-expenses-paid"><span className="muted">Despesas pagas</span><strong>{formatBrl(data.expensesPaid)}</strong></div>
@@ -86,7 +86,7 @@ function DashboardView({ data }: { data: FinanceDashboard }) {
     </section>
     <section className="card" aria-label="Margens">
       <h2>Margens</h2>
-      <div className="metrics" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+      <div className="metrics metrics-2">
         <div className="metric" data-testid="dashboard-gross-margin"><span className="muted">Margem bruta</span><strong>{formatPercent(data.grossMargin)}</strong></div>
         <div className="metric" data-testid="dashboard-operating-margin"><span className="muted">Margem operacional</span><strong>{formatPercent(data.operatingMargin)}</strong></div>
       </div>

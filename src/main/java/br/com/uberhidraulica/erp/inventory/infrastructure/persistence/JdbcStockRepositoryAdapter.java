@@ -128,15 +128,22 @@ class JdbcStockRepositoryAdapter implements StockRepositoryPort {
         // Saída não grava custo próprio (unit_cost é nulo em toda movimentação de saída, Stock#remove):
         // o custo histórico da baixa é o average_cost_after, que a saída nunca altera. A devolução
         // (WORK_ORDER_RETURN) não grava custo próprio: reverte pelo average_cost_after do movimento
-        // original, nunca pelo custo atual do catálogo.
+        // original, nunca pelo custo atual do catálogo. O estorno manual (REVERSAL) de uma baixa da OS
+        // devolve o saldo, então também sai do custo — pelo custo do movimento estornado; já o estorno
+        // de uma devolução reinstala a baixa, pelo custo da baixa que a devolução desfez.
         java.math.BigDecimal total = jdbc.queryForObject("""
                 select coalesce(sum(
                     case when m.movement_type = 'WORK_ORDER_OUT' then m.quantity * m.average_cost_after
                          when m.movement_type = 'WORK_ORDER_RETURN' then -(m.quantity * orig.average_cost_after)
+                         when m.movement_type = 'REVERSAL' and orig.movement_type = 'WORK_ORDER_OUT'
+                              then -(m.quantity * orig.average_cost_after)
+                         when m.movement_type = 'REVERSAL' and orig.movement_type = 'WORK_ORDER_RETURN'
+                              then m.quantity * coalesce(writeoff.average_cost_after, 0)
                          else 0 end), 0)
                 from inventory.stock_movement m
                 left join inventory.stock_movement orig on orig.id = m.reverses_movement_id
-                where m.work_order_id in (:ids) and m.movement_type in ('WORK_ORDER_OUT', 'WORK_ORDER_RETURN')""",
+                left join inventory.stock_movement writeoff on writeoff.id = orig.reverses_movement_id
+                where m.work_order_id in (:ids) and m.movement_type in ('WORK_ORDER_OUT', 'WORK_ORDER_RETURN', 'REVERSAL')""",
                 Map.of("ids", workOrderIds), java.math.BigDecimal.class);
         return total == null ? java.math.BigDecimal.ZERO : total;
     }

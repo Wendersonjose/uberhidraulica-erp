@@ -64,7 +64,7 @@ public class SecurityConfig {
                 .securityContext(context -> context.requireExplicitSave(true))
                 .exceptionHandling(errors -> errors
                         .authenticationEntryPoint((request, response, exception) -> {
-                            response.setStatus(401); response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            response.setStatus(401); jsonUtf8(response);
                             response.getWriter().write("{\"code\":\"AUTHENTICATION_REQUIRED\",\"message\":\"Autenticação necessária\",\"details\":[]}");
                         })
                         .accessDeniedHandler((request, response, exception) -> {
@@ -77,11 +77,22 @@ public class SecurityConfig {
                                 LOGGER.error("Falha ao auditar acesso negado a {} {}",
                                         request.getMethod(), request.getRequestURI(), auditFailure);
                             }
-                            response.setStatus(403); response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            response.setStatus(403); jsonUtf8(response);
                             response.getWriter().write("{\"code\":\"ACCESS_DENIED\",\"message\":\"Acesso negado\",\"details\":[]}");
                         }))
                 .sessionManagement(session -> session.sessionFixation(fixation -> fixation.changeSessionId()))
                 .addFilterAfter(mustChange, UsernamePasswordAuthenticationFilter.class);
         return http.build();
+    }
+
+    /**
+     * Corpo JSON escrito direto na resposta, fora do conversor do Spring MVC.
+     *
+     * <p>Sem charset explícito o contêiner serializa o {@code Writer} em ISO-8859-1, e "Autenticação"
+     * sai com um byte que não é UTF-8 válido: o cliente decodifica texto corrompido.</p>
+     */
+    private static void jsonUtf8(jakarta.servlet.http.HttpServletResponse response) {
+        response.setCharacterEncoding(java.nio.charset.StandardCharsets.UTF_8);
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
     }
 }

@@ -75,7 +75,7 @@ public class PublicQuoteController {
                                   @NotBlank @Size(max = 100) String requestId,
                                   @NotNull @Valid Customer customer,
                                   boolean explicitAcceptance,
-                                  @NotEmpty @Valid List<ItemDecisionRequest> decisions) {}
+                                  @NotEmpty List<@Valid ItemDecisionRequest> decisions) {}
 
     public record Customer(@NotBlank @Size(max = 200) String name,
                            @NotNull DocumentType documentType,

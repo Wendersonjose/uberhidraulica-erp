@@ -45,10 +45,12 @@ export function CashSessionPage() {
     <QueryState label="o caixa" loading={session.isLoading || suggested.isLoading || pending.isLoading}
                 error={session.error ?? suggested.error ?? pending.error} retry={() => { session.refetch(); suggested.refetch(); pending.refetch() }}>
       <div className="stack">
-        {pending.data && <PendingCheck session={pending.data} onChange={refresh} />}
+        {pending.data && <PendingCheck key={`${pending.data.id}:${pending.data.closingExpectedBalance}`} session={pending.data} onChange={refresh} />}
         {session.data
           ? <OpenSession session={session.data} movements={movements.data ?? []} movementsLoading={movements.isLoading} onChange={refresh} />
-          : <ClosedState suggested={suggested.data?.amount ?? 0} onChange={refresh} />}
+          // A contagem nasce igual ao saldo sugerido; a chave a refaz quando o sugerido muda (por exemplo, logo
+          // depois de fechar a sessão anterior), em vez de exigir justificativa de uma divergência inexistente.
+          : <ClosedState key={suggested.data?.amount ?? 0} suggested={suggested.data?.amount ?? 0} onChange={refresh} />}
       </div>
     </QueryState>
   </>
@@ -127,7 +129,9 @@ function OpenSession({ session, movements, movementsLoading, onChange }: {
       <aside className="stack">
         <ManualMovement type="SUPPLY" onChange={onChange} />
         <ManualMovement type="WITHDRAWAL" onChange={onChange} />
-        <CloseForm session={session} onChange={onChange} />
+        {/* A contagem nasce igual ao saldo esperado; com a chave, um suprimento ou sangria que muda o esperado
+            refaz o padrão em vez de deixar o valor antigo e exigir justificativa de uma divergência que não existe. */}
+        <CloseForm key={session.currentExpectedBalance} session={session} onChange={onChange} />
       </aside>
     </div>
   </div>

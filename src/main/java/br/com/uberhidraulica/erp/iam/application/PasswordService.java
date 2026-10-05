@@ -20,6 +20,7 @@ public class PasswordService {
 
     @Transactional
     public void change(UUID userId, String currentPassword, String newPassword) {
+        PasswordPolicy.require(newPassword);
         IamUser user = users.findById(userId).orElseThrow(() -> new IamException("USER_NOT_FOUND", "Usuário não encontrado"));
         if (!encoder.matches(currentPassword, user.passwordHash())) {
             audit.recordIndependent(userId, "PASSWORD_CHANGED", "USER", userId.toString(), "FAILURE", null, null);

@@ -11,13 +11,24 @@ export function onSessionIssue(listener: (issue: SessionIssue) => void) {
 }
 // Discard responses belonging to an earlier session, including late 401s.
 export function resetApiSession() { sessionVersion++ }
+/** Mensagem em português quando a resposta não traz uma do contrato da API (proxy, framework, rede). */
+export function statusMessage(status: number) {
+  if (status === 429) return 'Muitas tentativas em pouco tempo. Aguarde um instante e tente novamente.'
+  if (status === 401) return 'Sessão expirada. Entre novamente.'
+  if (status === 403) return 'Acesso negado.'
+  if (status === 404) return 'Registro não encontrado.'
+  if (status === 409) return 'A operação conflita com o estado atual do registro.'
+  if (status >= 500) return 'Erro interno. Tente novamente em instantes.'
+  return `Erro ${status}`
+}
 async function parseError(response: Response) {
-  let message = `Erro ${response.status}`, code: string | undefined
+  let message = statusMessage(response.status), code: string | undefined
   try {
     const body = await response.json()
-    message = body.message || body.detail || body.error || message
+    // Só o contrato da API ({code, message, details}) traz texto para o usuário; o `error` do Spring é em inglês.
+    message = body.message || body.detail || message
     code = body.code
-  } catch { /* Non-JSON errors still carry an HTTP status. */ }
+  } catch { /* Non-JSON errors (por exemplo, o 429 do nginx) ainda carregam o status HTTP. */ }
   return new ApiError(message, response.status, code)
 }
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {

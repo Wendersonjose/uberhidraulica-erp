@@ -2,13 +2,126 @@
 
 ERP em desenvolvimento para digitalizar e integrar a operação da Uber-Hidráulica, centralizando oficina, clientes, veículos, catálogo, estoque, compras, financeiro, comissões, conciliação, fiscal e rentabilidade.
 
-> **Estado em 2026-09-14.** A fundação executável do backend foi concluída na `TASK-0002` e o IAM na `TASK-0003`: Spring Boot, PostgreSQL, Flyway, Testcontainers, Spring Modulith, autenticação por sessão e CSRF estão funcionando e validados por testes automatizados.
+> **Estado em 2026-10-05 — `READY_FOR_HOMOLOGATION` (piloto de uma oficina). Não é `READY_FOR_PRODUCTION`.**
 >
-> A `TASK-0004` entregou a vertical Cliente → Veículo → Serviço → Ordem de Serviço, com backend e frontend React integrados. A `TASK-0005` acrescentou o catálogo de produtos físicos (peças, fluidos e insumos), a `TASK-0006` passou a permitir o lançamento desses itens na OS com snapshot comercial, e a `TASK-0007` implementou o orçamento com versionamento comercial: apresentações versionadas, histórico imutável por item, validade de sete dias e obsolescência derivada por item.
+> O sistema executável cobre o ciclo da oficina de ponta a ponta — cliente, veículo, serviço, peça, estoque, OS,
+> diagnóstico, orçamento versionado com aprovação parcial pelo cliente (link público), execução, faturamento,
+> recebimento, caixa físico, contas a pagar, fluxo de caixa e painel financeiro — com backend Spring Boot,
+> PostgreSQL, frontend React e deploy por Docker Compose. O que ainda **não** existe (Compras, Comissões,
+> Conciliação, Fiscal/NFS-e) está listado em [Funcionalidades pendentes](#funcionalidades-pendentes) e não deve ser
+> assumido como pronto. Produção exige HTTPS (depende do provedor) e a decisão das
+> [Decision Requests abertas](#decisões-pendentes-do-proprietário).
 >
-> A `TASK-0008` fechou a `TASK-0001 — Aprovação Parcial de Orçamento`: o cliente abre um link seguro, vê a proposta que recebeu e decide item a item, sem conta interna, com evidências, idempotência e atomicidade. Estoque, compras, financeiro, comissão, conciliação, fiscal e rentabilidade ainda não foram implementados.
->
-> **Antes de produção**, o fluxo público exige configuração de HTTPS, de proxies confiáveis para o IP real e de limitação de requisições — registrado em `docs/review/TASK-0008-revisao-tecnica.md`.
+> Detalhes da auditoria de fechamento: [`docs/review/TASK-0019-revisao-fechamento.md`](docs/review/TASK-0019-revisao-fechamento.md).
+
+---
+
+# Estado atual
+
+Legenda: **Entregue** · **Parcial** (existe, com lacuna declarada) · **Planejado** (especificado, sem código) ·
+**Fora do MVP** (decisão de escopo) · **Bloqueado** (depende de decisão ou de item externo).
+
+## Funcionalidades entregues
+
+| Área | Status | O que existe | Task |
+| --- | --- | --- | --- |
+| IAM / Segurança | Entregue | login por sessão (cookie `HttpOnly`, `SameSite=Lax`, `Secure` em produção), CSRF, bootstrap do Dono, troca obrigatória de senha, perfis fixos (Dono, Gerente Administrativo, Gerente Financeiro), permissões com exceções por usuário (`ALLOW`/`DENY`/`INHERIT`), uma sessão por usuário, auditoria | 0003, 0017 |
+| Administração de usuários | Entregue | criar usuário com senha temporária (exibida uma vez), ativar/inativar, redefinir senha, exceções de permissão (tela `/configuracoes/usuarios`) | 0003, 0018 |
+| Clientes e veículos | Entregue | cliente PF/PJ, veículo, busca, inativação, transferência de propriedade e histórico | 0009, 0010 |
+| Catálogo de serviços | Entregue | serviços, categorias, grupos de veículos, preço por veículo/grupo e sugestão de preço | 0011 |
+| Catálogo de peças e produtos | Parcial | cadastro com tipo, unidade (inclusive galão/balde), custo de referência e preço; **composição de kits/componentes e aplicações por veículo não existem** | 0005 |
+| Ordem de Serviço | Entregue | abertura, serviços e peças com snapshot de preço, diagnóstico, status configuráveis, Kanban, automações, histórico, cancelamento | 0004, 0006, 0012 |
+| Orçamento | Entregue | revisões com versionamento comercial, apresentação, validade de 7 dias, obsolescência derivada, desconto, decisão interna | 0007, 0013 |
+| Aprovação do cliente | Entregue | link público com token de 256 bits (somente o SHA-256 é guardado), decisão parcial item a item, evidências (nome, documento, aceite, IP, User-Agent), idempotência e atomicidade | 0001 → 0008 |
+| Estoque | Parcial | saldo físico, entrada, saída, ajuste, estorno, custo médio ponderado, baixa configurável pela OS, devolução no cancelamento; **reserva, inventário e perdas não existem** | 0014 |
+| Financeiro | Entregue | recebíveis por OS (só o que o cliente aprovou), recebimento parcial/total com idempotência, ajustes, estorno, contas a pagar, formas de pagamento, categorias, fluxo de caixa | 0015 |
+| Caixa físico | Entregue | sessão de caixa, suprimento, sangria, troco, estorno, fechamento manual/automático às 23:59, conferência | 0016 |
+| Painel financeiro | Parcial | faturamento, recebido, a receber, vencido, custo de peças, despesas, lucro e margem **bruta/operacional**; não é DRE e não custeia mão de obra | 0018 |
+| Deploy do piloto | Parcial | `docker compose up -d --build` (Postgres 18 + backend + nginx), healthchecks, backup/restore validados, CI com smoke de deploy; **HTTPS depende do provedor** | 0018, 0019 |
+
+## Funcionalidades pendentes
+
+| Área | Status | Situação |
+| --- | --- | --- |
+| Compras e Fornecedores | Planejado / Bloqueado | especificado em `agents/AG-05`; sem Task nem Decision Request — ver [DR-0021](decision-requests/DR-0021-escopo-piloto-modulos-especificados.md) |
+| Comissões | Planejado / Bloqueado | regra descrita no README e em `AG-06`; exige confirmar as regras — DR-0021 |
+| Conciliação bancária (Itaú, Rede, OFX, CSV) | Planejado / Bloqueado | exige layouts reais e credenciais — DR-0021 |
+| Fiscal / NFS-e (Uberlândia/MG) | Planejado / Bloqueado | exige certificado A1, API municipal e ambiente de homologação fiscal (todos externos) — DR-0021 |
+| Rentabilidade avançada e precificação | Planejado | só existe o painel gerencial; custo de mão de obra não definido |
+| Garantia avançada | Parcial | os dias de garantia do serviço ficam registrados na OS; validade e acionamento não existem |
+| Transactional Outbox | Planejado | os eventos entre módulos hoje são eventos Spring na mesma transação (suficiente para um monólito); o outbox só será necessário com integrações externas |
+| OpenAPI | Planejado | os contratos REST ficam em `docs/api`; não há especificação OpenAPI gerada |
+| Segunda autorização do Dono em ações críticas | Planejado | descrita nos requisitos, sem implementação |
+| Multi-tenant / SaaS | Fora do MVP | o piloto atende uma oficina (decisão da TASK-0018) |
+| WhatsApp, folha de pagamento, férias, 13º, rescisões, estoque máximo, lote/validade, mobile completo, offline | Fora do MVP | `agents/AG-00`, seção 24 |
+
+## Decisões pendentes do proprietário
+
+| DR | Assunto | Impede a homologação? |
+| --- | --- | --- |
+| [DR-0019](decision-requests/DR-0019-item-fisico-rejeitado-estoque-custo.md) | item físico rejeitado pelo cliente: o que acontece com o estoque e o custo | Não (há contorno documentado) |
+| [DR-0020](decision-requests/DR-0020-politica-autenticacao-bloqueio-delegacao.md) | bloqueio por tentativas de login, política de senha avançada, delegação do perfil Dono | Não; recomendada antes de expor na internet |
+| [DR-0021](decision-requests/DR-0021-escopo-piloto-modulos-especificados.md) | o que "MVP concluído" significa e a ordem dos módulos pendentes | Não |
+
+## Como executar (desenvolvimento)
+
+Requisitos: JDK 17+, Maven, Node 22+, Docker (para o PostgreSQL local e para os testes de integração).
+
+```bash
+docker compose -f compose.dev.yaml up -d      # PostgreSQL 18 só para desenvolvimento (127.0.0.1:5432)
+mvn spring-boot:run                           # backend em :8080; Flyway cria o schema inteiro
+cd frontend && npm ci && npm run dev          # frontend em :5173, com proxy de /api para :8080
+```
+
+O primeiro Dono é criado pelo bootstrap (só quando não há nenhum usuário): exporte
+`IAM_BOOTSTRAP_OWNER_NAME`, `IAM_BOOTSTRAP_OWNER_EMAIL` e `IAM_BOOTSTRAP_OWNER_PASSWORD` (8 a 72 caracteres) antes de
+subir o backend; o primeiro login exige trocar a senha.
+
+## Como testar
+
+```bash
+mvn clean test                                # backend: unitários + Modulith + integração com PostgreSQL 18 real (Testcontainers; exige Docker)
+cd frontend && npm ci
+npm test -- --run && npx tsc --noEmit && npm run lint && npm run build
+python3 scripts/e2e/workshop_flow.py          # fluxo E2E da oficina por HTTP (ver o cabeçalho do arquivo para as variáveis)
+scripts/deploy/compose-smoke.sh               # stack do piloto com Docker: E2E pelo nginx, reinício, backup e restore
+```
+
+Números de 2026-10-05 (ver o relatório de fechamento): backend 259 testes (74 deles sem Docker); frontend 17 arquivos, 135 testes;
+E2E 103 verificações; navegador (Chromium) 48 verificações. O CI (`.github/workflows/backend-ci.yml`) roda a suíte
+backend, o frontend, o smoke de deploy e, em PR, a imutabilidade das migrations.
+
+## Como subir com Docker (piloto)
+
+```bash
+cp .env.example .env     # preencha DB_PASSWORD e o bootstrap do Dono (segredos vêm vazios de propósito)
+docker compose up -d --build
+docker compose ps        # postgres, backend e frontend "healthy"
+```
+
+Guia completo — HTTPS, backup, restore, atualização, rollback e checklist de produção:
+[`docs/architecture/devops/DEPLOY-piloto.md`](docs/architecture/devops/DEPLOY-piloto.md). Homologação em HTTP puro exige
+`SESSION_COOKIE_SECURE=false` (nunca em produção).
+
+## Limitações conhecidas
+
+- **HTTPS não vem pronto**: depende do provedor de hospedagem. Sem HTTPS não declare produção.
+- Em OS com aprovação parcial, o item físico **rejeitado** continua baixado do estoque e entra no custo de peças do
+  painel até o operador estornar a baixa (`DR-0019`). O recebível fatura só o que o cliente aprovou.
+- Não há bloqueio de conta por tentativas de login; há limite por IP no nginx e senha mínima de 8 caracteres
+  (`DR-0020`). Quem tem `IAM_USERS_MANAGE` pode criar usuário `DONO`: não delegue permissões `IAM_*` a gerentes.
+- Todo usuário autenticado consulta (GET) os cadastros e as OS; a escrita e o financeiro são protegidos por permissão.
+- O painel financeiro não é DRE e não custeia mão de obra.
+- Erros do framework (rota inexistente, método, tipo de conteúdo) saem no formato padrão do Spring, não em
+  `{code, message, details}`; o frontend mostra mensagem em português.
+- A suíte de integração precisa de Docker; sem ele só rodam os 74 testes unitários e de arquitetura.
+
+## Próximos passos
+
+1. Proprietário decide `DR-0019`, `DR-0020` e `DR-0021`.
+2. Homologar com a oficina seguindo o checklist de `DEPLOY-piloto.md`; resolver HTTPS no provedor.
+3. Abrir, pelo fluxo de governança, a Task do próximo módulo definido na `DR-0021` (recomendado: Compras e Fornecedores).
+4. Fiscal/NFS-e só depois de haver certificado A1 e ambiente de homologação do município.
 
 ---
 
@@ -65,6 +178,9 @@ Módulos não acessam repositories internos de outros módulos.
 ```
 
 ---
+
+> As seções abaixo descrevem o **desenho-alvo** e as regras aprovadas do produto, preservadas como decisão histórica.
+> O que está efetivamente implementado, e o que não está, é a tabela de [Estado atual](#estado-atual).
 
 # Escopo Inicial
 
@@ -180,7 +296,7 @@ Integrações
 
 ---
 
-# Stack Planejada
+# Stack
 
 ## Backend
 
@@ -615,6 +731,9 @@ SHA-256 digest.
 
 # Estoque
 
+> Implementado hoje: **saldo físico**, entradas, saídas, ajustes, estorno e custo médio. Reserva (e portanto o
+> "disponível") e inventário são desenho-alvo, ainda não implementados.
+
 O estoque diferencia:
 
 ```text
@@ -652,6 +771,8 @@ Compra específica de uma OS poderá utilizar seu custo real específico para re
 ---
 
 # Comissão dos Técnicos
+
+> Regra descrita para o módulo de Comissões, que **ainda não foi implementado** (DR-0021).
 
 A comissão utiliza:
 
@@ -743,6 +864,8 @@ O fechamento histórico não é sobrescrito por ajustes posteriores.
 ---
 
 # Integrações
+
+> Itaú, Rede e NFS-e são desenho-alvo, **não implementados** (DR-0021).
 
 ## Itaú
 
@@ -943,265 +1066,30 @@ Decision Request.
 
 ---
 
-# Estrutura Atual do Repositório
+# Estrutura do repositório
 
 ```text
 uberhidraulica-erp/
-│
-├── agents/
-│   ├── AG-00-orquestrador.md
-│   ├── AG-01-produto-requisitos.md
-│   ├── AG-02-arquitetura.md
-│   ├── AG-03-dominio-oficina.md
-│   ├── AG-04-catalogo-estoque.md
-│   ├── AG-05-compras-fornecedores.md
-│   ├── AG-06-financeiro.md
-│   ├── AG-07-conciliacao-integracoes-financeiras.md
-│   ├── AG-08-fiscal.md
-│   ├── AG-09-seguranca-auditoria.md
-│   ├── AG-10-banco-dados.md
-│   ├── AG-11-backend-spring.md
-│   ├── AG-12-frontend-react.md
-│   ├── AG-13-qa-testes.md
-│   ├── AG-14-devops.md
-│   └── AG-15-revisor-tecnico.md
-│
-├── decision-requests/
-│   ├── DECISION-REQUEST-TEMPLATE.md
-│   └── DR-0001-obsolescencia-versao-comercial.md
-│
-├── docs/
-│   ├── api/
-│   ├── architecture/
-│   │   ├── database/
-│   │   ├── frontend/
-│   │   ├── governance/
-│   │   ├── oficina/
-│   │   ├── security/
-│   │   └── testing/
-│   ├── domain/
-│   │   └── oficina/
-│   ├── requirements/
-│   │   └── oficina/
-│   └── review/
-│
-├── tasks/
-│   ├── done/
-│   │   └── TASK-0001-aprovacao-parcial-orcamento.md
-│   ├── HANDOFF-TEMPLATE.md
-│   └── TASK-TEMPLATE.md
-│
-├── AGENTS.md
-├── README.md
-└── .gitignore
+├── agents/                 governança multiagente (AG-00 a AG-15)
+├── decision-requests/      DR-0001 a DR-0021 (decisões e pendências)
+├── docs/                   requisitos, domínio, arquitetura, contratos REST, revisões
+├── tasks/done/             TASK-0001 a TASK-0019
+├── src/main/java/…/erp/    backend: iam, crm, servicecatalog, productcatalog, inventory, workorder, quote, finance
+├── src/main/resources/db/migration/   Flyway V1 a V21 (imutáveis; correção = migration nova)
+├── src/test/               testes unitários, de arquitetura (Modulith) e de integração (Testcontainers)
+├── frontend/               React 19 + TypeScript + Vite + TanStack Query
+├── deploy/nginx/           proxy reverso, limites de requisição e cabeçalhos de segurança
+├── scripts/e2e/            fluxo E2E da oficina por HTTP
+├── scripts/deploy/         smoke do stack Docker (build, E2E, reinício, backup, restore)
+├── compose.yaml            stack do piloto (postgres + backend + frontend)
+├── compose.dev.yaml        PostgreSQL só para desenvolvimento local
+├── Dockerfile              backend (build reprodutível, usuário não-root)
+├── .env.example            variáveis do piloto (segredos vazios)
+├── AGENTS.md               índice da governança
+└── README.md
 ```
 
----
-
-# Estado Atual
-
-```text
-[✓] Requisitos iniciais levantados
-
-[✓] Arquitetura macro definida
-
-[✓] Governança definida
-
-[✓] 16 agentes documentados
-
-[✓] Tasks e handoffs estruturados
-
-[✓] Decision Requests estruturadas
-
-[✓] Repositório Git/GitHub configurado
-
-[✓] Simulação completa do fluxo de governança
-
-[✓] TASK-0001 especificada
-
-[✓] DR-0001 decidida
-
-[✓] Review independente da TASK-0001
-
-[✓] Correções da TASK-0001
-
-[✓] Re-review AG-15
-
-[✓] TASK-0001 = SPECIFICATION_DONE
-
-[ ] Projeto Spring Boot
-
-[ ] PostgreSQL executável / Flyway
-
-[ ] Frontend React
-
-[ ] Testes automatizados
-
-[ ] Integrações externas
-
-[ ] Deploy
-```
-
----
-
-# TASK-0001
-
-Primeira feature utilizada para validar todo o processo:
-
-```text
-TASK-0001
-Aprovação Parcial de Orçamento
-```
-
-Status:
-
-```text
-SPECIFICATION_DONE
-```
-
-Implementação:
-
-```text
-NOT_IMPLEMENTED
-```
-
-Fluxo validado:
-
-```text
-Produto
-↓
-Domínio
-↓
-Arquitetura
-↓
-Segurança
-↓
-Banco
-↓
-Backend
-↓
-Frontend
-↓
-QA
-↓
-AG-15
-↓
-Decision Request
-↓
-Correção
-↓
-Re-review
-↓
-AG-00
-```
-
----
-
-# Próxima Fase
-
-A próxima etapa é iniciar a fundação executável do sistema.
-
-Sequência planejada:
-
-```text
-Spring Boot base
-↓
-PostgreSQL / Flyway
-↓
-IAM
-↓
-Cliente
-↓
-Veículo
-↓
-OS
-↓
-Catálogo de Serviços
-↓
-Peças
-↓
-Orçamento
-↓
-Aprovação
-```
-
-A primeira vertical slice funcional completa planejada é:
-
-```text
-Cliente
-↓
-Veículo
-↓
-OS
-↓
-Serviço
-↓
-Peças
-↓
-Técnicos
-↓
-Orçamento
-↓
-Aprovação
-↓
-Execução
-↓
-Fechamento
-↓
-Custo
-↓
-Lucro
-```
-
----
-
-# Estado de Produção
-
-Atualmente o projeto possui:
-
-```text
-ESPECIFICAÇÃO
-```
-
-e não:
-
-```text
-SISTEMA EM PRODUÇÃO.
-```
-
-Ainda faltam:
-
-```text
-código;
-
-migrations;
-
-testes;
-
-CI;
-
-infraestrutura;
-
-deploy;
-
-validação operacional.
-```
-
----
-
-# Repositório
-
-Projeto:
-
-```text
-Wendersonjose/uberhidraulica-erp
-```
-
-Branch principal:
-
-```text
-main
-```
+Versões: Java 17, Spring Boot 4.1.1, Spring Modulith 2.1.1, PostgreSQL 18, React 19, Vite 8, Node 22+.
 
 ---
 
