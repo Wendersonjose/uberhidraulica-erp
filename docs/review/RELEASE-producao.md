@@ -85,6 +85,7 @@ externas (WhatsApp etc.).
 | 8 | D4: select de categoria vazio em banco novo | baixa | **corrigido** — aviso com link |
 | 9 | `APP_ENVIRONMENT` declarado sem o perfil `prod` (erro de digitação) faria valer os padrões de desenvolvimento | média | **corrigido** — a subida é recusada |
 | 10 | Sem varredura automática de dependências | média | **corrigido** — OSV (Maven) + `npm audit` no CI, Dependabot semanal; `npm audit` local: 0 vulnerabilidades |
+| 10a | A primeira execução da varredura no CI achou **8 vulnerabilidades HIGH/CRITICAL**: Tomcat 11.0.24 (3 CRITICAL: autenticadores DIGEST e FORM, controle de acesso) e Jackson 3.1.5 (5 HIGH), versões gerenciadas pelo Spring Boot 4.1.1 | alta | **corrigido por override de versão** no `pom.xml` (Tomcat 11.0.26, Jackson 3.1.7, mesma linha, 276 testes verdes); o app não usa os autenticadores do Tomcat (a autenticação é Spring Security por sessão), mas a atualização vale igual. A prova é o job `dependency-scan` verde; as duas propriedades saem quando o Spring Boot trouxer versões corrigidas |
 | 11 | D5, D6, D7 | baixa/média | **abertos**, listados na seção 3 e na `DR-0020` |
 
 ## 6. Evidências
