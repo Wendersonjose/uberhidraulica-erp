@@ -97,7 +97,7 @@ externas (WhatsApp etc.).
 | `proxy-trust-check.sh` | 37/37 (a mutação "confiar em todos" derruba 4; a mutação "log sem máscara" derruba 4) |
 | E2E `workshop_flow.py` | 107/107 contra o nginx e contra o HTTPS do Caddy |
 | Navegador (Chromium, `https://localhost`) | jornada 26/26 · negativos 18/18 depois das correções (antes: 26/26 e 16/18) |
-| Compose smoke (`compose-smoke.sh`) | build, E2E, evidência de IP, restart, backup/verify/restore, 429, troca HTTP→HTTPS sobre os mesmos dados |
+| Compose smoke (`compose-smoke.sh`) | **SMOKE OK, 147 verificações**: build, E2E, evidência de IP, restart, backup/verify/restore, 429, troca HTTP→HTTPS sobre os mesmos dados (local, com jar e `dist` pré-construídos; o build real das imagens roda no job `deploy-smoke` do CI) |
 | Persistência | `docker compose restart` e `down` + `up -d`: contagens idênticas, login e consultas de cliente, OS, estoque e financeiro |
 | Sessão expirada | com a sessão vencida: GET 401, POST recusado; novo login funciona |
 | Logs | 10 MB × 3 por container; sem senha, token de link, cookie nem hash de senha |
