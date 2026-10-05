@@ -86,7 +86,7 @@ public class QuoteController {
     }
 
     public record InternalDecisionRequest(@NotBlank @Size(max = 16) String contactChannel, @Size(max = 200) String authorizedBy,
-                                          @Size(max = 500) String notes, @NotEmpty @Valid List<InternalItemDecision> decisions) {}
+                                          @Size(max = 500) String notes, @NotEmpty List<@Valid InternalItemDecision> decisions) {}
     public record InternalItemDecision(@NotNull UUID itemReference, @NotNull DecisionType decision) {}
 
     /**
@@ -144,7 +144,7 @@ public class QuoteController {
         return Response.from(quote, application.now(), publicQuotes.decisions(quote));
     }
 
-    public record RevisionRequest(@NotEmpty @Valid List<ItemRequest> items) {}
+    public record RevisionRequest(@NotEmpty List<@Valid ItemRequest> items) {}
 
     /**
      * Item pedido para a revisão.
