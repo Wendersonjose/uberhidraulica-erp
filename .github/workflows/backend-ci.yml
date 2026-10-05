@@ -26,6 +26,8 @@ jobs:
           java-version: '17'
           cache: maven
 
+      # Cada classe de integração sobe um PostgreSQL 18 vazio (Testcontainers) e aplica TODAS as migrations
+      # do Flyway com ddl-auto=validate: o banco é reconstruído do zero a cada execução desta suíte.
       - name: Run backend test suite
         run: mvn -B test
 
@@ -61,3 +63,41 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+
+  # Migration publicada é imutável: o Flyway valida o checksum em quem já a aplicou, então editar ou apagar um
+  # V*.sql existente quebra qualquer banco já migrado. Correção é sempre uma migration nova.
+  migrations-immutable:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Block changes to migrations already on the base branch
+        run: |
+          base="origin/${{ github.base_ref }}"
+          changed="$(git diff --name-status --diff-filter=MDR "${base}...HEAD" -- 'src/main/resources/db/migration/')"
+          if [ -n "${changed}" ]; then
+            echo "Migrations existentes foram alteradas, apagadas ou renomeadas:"
+            echo "${changed}"
+            echo "Crie uma nova migration em vez de editar uma já publicada."
+            exit 1
+          fi
+          echo "Nenhuma migration existente foi alterada."
+
+  # Sobe o stack do piloto (compose.yaml) com Docker de verdade, roda o fluxo E2E da oficina pelo nginx, reinicia,
+  # confere a persistência do volume e valida backup + restore em um volume novo. Ver scripts/deploy/compose-smoke.sh.
+  deploy-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compose smoke (build, health, E2E, restart, backup, restore)
+        run: scripts/deploy/compose-smoke.sh

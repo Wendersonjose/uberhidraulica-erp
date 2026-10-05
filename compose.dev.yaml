@@ -1,0 +1,34 @@
+# PostgreSQL isolado para DESENVOLVIMENTO LOCAL (backend e frontend rodam fora do Docker).
+#
+#   docker compose -f compose.dev.yaml up -d
+#
+# Não é o stack do piloto: para subir o sistema inteiro use o compose.yaml (`docker compose up -d --build`).
+# A porta fica presa a 127.0.0.1 porque o usuário/senha padrão abaixo são somente de desenvolvimento.
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: uberhidraulica-postgres
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-uberhidraulica}
+      POSTGRES_USER: ${POSTGRES_USER:-uberhidraulica}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-uberhidraulica_dev}
+
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+
+    volumes:
+      # PostgreSQL 18+: o mount fica em /var/lib/postgresql (dados em /var/lib/postgresql/18/docker).
+      - uberhidraulica_postgres_data:/var/lib/postgresql
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-uberhidraulica} -d ${POSTGRES_DB:-uberhidraulica}
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  uberhidraulica_postgres_data:
