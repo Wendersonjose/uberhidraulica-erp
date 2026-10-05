@@ -9,10 +9,17 @@ ERP em desenvolvimento para digitalizar e integrar a operação da Uber-Hidrául
 > recebimento, caixa físico, contas a pagar, fluxo de caixa e painel financeiro — com backend Spring Boot,
 > PostgreSQL, frontend React e deploy por Docker Compose. O que ainda **não** existe (Compras, Comissões,
 > Conciliação, Fiscal/NFS-e) está listado em [Funcionalidades pendentes](#funcionalidades-pendentes) e não deve ser
-> assumido como pronto. Produção exige HTTPS (depende do provedor) e a decisão das
-> [Decision Requests abertas](#decisões-pendentes-do-proprietário).
+> assumido como pronto.
 >
-> Detalhes da auditoria de fechamento: [`docs/review/TASK-0019-revisao-fechamento.md`](docs/review/TASK-0019-revisao-fechamento.md).
+> **Produção ainda não está declarada.** O HTTPS (Caddy + Let's Encrypt, ou o balanceador do provedor), o proxy
+> confiável, o backup, o restore, a atualização e o rollback foram exercitados com containers reais, mas faltam as provas
+> que só um servidor real e o proprietário dão: certificado emitido, backup copiado para fora do servidor e restaurado,
+> homologação operacional, CI verde e a decisão da `DR-0020`. A lista exata (bloqueadores, pendências de homologação e
+> pós-MVP) está em [`docs/review/RELEASE-producao.md`](docs/review/RELEASE-producao.md). O estado só vira
+> `READY_FOR_PRODUCTION` quando cada bloqueador de lá tiver evidência.
+>
+> Detalhes das auditorias: [`TASK-0019`](docs/review/TASK-0019-revisao-fechamento.md) (fechamento do MVP) e
+> [`TASK-0020`](docs/review/RELEASE-producao.md) (preparação para produção).
 
 ---
 
@@ -37,7 +44,7 @@ Legenda: **Entregue** · **Parcial** (existe, com lacuna declarada) · **Planeja
 | Financeiro | Entregue | recebíveis por OS (só o que o cliente aprovou), recebimento parcial/total com idempotência, ajustes, estorno, contas a pagar, formas de pagamento, categorias, fluxo de caixa | 0015 |
 | Caixa físico | Entregue | sessão de caixa, suprimento, sangria, troco, estorno, fechamento manual/automático às 23:59, conferência | 0016 |
 | Painel financeiro | Parcial | faturamento, recebido, a receber, vencido, custo de peças, despesas, lucro e margem **bruta/operacional**; não é DRE e não custeia mão de obra | 0018 |
-| Deploy do piloto | Parcial | `docker compose up -d --build` (Postgres 18 + backend + nginx), healthchecks, backup/restore validados, CI com smoke de deploy; **HTTPS depende do provedor** | 0018, 0019 |
+| Deploy e operação do piloto | Parcial | `docker compose up -d --build` (Postgres 18 + backend + nginx), HTTPS turnkey com Caddy (`compose.https.yaml`), proxy confiável (`TRUSTED_PROXY_CIDRS`), produção que falha fechada, scripts `scripts/ops` (preflight, backup, verificação, restore, update), CI com smoke de deploy e varredura de dependências; **falta provar em servidor real: certificado, backup externo, homologação** | 0018, 0019, 0020 |
 
 ## Funcionalidades pendentes
 
@@ -59,8 +66,8 @@ Legenda: **Entregue** · **Parcial** (existe, com lacuna declarada) · **Planeja
 
 | DR | Assunto | Impede a homologação? |
 | --- | --- | --- |
-| [DR-0019](decision-requests/DR-0019-item-fisico-rejeitado-estoque-custo.md) | item físico rejeitado pelo cliente: o que acontece com o estoque e o custo | Não (há contorno documentado) |
-| [DR-0020](decision-requests/DR-0020-politica-autenticacao-bloqueio-delegacao.md) | bloqueio por tentativas de login, política de senha avançada, delegação do perfil Dono | Não; recomendada antes de expor na internet |
+| [DR-0019](decision-requests/DR-0019-item-fisico-rejeitado-estoque-custo.md) | item físico rejeitado pelo cliente: o que acontece com o estoque e o custo | Não (limitação conhecida do piloto; contorno: estornar a baixa; não bloqueia a produção se o proprietário aceitar o processo) |
+| [DR-0020](decision-requests/DR-0020-politica-autenticacao-bloqueio-delegacao.md) | bloqueio por tentativas de login, política de senha avançada, delegação do perfil Dono (resumo com opções, impacto e recomendação na seção 9) | Não impede a homologação; **o proprietário decide ou aceita o risco antes da produção**. Enquanto isso, não delegue `IAM_*` (o preflight confere) |
 | [DR-0021](decision-requests/DR-0021-escopo-piloto-modulos-especificados.md) | o que "MVP concluído" significa e a ordem dos módulos pendentes | Não |
 
 ## Como executar (desenvolvimento)
@@ -84,12 +91,15 @@ mvn clean test                                # backend: unitários + Modulith +
 cd frontend && npm ci
 npm test -- --run && npx tsc --noEmit && npm run lint && npm run build
 python3 scripts/e2e/workshop_flow.py          # fluxo E2E da oficina por HTTP (ver o cabeçalho do arquivo para as variáveis)
-scripts/deploy/compose-smoke.sh               # stack do piloto com Docker: E2E pelo nginx, reinício, backup e restore
+scripts/deploy/compose-smoke.sh               # stack do piloto com Docker: E2E, reinício, backup/restore, troca HTTP→HTTPS
+scripts/deploy/proxy-trust-check.sh <imagem>  # X-Forwarded-For forjado, falha fechada, limite por IP real, token fora do log
 ```
 
-Números de 2026-10-05 (ver o relatório de fechamento): backend 259 testes (74 deles sem Docker); frontend 17 arquivos, 135 testes;
-E2E 103 verificações; navegador (Chromium) 48 verificações. O CI (`.github/workflows/backend-ci.yml`) roda a suíte
-backend, o frontend, o smoke de deploy e, em PR, a imutabilidade das migrations.
+Números de 2026-10-05 (ver [`docs/review/RELEASE-producao.md`](docs/review/RELEASE-producao.md)): backend 276 testes, 0 falhas
+(parte deles sem Docker); frontend 17 arquivos, 137 testes; E2E 107 verificações; navegador (Chromium) 26 passos da jornada
+e 18 caminhos negativos; `proxy-trust-check` 37 verificações. O CI (`.github/workflows/backend-ci.yml`) roda a suíte
+backend, o frontend, a varredura de dependências, o smoke de deploy (inclui HTTPS e os scripts de operação) e, em PR, a
+imutabilidade das migrations.
 
 ## Como subir com Docker (piloto)
 
@@ -99,13 +109,27 @@ docker compose up -d --build
 docker compose ps        # postgres, backend e frontend "healthy"
 ```
 
-Guia completo — HTTPS, backup, restore, atualização, rollback e checklist de produção:
-[`docs/architecture/devops/DEPLOY-piloto.md`](docs/architecture/devops/DEPLOY-piloto.md). Homologação em HTTP puro exige
-`SESSION_COOKIE_SECURE=false` (nunca em produção).
+Com HTTPS turnkey (Caddy + Let's Encrypt; defina `SITE_ADDRESS` e `COMPOSE_FILE=compose.yaml:compose.https.yaml` no `.env`):
+
+```bash
+docker compose up -d --build
+PUBLIC_URL=https://erp.suaoficina.com.br scripts/ops/preflight.sh   # checklist de produção; exit 1 se houver FALHA
+scripts/ops/backup.sh                                              # dump validado + cópia para FORA do servidor
+scripts/ops/update.sh                                              # git pull antes: backup, build, smoke e histórico para rollback
+```
+
+Guia completo — modos de HTTPS, proxy confiável, backup, verificação, restore, atualização, rollback e checklist de
+produção: [`docs/architecture/devops/DEPLOY-piloto.md`](docs/architecture/devops/DEPLOY-piloto.md). Homologação em HTTP puro
+exige `APP_ENVIRONMENT=homologation` e `SESSION_COOKIE_SECURE=false` (nunca em produção: o backend recusa a combinação).
 
 ## Limitações conhecidas
 
-- **HTTPS não vem pronto**: depende do provedor de hospedagem. Sem HTTPS não declare produção.
+- **HTTPS real ainda não foi provado**: o Caddy (`compose.https.yaml`) e o balanceador do provedor foram exercitados com
+  certificado de CA interna e balanceador simulado. Sem um domínio público, o certificado real não foi emitido; sem HTTPS
+  não declare produção.
+- O backup só protege se for copiado **para fora do servidor** (`BACKUP_EXTERNAL_CMD`); sem isso `backup.sh` termina com
+  erro. A restauração a partir da cópia externa real ainda precisa ser ensaiada.
+- Orçamento, revisão, apresentação e decisão não são aceitos em OS finalizada, entregue ou cancelada (409).
 - Em OS com aprovação parcial, o item físico **rejeitado** continua baixado do estoque e entra no custo de peças do
   painel até o operador estornar a baixa (`DR-0019`). O recebível fatura só o que o cliente aprovou.
 - Não há bloqueio de conta por tentativas de login; há limite por IP no nginx e senha mínima de 8 caracteres
@@ -114,12 +138,13 @@ Guia completo — HTTPS, backup, restore, atualização, rollback e checklist de
 - O painel financeiro não é DRE e não custeia mão de obra.
 - Erros do framework (rota inexistente, método, tipo de conteúdo) saem no formato padrão do Spring, não em
   `{code, message, details}`; o frontend mostra mensagem em português.
-- A suíte de integração precisa de Docker; sem ele só rodam os 74 testes unitários e de arquitetura.
+- A suíte de integração precisa de Docker; sem ele só rodam os testes unitários e de arquitetura.
 
 ## Próximos passos
 
 1. Proprietário decide `DR-0019`, `DR-0020` e `DR-0021`.
-2. Homologar com a oficina seguindo o checklist de `DEPLOY-piloto.md`; resolver HTTPS no provedor.
+2. Homologar com a oficina em um servidor real seguindo o checklist de `DEPLOY-piloto.md` e os bloqueadores B1–B5 de
+   `docs/review/RELEASE-producao.md` (HTTPS com certificado real, backup externo restaurado, CI verde).
 3. Abrir, pelo fluxo de governança, a Task do próximo módulo definido na `DR-0021` (recomendado: Compras e Fornecedores).
 4. Fiscal/NFS-e só depois de haver certificado A1 e ambiente de homologação do município.
 
