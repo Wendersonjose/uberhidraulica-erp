@@ -14,7 +14,7 @@ ERP em desenvolvimento para digitalizar e integrar a operação da Uber-Hidrául
 > **Produção ainda não está declarada.** O HTTPS (Caddy + Let's Encrypt, ou o balanceador do provedor), o proxy
 > confiável, o backup, o restore, a atualização e o rollback foram exercitados com containers reais, mas faltam as provas
 > que só um servidor real e o proprietário dão: certificado emitido, backup copiado para fora do servidor e restaurado,
-> homologação operacional, CI verde e a decisão da `DR-0020`. A lista exata (bloqueadores, pendências de homologação e
+> homologação operacional e a decisão da `DR-0020`. O CI do PR está verde, inclusive a varredura de dependências. A lista exata (bloqueadores, pendências de homologação e
 > pós-MVP) está em [`docs/review/RELEASE-producao.md`](docs/review/RELEASE-producao.md). O estado só vira
 > `READY_FOR_PRODUCTION` quando cada bloqueador de lá tiver evidência.
 >
@@ -143,8 +143,8 @@ exige `APP_ENVIRONMENT=homologation` e `SESSION_COOKIE_SECURE=false` (nunca em p
 ## Próximos passos
 
 1. Proprietário decide `DR-0019`, `DR-0020` e `DR-0021`.
-2. Homologar com a oficina em um servidor real seguindo o checklist de `DEPLOY-piloto.md` e os bloqueadores B1–B5 de
-   `docs/review/RELEASE-producao.md` (HTTPS com certificado real, backup externo restaurado, CI verde).
+2. Homologar com a oficina em um servidor real seguindo o checklist de `DEPLOY-piloto.md` e os bloqueadores de
+   `docs/review/RELEASE-producao.md` (HTTPS com certificado real, backup externo restaurado, decisão da DR-0020).
 3. Abrir, pelo fluxo de governança, a Task do próximo módulo definido na `DR-0021` (recomendado: Compras e Fornecedores).
 4. Fiscal/NFS-e só depois de haver certificado A1 e ambiente de homologação do município.
 

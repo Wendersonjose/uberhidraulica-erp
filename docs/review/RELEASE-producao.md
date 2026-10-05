@@ -28,7 +28,7 @@ HTTPS com certificado real, backup externo restaurado e decisões de segurança 
 | BACKUP | `[BLOQUEADO]` | `backup.sh` valida o arquivo e copia por gancho; **destino externo real não existe** |
 | RESTORE | `[OK]` em laboratório · `[BLOQUEADO]` a partir da cópia externa | volume destruído e banco vivo; `verify-backup.sh` em banco descartável |
 | ROLLBACK | `[OK]` | versão anterior sobre os mesmos dados; `update.sh` registra o commit anterior e o backup |
-| CI | `[A CONFIRMAR NO PR]` | ver seção 6 |
+| CI | `[OK]` | PR #3 no commit `d64bcb9`: `test`, `frontend`, `deploy-smoke` (build real das imagens), `dependency-scan` e `migrations-immutable` verdes |
 
 ## 2. BLOQUEADORES DE PRODUÇÃO
 
@@ -39,7 +39,7 @@ Cada item só some quando a evidência pedida existir. Nenhum se resolve com mai
 | B1 | HTTPS com certificado **real** em domínio real | o laboratório usa a CA interna do Caddy; Let's Encrypt exige domínio público e portas 80/443 | `PUBLIC_URL=https://<domínio> scripts/ops/preflight.sh` sem nenhuma FALHA (certificado aceito, HSTS, cookie `Secure`) |
 | B2 | Backup **externo** real e restore a partir dele | o script e o gancho funcionam; o destino externo é do operador e nunca foi exercitado de verdade | `BACKUP_EXTERNAL_CMD` configurado, agendado e `verify-backup.sh` rodado sobre a cópia **baixada de volta** |
 | B3 | Homologação operacional em servidor real | tudo foi validado em um host de laboratório | deploy real com `scripts/ops/update.sh`, E2E contra o servidor, um ciclo de restart e um de rollback |
-| B4 | CI verde no PR final e varredura de dependências Maven | o banco OSV não é alcançável do ambiente de validação; só o CI consulta | job `dependency-scan` verde (sem HIGH/CRITICAL) e demais jobs verdes |
+| ~~B4~~ | ~~CI verde no PR final e varredura de dependências Maven~~ — **resolvido** em `d64bcb9` | a varredura achou 8 HIGH/CRITICAL (Tomcat e Jackson); corrigidos por override de versão | `dependency-scan` e os demais jobs verdes. Volta a ser bloqueio se um aviso novo aparecer (o job roda a cada PR) |
 | B5 | **DR-0020** — decisão do proprietário | força bruta lenta e senha fraca não têm controle no backend; só o proprietário aceita o risco ou manda resolver | decisão registrada, ou aceite do risco residual por escrito |
 
 Itens que dependem do proprietário e **não bloqueiam se aceitos**: `DR-0019` (estorno manual de estoque, seção 3).
@@ -147,6 +147,6 @@ externas (WhatsApp etc.).
 2. `PUBLIC_URL=https://<domínio> scripts/ops/preflight.sh` sem nenhuma FALHA (B1).
 3. Configurar `BACKUP_EXTERNAL_CMD`, agendar, e rodar `verify-backup.sh` sobre a cópia baixada de volta (B2).
 4. Um ciclo real de `update.sh` e um de rollback no servidor, com a oficina (B3).
-5. CI verde no PR final, inclusive `dependency-scan` (B4).
+5. ~~CI verde no PR final, inclusive `dependency-scan` (B4)~~ — feito em `d64bcb9`; confira de novo no PR que for para `main`.
 6. O proprietário decide a `DR-0020` (ou aceita o risco por escrito) e confirma o processo de estorno da `DR-0019` (B5).
 7. Só então trocar o estado do `README.md` para `READY_FOR_PRODUCTION`.
