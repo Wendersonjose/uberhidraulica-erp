@@ -15,6 +15,7 @@ COPY --from=build /build/target/*.jar app.jar
 USER app
 EXPOSE 8080
 ENV JAVA_OPTS=""
+# Segue a porta em que o Spring realmente escuta (PORT do provedor, senão SERVER_PORT, senão 8080).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-    CMD wget -q -O /dev/null http://127.0.0.1:8080/actuator/health || exit 1
+    CMD sh -c 'wget -q -O /dev/null "http://127.0.0.1:${PORT:-${SERVER_PORT:-8080}}/actuator/health" || exit 1'
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]
