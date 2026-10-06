@@ -21,6 +21,13 @@
     <properties>
         <java.version>17</java.version>
         <spring-modulith.version>2.1.1</spring-modulith.version>
+        <!-- Spring Boot 4.1.1 gerencia Tomcat 11.0.24 e Jackson 3.1.5, com vulnerabilidades HIGH/CRITICAL conhecidas
+             (varredura OSV: GHSA-9xv2-5v5q-p794, GHSA-gcx9-497g-6cp6, GHSA-h3x4-894j-xpx5 no Tomcat; GHSA-7hhh-6rmp-j9qf,
+             GHSA-cxp5-3px4-pw24, GHSA-p6pp-m3f8-5c89, GHSA-q4xh-88c3-wmh7, GHSA-wv8q-qhhj-9h54 no Jackson). As versões abaixo
+             são correções de patch dentro da mesma linha; remova as duas propriedades quando o Spring Boot trouxer versões
+             corrigidas. -->
+        <tomcat.version>11.0.26</tomcat.version>
+        <jackson-bom.version>3.1.7</jackson-bom.version>
     </properties>
 
     <dependencyManagement>
