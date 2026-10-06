@@ -1,0 +1,100 @@
+# Render Blueprint do ERP: backend (Docker) + frontend (Static Site) na nuvem, com o banco no Supabase ("Saas Oficina").
+# NÃO existe PostgreSQL aqui: o banco oficial é o projeto Supabase. Passo a passo: docs/architecture/devops/DEPLOY-supabase-render.md
+#
+# Nenhum segredo está neste arquivo. As variáveis `sync: false` são pedidas no painel do Render quando o Blueprint é
+# criado, e ficam só lá. Nunca as coloque no Git.
+#
+# Os nomes dos serviços definem as URLs (https://<nome>.onrender.com). Se o Render recusar o nome por já existir, ele
+# acrescenta um sufixo: nesse caso corrija o `destination` do rewrite abaixo para a URL real do backend.
+
+services:
+  # ------------------------------------------------------------------------------------------ backend
+  - type: web
+    name: uberhidraulica-erp-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    branch: release/supabase-cloud
+    # Escolha a região mais próxima do projeto Supabase (cada consulta ao banco paga a latência). Virgínia é a mais
+    # próxima do Brasil e dos projetos Supabase em us-east-1/sa-east-1. A região não muda depois de criado.
+    region: virginia
+    # starter evita que o serviço durma por inatividade (o plano free dorme após 15 min e a primeira requisição leva
+    # cerca de 1 minuto). Para economizar, troque por `free`: funciona, mas com essa espera.
+    plan: starter
+    healthCheckPath: /actuator/health
+    envVars:
+      # `prod` liga o cookie de sessão Secure e o IP atrás do proxy; `supabase` aponta o datasource para o Supabase.
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod,supabase
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
+      # O histórico do Flyway do ERP fica isolado em erp_meta: o projeto já tem tabelas de outro módulo em public.
+      - key: FLYWAY_DEFAULT_SCHEMA
+        value: erp_meta
+      # Pool pequeno: o Session Pooler do Supabase limita os clientes, e no deploy o Render mantém a versão antiga e a
+      # nova rodando ao mesmo tempo (2 x 5 = 10 conexões, abaixo do limite padrão de 15).
+      - key: SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE
+        value: "5"
+      - key: SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE
+        value: "1"
+      # 512 MB de RAM: ensaiado a 512 MB / 0,5 CPU, o backend usa cerca de 330 MB.
+      - key: JAVA_OPTS
+        value: -XX:MaxRAMPercentage=65 -XX:+UseSerialGC -Xss512k
+      # --- segredos: preencher no painel do Render (Environment), nunca no Git
+      # Session Pooler (porta 5432) ou conexão direta; nunca o Transaction Pooler (6543).
+      # Formato: jdbc:postgresql://HOST:5432/postgres?sslmode=require
+      - key: SUPABASE_DB_URL
+        sync: false
+      - key: SUPABASE_DB_USERNAME
+        sync: false
+      - key: SUPABASE_DB_PASSWORD
+        sync: false
+      # Primeiro Dono: só tem efeito enquanto não existe nenhum usuário. A senha (8 a 72 caracteres) é provisória: o
+      # primeiro login obriga a trocá-la. Depois disso as três podem ser removidas.
+      - key: IAM_BOOTSTRAP_OWNER_NAME
+        sync: false
+      - key: IAM_BOOTSTRAP_OWNER_EMAIL
+        sync: false
+      - key: IAM_BOOTSTRAP_OWNER_PASSWORD
+        sync: false
+
+  # ----------------------------------------------------------------------------------------- frontend
+  - type: web
+    name: uberhidraulica-erp-web
+    runtime: static
+    branch: release/supabase-cloud
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+    # O navegador continua falando só com este domínio (sem CORS): /api/* é repassado ao backend e o resto cai no
+    # index.html do SPA. A ORDEM importa: o rewrite de /api vem antes do fallback.
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://uberhidraulica-erp-api.onrender.com/api/*
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    # Os mesmos cabeçalhos que o nginx do piloto aplica (deploy/nginx).
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: no-referrer
+      - path: /*
+        name: Permissions-Policy
+        value: camera=(), microphone=(), geolocation=()
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=31536000
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"

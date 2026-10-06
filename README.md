@@ -103,6 +103,14 @@ Guia completo — HTTPS, backup, restore, atualização, rollback e checklist de
 [`docs/architecture/devops/DEPLOY-piloto.md`](docs/architecture/devops/DEPLOY-piloto.md). Homologação em HTTP puro exige
 `SESSION_COOKIE_SECURE=false` (nunca em produção).
 
+## Como publicar na nuvem (Supabase + Render)
+
+Arquitetura definida pelo proprietário: frontend (Render Static Site) → backend Spring Boot (Render, Docker) → PostgreSQL gerenciado
+no Supabase (projeto "Saas Oficina"). Não há PostgreSQL em Docker em produção; o `compose.yaml` é o piloto com banco local.
+Configuração em [`render.yaml`](render.yaml) e `application-supabase.yml`; passo a passo, o que já foi validado e o que só o Render
+prova: [`docs/architecture/devops/DEPLOY-supabase-render.md`](docs/architecture/devops/DEPLOY-supabase-render.md). Depois de publicar,
+`scripts/deploy/cloud-check.sh` confere o endereço público (login, sessão, CSRF e a criação de cliente, veículo e OS).
+
 ## Limitações conhecidas
 
 - **HTTPS não vem pronto**: depende do provedor de hospedagem. Sem HTTPS não declare produção.
