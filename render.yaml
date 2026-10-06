@@ -15,9 +15,9 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     branch: release/supabase-cloud
-    # Escolha a região mais próxima do projeto Supabase (cada consulta ao banco paga a latência). Virgínia é a mais
-    # próxima do Brasil e dos projetos Supabase em us-east-1/sa-east-1. A região não muda depois de criado.
-    region: virginia
+    # O projeto Supabase deste ERP está em AWS us-east-2 (Ohio). Manter o backend na região Ohio do Render
+    # reduz a latência entre aplicação e banco. A região não muda depois de criado.
+    region: ohio
     # starter evita que o serviço durma por inatividade (o plano free dorme após 15 min e a primeira requisição leva
     # cerca de 1 minuto). Para economizar, troque por `free`: funciona, mas com essa espera.
     plan: starter
