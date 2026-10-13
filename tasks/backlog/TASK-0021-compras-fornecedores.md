@@ -2,7 +2,7 @@
 
 ## Identificação
 
-- Status: `IN_PROGRESS` (I1 e I2 concluídos com o checkpoint de banco executado; I3+ aguardam o `DR-0022`)
+- Status: `IN_PROGRESS` (I1, I2 e I3 concluídos e validados com a NF-e 21 real; I4 e I5 em aberto)
 - Prioridade: alta
 - Criada em: `2026-10-13`
 - Origem: briefing do proprietário de 2026-10-13; `DR-0021` (DECIDED) libera a abertura
@@ -33,8 +33,8 @@ fiscal e pagamento (`AG-05` §130).
 | --- | --- | --- | --- |
 | I1 | Domínio puro de NF-e: chave de acesso, CNPJ/CPF (inclui alfanumérico), GTIN, parser XML seguro, validador, testes | nenhuma | **CONCLUÍDO** (31 testes) |
 | I2 | Fornecedores PF/PJ, contatos, situação, condições comerciais, trilha de auditoria, API e telas | `V22` (`V22__purchasing_suppliers.sql`) | **CONCLUÍDO** (16 testes de integração + 22 unitários; checkpoint de banco executado) |
-| I3 | Prévia e confirmação de NF-e: fornecedor, vínculo de itens, compra, documento, contas a pagar parceladas | `V23` | bloqueado: `DR-0022` D4–D7, D9, D11 |
-| I4 | Recebimento físico total/parcial, divergência, entrada em estoque com custo, estorno | `V24` | bloqueado: `DR-0022` D1–D3, D7 |
+| I3 | Prévia e confirmação de NF-e: fornecedor, vínculo de itens, compra, documento, contas a pagar parceladas | `V23` (`V23__purchasing_purchase_nfe.sql`) | **CONCLUÍDO** (21 testes de integração + 7 de aceitação com a NF-e 21 real + 28 unitários; telas entregues) |
+| I4 | Recebimento físico total/parcial, divergência, entrada em estoque com custo, estorno | `V24` | próximo (decisões liberadas) |
 | I5 | Solicitação, cotação multi-fornecedor, comparação, pedido, aprovação, compra direta, vínculo com OS | `V25+` | pendente |
 | I6 | Devolução, crédito do fornecedor, histórico de preços, relatórios | `V26+` | pendente |
 
@@ -117,3 +117,42 @@ Observação: a suíte do frontend tem testes antigos sensíveis a carga (`work-
 paralela e passou em outra). Os testes novos colam texto e têm folga de tempo para não aumentar essa fragilidade.
 
 Contrato REST e roteiro de teste manual (Insomnia): `docs/api/TASK-0021-contrato-rest-fornecedores.md`.
+
+## Resultado do I3 (2026-10-13)
+
+Entregue: `V23`, domínio das decisões aprovadas (custo, rateio, conversão de unidade, plano de parcelas,
+verificação de destinatário), contrato público `PurchasePayables` no Financeiro, `gtin`/`ncm` no catálogo,
+prévia e confirmação de NF-e, cancelamento e anulação, configuração do módulo, API e telas.
+
+| Verificação | Resultado |
+| --- | --- |
+| `NfeImportIntegrationTest` — 21 cenários das decisões D1–D11 | **21/21** |
+| `RealNfe21AcceptanceTest` — NF-e 21 **real** | **7/7** |
+| `AcquisitionPolicyTest` — domínio puro de D1, D2, D7, D4/D11, D9 | **28/28** |
+| Flyway `V1`→`V23` em banco limpo | OK |
+| `ModularityTest` com os contratos novos | passou |
+| Catálogo 8/8, Financeiro 40/40, IAM 11+7 | sem regressão |
+| Frontend: Vitest 166/166, `tsc`, lint, build | saída 0 |
+
+### A NF-e 21 real
+
+Validada de ponta a ponta: 12 itens somando **1.943,10**, três duplicatas de **647,70** (23/10, 30/10,
+06/11), destinatário `01.637.003/0001-01` reconhecido como o estabelecimento autorizado, emitente
+`67.757.350/0001-78` tratado como pessoa jurídica distinta (raízes diferentes, apesar dos nomes parecidos e do
+mesmo endereço), protocolo `131267983727896` gravado, três contas a pagar **em aberto** e **nenhuma
+movimentação de estoque**.
+
+O arquivo versionado (`src/test/resources/nfe/nfe-21-real-redigida.xml`) é o documento real com o conteúdo de
+`<SignatureValue>` e `<X509Certificate>` substituído por marcador: esses campos carregam certificado e dados
+pessoais. A estrutura da assinatura foi preservada e a validade criptográfica não é verificada nesta Task
+(`D12`), então nada de valor de teste se perde.
+
+**Achado operacional:** 4 dos 12 itens vêm com `uCom = KIT`, que a `D7` aprovada lista entre as unidades que
+exigem fator de conversão. Não foi criada equivalência automática para KIT — seria sobrepor a decisão do
+proprietário. Na prática o operador informa o fator uma vez por item, e o vínculo passa a lembrá-lo.
+
+### Pendência conhecida do I3, a fechar no I4
+
+Cancelar compra ainda **não** verifica ausência de recebimento ativo, porque recebimento não existe antes do
+`I4`. No `I3` o invariante não pode ser violado (não há como existir recebimento), mas a trava da `D5` tem de
+ser ligada junto com `goods_receipt`, em `PurchaseService.cancel`.
