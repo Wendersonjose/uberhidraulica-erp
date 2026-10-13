@@ -453,12 +453,61 @@ proprietário e com a obrigatoriedade de `due_date` no modelo financeiro existen
 | D6 vínculo de itens | A + vínculo por fornecedor/código, nunca descrição | **Alto** — custo no produto errado | I3 |
 | D7 unidades | A + originais preservadas, fator no vínculo | **Crítico** — saldo e custo errados por fator | I3/I4 |
 | D8 segregação | A, com a ressalva de atrito | Baixo, reversível | I5 |
-| D9 CNPJ próprio | A, alerta e não bloqueio | Médio | I3 |
+| D9 CNPJ próprio | A, alerta e não bloqueio — **a proposta do proprietário endureceu para bloqueio; ver abaixo** | Médio | I3 |
 | D10 relacionado | A — **já implementada na V22** | Baixo | I2 |
 | D11 nota à vista | A | Baixo | I3 (notas sem cobrança) |
 
 As quatro que mais importam para o seu objetivo imediato — importar a NF-e 21 sem duplicar estoque nem contas a
 pagar — são **D4, D5, D7 e D6**, nessa ordem.
+
+---
+
+## Proposta de decisão do proprietário (2026-10-13)
+
+Texto recebido do proprietário. **Registrado como proposta**: o próprio texto diz "após aprovação formal", e a
+`Decisão final` abaixo segue `PENDENTE` até a confirmação. `I3`, `I4` e `I5` continuam não iniciados.
+
+> Adotar as alternativas **A** das decisões D1 a D11, com as seguintes condições:
+>
+> - **D1**: composição do custo auditável, parametrizável e sujeita à validação tributária do contador.
+> - **D2**: rateio proporcional ao valor, garantindo fechamento exato dos centavos.
+> - **D3**: divergências exigem autorização e justificativa; o estoque recebe somente a quantidade física conferida.
+> - **D4**: obrigações financeiras geradas na confirmação da compra, vinculadas à NF-e e protegidas contra duplicidade.
+> - **D5**: manter histórico imutável de importação, anulação e estornos.
+> - **D6**: correspondência de produtos confirmada pelo operador, com vínculos rastreáveis.
+> - **D7**: exigir fator de conversão válido antes de movimentar estoque.
+> - **D8**: segregação de aprovação, com exceção para `DONO`.
+> - **D9**: impedir confirmação da importação enquanto o CNPJ destinatário não corresponder ao estabelecimento
+>   autorizado. **Não usar somente a raiz do CNPJ como prova de identidade.**
+> - **D10**: identificar fornecedores relacionados sem criar tratamento contábil automático.
+> - **D11**: exigir vencimento e condições financeiras informados quando não houver duplicatas.
+>
+> Após aprovação formal, atualizar a `DR-0022` e iniciar `I3`, `I4` e `I5` em sequência, com testes por incremento.
+> Não alterar Supabase ou Render de produção nem fazer merge ou deploy sem autorização.
+
+### Onde a proposta difere da recomendação técnica
+
+Dez condições coincidem com a recomendação da seção anterior. **Uma divergência real**, e ela é mais
+restritiva que a minha recomendação — portanto prevalece a do proprietário (regra de precedência do
+`AGENTS.md`), mas tem consequência operacional que precisa ficar escrita:
+
+**D9 — bloquear em vez de alertar, e sem raiz de CNPJ.** Eu havia recomendado *alertar e não bloquear* quando
+`OWN_TAX_ID` estivesse vazio, e reconhecer filial do mesmo grupo pela raiz de 8 dígitos. A proposta rejeita
+as duas coisas: a confirmação é **impedida** enquanto o destinatário não corresponder ao estabelecimento
+autorizado, e a raiz não serve como prova de identidade. Consequências:
+
+1. `OWN_TAX_ID` passa a ser **pré-requisito de operação**, não configuração opcional: sem ele preenchido com
+   o CNPJ completo do estabelecimento, nenhuma NF-e confirma — inclusive a **nota 21**. É o primeiro passo
+   antes de qualquer importação.
+2. A comparação é por **CNPJ completo (14 dígitos)**. Nota emitida para outra filial do mesmo grupo é
+   **recusada**, não alertada. Se a oficina tiver mais de um estabelecimento, `OWN_TAX_ID` precisa aceitar uma
+   **lista** de CNPJs autorizados; com um único estabelecimento, um valor basta.
+3. A raiz do CNPJ continua útil apenas para o que a `D10`/`I1` já fazem — *informar* que o emitente é pessoa
+   jurídica do mesmo grupo. Deixa de ter qualquer efeito de autorização.
+
+Observação de escopo que não muda nenhuma decisão: a `D10` já está implementada na `V22`, logo a aprovação
+da `D10` confirma o `I2` como aderente sem trabalho adicional.
+
 
 ## Impacto
 
@@ -482,3 +531,7 @@ Decisão final: PENDENTE
 - 2026-10-13 — acrescentada a seção "Análise técnica por decisão (D1–D11)" a pedido do proprietário, com problema de
   negócio, alternativas, consequências em estoque/custo médio/compras/financeiro, riscos e recomendação de cada
   decisão. **Nada foi decidido**: a `Decisão final` permanece `PENDENTE` e `I3`/`I4`/`I5` continuam bloqueados.
+- 2026-10-13 — proprietário enviou proposta adotando a alternativa **A** em D1–D11 com condições, endurecendo a
+  **D9** (bloqueio em vez de alerta; raiz de CNPJ não serve como prova de identidade). Registrada como
+  `Proposta de decisão do proprietário`; `Decisão final` segue `PENDENTE` por o próprio texto condicionar o
+  início de `I3`/`I4`/`I5` a "aprovação formal".
