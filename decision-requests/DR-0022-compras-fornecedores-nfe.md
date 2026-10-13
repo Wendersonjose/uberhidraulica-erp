@@ -2,7 +2,7 @@
 
 ## Status
 
-`PROPOSTA — AGUARDANDO DECISÃO DO OWNER`
+`DECIDED` — aprovada formalmente pelo proprietário em 2026-10-13 (alternativa **A** em D1–D11, com as condições registradas em "Decisão do proprietário").
 
 ## Contexto
 
@@ -108,10 +108,11 @@ O catálogo aceita `UNIDADE, LITRO, METRO, QUILOGRAMA, GALAO_5L, BALDE_20L`.
 
 ## Análise técnica por decisão (D1–D11) — 2026-10-13
 
-Elaborada por `AG-11` com `AG-10` e `AG-06`, a pedido do proprietário. **Não decide nada**: a
-`Decisão final` continua `PENDENTE`. Cada bloco traz o problema de negócio, a alternativa A da DR, as
-demais alternativas, as consequências em estoque, custo médio, compras e financeiro, os riscos
-operacionais e a recomendação técnica.
+Elaborada por `AG-11` com `AG-10` e `AG-06`, a pedido do proprietário, **antes da decisão** e sem decidir
+nada — era subsídio para ela. Cada bloco traz o problema de negócio, a alternativa A da DR, as demais
+alternativas, as consequências em estoque, custo médio, compras e financeiro, os riscos operacionais e a
+recomendação técnica. A decisão efetiva está em "Decisão do proprietário"; onde as duas divergem (apenas a
+`D9`), **vale a do proprietário**.
 
 Base factual usada (código já em produção nesta branch, não suposição):
 
@@ -462,10 +463,11 @@ pagar — são **D4, D5, D7 e D6**, nessa ordem.
 
 ---
 
-## Proposta de decisão do proprietário (2026-10-13)
+## Decisão do proprietário (2026-10-13) — APROVADA
 
-Texto recebido do proprietário. **Registrado como proposta**: o próprio texto diz "após aprovação formal", e a
-`Decisão final` abaixo segue `PENDENTE` até a confirmação. `I3`, `I4` e `I5` continuam não iniciados.
+Texto recebido do proprietário e **aprovado formalmente por ele em 2026-10-13**, liberando `I3`, `I4` e `I5`.
+Na mesma autorização o proprietário informou o **CNPJ autorizado da oficina: `01.637.003/0001-01`** (dígitos
+verificadores conferidos), que é o valor de `OWN_TAX_ID` exigido pela `D9`.
 
 > Adotar as alternativas **A** das decisões D1 a D11, com as seguintes condições:
 >
@@ -525,7 +527,9 @@ Segurança: D3/D8 usam permissões novas (ver docs/architecture/compras/TASK-002
 
 ```text
 Responsável pela decisão final: Proprietário do produto
-Decisão final: PENDENTE
+Decisão final: APROVADA em 2026-10-13 — alternativa A em D1-D11 com as condicoes registradas
+                na secao "Decisao do proprietario". D9 endurecida: bloqueio, CNPJ completo.
+                CNPJ autorizado da oficina: 01.637.003/0001-01 (estabelecimento unico).
 ```
 
 ## Histórico
@@ -538,3 +542,7 @@ Decisão final: PENDENTE
   **D9** (bloqueio em vez de alerta; raiz de CNPJ não serve como prova de identidade). Registrada como
   `Proposta de decisão do proprietário`; `Decisão final` segue `PENDENTE` por o próprio texto condicionar o
   início de `I3`/`I4`/`I5` a "aprovação formal".
+- 2026-10-13 — **DECIDIDA**: o proprietário aprovou formalmente a alternativa **A** em D1–D11 com as condições
+  registradas, informou o CNPJ autorizado da oficina (`01.637.003/0001-01`, estabelecimento único) e liberou
+  `I3`, `I4` e `I5` em sequência, com testes por incremento. Deploy em produção segue dependendo de
+  confirmação final dele.
