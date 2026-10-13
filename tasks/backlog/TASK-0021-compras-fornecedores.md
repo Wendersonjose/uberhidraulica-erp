@@ -2,7 +2,7 @@
 
 ## Identificação
 
-- Status: `IN_PROGRESS` (incremento I1 concluído; I2 em diante bloqueados — ver "Bloqueios")
+- Status: `IN_PROGRESS` (I1 concluído; I2 implementado, pendente apenas o checkpoint de banco; I3+ aguardam o DR-0022)
 - Prioridade: alta
 - Criada em: `2026-10-13`
 - Origem: briefing do proprietário de 2026-10-13; `DR-0021` (DECIDED) libera a abertura
@@ -32,7 +32,7 @@ fiscal e pagamento (`AG-05` §130).
 | # | Entrega | Migration | Estado |
 | --- | --- | --- | --- |
 | I1 | Domínio puro de NF-e: chave de acesso, CNPJ/CPF (inclui alfanumérico), GTIN, parser XML seguro, validador, testes | nenhuma | **CONCLUÍDO** (31 testes) |
-| I2 | Fornecedores PF/PJ, contatos, situação, condições comerciais, API, tela | `V22` | bloqueado: versão Flyway do Supabase; `DR-0022` D10 |
+| I2 | Fornecedores PF/PJ, contatos, situação, condições comerciais, trilha de auditoria, API e telas | `V22` (`V22__purchasing_suppliers.sql`) | **implementado**; falta executar a suíte de banco (Testcontainers) |
 | I3 | Prévia e confirmação de NF-e: fornecedor, vínculo de itens, compra, documento, contas a pagar parceladas | `V23` | bloqueado: Flyway; `DR-0022` D4–D7, D9, D11 |
 | I4 | Recebimento físico total/parcial, divergência, entrada em estoque com custo, estorno | `V24` | bloqueado: Flyway; `DR-0022` D1–D3, D7 |
 | I5 | Solicitação, cotação multi-fornecedor, comparação, pedido, aprovação, compra direta, vínculo com OS | `V25+` | pendente |
@@ -40,9 +40,10 @@ fiscal e pagamento (`AG-05` §130).
 
 ## Bloqueios
 
-1. **Versão Flyway aplicada no Supabase** não verificada (sem credenciais na sessão). Nenhuma migration é escrita antes.
-2. **NF-e real** (`31261067757350000178550010000000211010202158-procNFe.xml`) não estava no ambiente; hoje só XML sintético.
-3. `DR-0022` aguarda decisão do owner (recomendações A).
+1. ~~Versão Flyway do Supabase~~ — **resolvido**: o owner confirmou em 2026-10-13 `erp_meta`, última migration `V21` (cash session, `success = true`); a próxima é `V22`. Nenhuma migration foi executada no Supabase.
+2. **NF-e real** (`31261067757350000178550010000000211010202158-procNFe.xml`) ainda não está no ambiente; hoje só XML sintético, nunca confundido com a nota fiscal verdadeira.
+3. `DR-0022` D1–D7 aguardam decisão do owner antes de qualquer regra de custo, rateio, divergência, obrigação ou importação definitiva.
+4. **Checkpoint de banco do I2 não executado**: o Docker Desktop não iniciou (socket travado `dockerInference`/`engine.sock`, problema de ambiente já conhecido). `SupplierIntegrationTest` e a suíte backend completa precisam rodar antes do I2 ser dado como DONE.
 
 ## Critérios de aceite do I1 (atendidos)
 
@@ -58,3 +59,20 @@ fiscal e pagamento (`AG-05` §130).
 
 Emissão de NFS-e/NF-e, consulta oficial à SEFAZ, certificado A1, comissões, rentabilidade, multi-tenant, importação de
 CT-e, frete rateado entre transportadora e fornecedor (custo adicional separado, I3+).
+
+## Resultado do I2 (2026-10-13)
+
+Entregue: `V22`, módulo `purchasing` (domínio, porta, serviço, adaptador JDBC, API REST, tratamento de erros), permissões
+`PURCHASE_VIEW`/`PURCHASE_SUPPLIER_MANAGE`, telas de Fornecedores (lista com busca/filtros, cadastro, edição, detalhe, contatos,
+inativação/reativação com motivo, histórico), testes. Reconciliação com a branch antiga: ver
+`docs/architecture/compras/TASK-0021-arquitetura-compras.md` §3.1.
+
+| Verificação | Resultado |
+| --- | --- |
+| Backend, unitários (domínio e serviço com repositório em memória), arquitetura (sem float) e `ModularityTest` | passaram |
+| Frontend: `tsc -b`, oxlint, Vitest (157 testes, 19 arquivos, 20 novos de Compras) | passaram |
+| Backend, integração PostgreSQL (`SupplierIntegrationTest`, 14 cenários, mais `IamAuthenticationIntegrationTest` com o catálogo atualizado) | **não executados** — Docker indisponível |
+| Suíte backend completa | **não executada** |
+
+Observação: a suíte do frontend tem testes antigos sensíveis a carga (`work-order-products` estourou o tempo em uma execução
+paralela e passou em outra). Os testes novos colam texto e têm folga de tempo para não aumentar essa fragilidade.

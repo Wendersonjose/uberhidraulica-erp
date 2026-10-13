@@ -45,19 +45,33 @@ Regra: `purchasing` **não** lê `finance.payable` nem `inventory.stock_*` por S
 Convenção: UUID, `created_at/created_by`, `CHECK (btrim(x) <> '')` em textos, `idempotency_key VARCHAR(100) UNIQUE`
 nas operações que um retry HTTP poderia duplicar, estornos em tabela própria.
 
-### I2 — `V22__purchasing_suppliers.sql` (somente aditiva, schema novo)
+### I2 — `V22__purchasing_suppliers.sql` (implementada; somente aditiva, schema novo)
 
-- `purchasing.supplier(id, kind CHECK IN ('PJ','PF'), document VARCHAR(14) UNIQUE, legal_name, trade_name, state_registration,
-  email, phone, address_*, status CHECK IN ('ACTIVE','INACTIVE'), related_party BOOLEAN, related_party_note, notes,
-  default_payment_term_days, default_due_day, default_payment_method_code, credit_limit NUMERIC(19,2), version BIGINT,
-  created_*, updated_*, inactivated_at/by/reason)`. `document`: `CHECK` de formato `^[0-9]{11}$` (CPF) ou
-  `^[0-9A-Z]{12}[0-9]{2}$` (CNPJ numérico ou alfanumérico); validação do dígito verificador na aplicação
-  (`BrazilianTaxId`). Fornecedor **nunca é apagado** (inativa).
-- `purchasing.supplier_contact(id, supplier_id, name, role, phone, email, primary BOOLEAN)` com índice único parcial
-  "no máximo um principal por fornecedor".
-- `purchasing.settings(key, value, updated_*)` com `OWN_TAX_ID` (DR-0022 D9) e parâmetros de custo (D1/D2, "não validado").
-- Permissões `PURCHASE_VIEW`, `SUPPLIER_MANAGE` (+ vínculo a perfis). IDs fixos `10000000-0000-0000-0000-0000000000NN`
-  a partir de `…031` (a `V21` terminou em `…030`).
+- `purchasing.supplier`: `person_type PF|PJ`, `document VARCHAR(14)` (CPF de 11 dígitos ou CNPJ numérico/alfanumérico de 14,
+  opcional, **único quando informado**, `CHECK` de formato e de coerência com o tipo de pessoa), nome/razão social, fantasia,
+  IE, telefone, e-mail, endereço, condições comerciais padrão (`payment_terms`, `preferred_payment_method`, `usual_due_day`,
+  `credit_limit NUMERIC(19,2)`, `commercial_notes`), `related_party` + nota (DR-0022 D10, padrão recomendado),
+  `status ACTIVE|INACTIVE` com motivo/autor/data de inativação obrigatórios quando inativo, `version BIGINT` (controle
+  otimista) e `created_*/updated_*`. O dígito verificador é validado na aplicação (`BrazilianTaxId`).
+- `purchasing.supplier_contact`: nome, função, telefone, e-mail, `primary_contact`, `active`; índice único parcial "no máximo
+  um principal **ativo** por fornecedor" e `CHECK` de que contato inativo não é principal. Remover = inativar.
+- `purchasing.supplier_event`: trilha append-only (`CREATED, UPDATED, INACTIVATED, REACTIVATED, CONTACT_*`) com autor, instante,
+  motivo e `changes JSONB` (CPF sempre mascarado).
+- Triggers `forbid_mutation`: o banco recusa `DELETE` em fornecedor e contato e `UPDATE/DELETE` em evento.
+- Permissões `PURCHASE_VIEW` (`…031`) e `PURCHASE_SUPPLIER_MANAGE` (`…032`), com os **mesmos códigos e ids** da branch antiga
+  `feature/task-0019-compras-fornecedores` (ver §3.1). `DONO` e `GERENTE_ADMINISTRATIVO` recebem as duas; `GERENTE_FINANCEIRO`,
+  só `PURCHASE_VIEW`.
+- `purchasing.settings` (`OWN_TAX_ID`, parâmetros de custo) **não** entrou na `V22`: depende de DR-0022 D9/D1/D2 e vai com o I3.
+
+#### 3.1 Reconciliação com `feature/task-0019-compras-fornecedores`
+
+Existe uma branch anterior (2026-10-01, 14 commits, ainda não integrada) com `V22__purchasing_foundation.sql`, módulo `purchasing`
+e tela de fornecedores. Ela diverge de `main` (12 commits atrás, usa o número `TASK-0019` já ocupado) e a sua `V22` cria também
+`purchase_order`, `goods_receipt` e `supplier_price_history` sem código nem testes por trás e sem os invariantes de NF-e,
+idempotência, ligação com contas a pagar e com o movimento de estoque. Decisão desta branch: **reaproveitar** o formato da API de
+fornecedores e os códigos/ids de permissão dela; **não** reaproveitar as tabelas de pedido/recebimento, que serão desenhadas
+nos incrementos I3–I4. Consequência: as duas branches **não podem ser integradas juntas** (Flyway acusa duas `V22`, de propósito);
+a antiga deve ser arquivada depois que esta for integrada. Nada na branch antiga foi alterado.
 
 ### I3 — `V23__purchasing_purchase_nfe.sql`
 
@@ -80,7 +94,7 @@ nas operações que um retry HTTP poderia duplicar, estornos em tabela própria.
 - `purchasing.supplier_price_history` append-only (`supplier_id, product_id, unit_price, quantity, source_type, source_id, occurred_on`).
 - `purchasing.purchase_event` append-only (`purchase_id, event_type, actor, occurred_at, payload JSONB`) — trilha de auditoria.
 - Colunas aditivas em `productcatalog.product`: `gtin VARCHAR(14) NULL`, `ncm CHAR(8) NULL` + índice único parcial de GTIN (D6).
-- Permissões `PURCHASE_IMPORT_XML`, `PURCHASE_CANCEL`.
+- Permissões `PURCHASE_ORDER_MANAGE` (`…033`), `PURCHASE_CANCEL` (`…036`) e `PURCHASE_IMPORT_XML` (`…037`).
 
 ### I4 — `V24__purchasing_receipts_inventory.sql`
 
@@ -91,7 +105,7 @@ nas operações que um retry HTTP poderia duplicar, estornos em tabela própria.
   `CHECK (divergence_type = 'NONE' OR divergence_justification IS NOT NULL)` (`AG-05` §65).
 - Em `inventory.stock_movement`: `source_type` passa a aceitar `'PURCHASE'` e nova coluna `purchase_receipt_item_id UUID`
   com `UNIQUE WHERE movement_type='ENTRY'` (uma entrada por item recebido) — `ck_stock_movement_work_order` é preservada.
-- Permissões `PURCHASE_RECEIVE`, `PURCHASE_ACCEPT_DIVERGENCE`.
+- Permissões `PURCHASE_RECEIVE` (`…034`) e `PURCHASE_DIVERGENCE_ACCEPT` (`…035`).
 
 ### I5/I6 (desenho posterior, uma migration por incremento)
 
@@ -125,8 +139,8 @@ financeiro  (derivado):  lido do Financeiro por parcela (aberta/parcial/paga/ven
 ## 6. API (planejada; prefixo `/api/purchasing`)
 
 ```text
-I2  GET/POST /suppliers   GET/PUT /suppliers/{id}   POST /suppliers/{id}/inactivate|reactivate
-    GET/POST/PUT/DELETE /suppliers/{id}/contacts
+I2  (implementado) GET|POST /suppliers   GET|PUT /suppliers/{id}   POST /suppliers/{id}/inactivate|reactivate
+    GET|POST /suppliers/{id}/contacts   PUT|DELETE /suppliers/{id}/contacts/{contactId}   GET /suppliers/{id}/events
 I3  POST /nfe/preview            (multipart ou JSON, somente leitura, nada é gravado)
     POST /nfe/confirm            (Idempotency-Key; cria fornecedor opcional, vínculos, compra, documento, contas a pagar)
     GET  /purchases   GET /purchases/{id}   POST /purchases/{id}/cancel   POST /documents/{id}/void
@@ -138,9 +152,10 @@ Erros com código estável (`PurchasingException`) e `@ControllerAdvice` própri
 ## 7. Segurança (AG-09)
 
 - Backend autoriza **toda** operação com `@PreAuthorize("@iamAuthorization.hasPermission(authentication, '…')")`.
-  Permissões novas: `PURCHASE_VIEW`, `SUPPLIER_MANAGE`, `PURCHASE_IMPORT_XML`, `PURCHASE_APPROVE`, `PURCHASE_CANCEL`,
-  `PURCHASE_RECEIVE`, `PURCHASE_ACCEPT_DIVERGENCE` (+ `PURCHASE_RETURN` em I6). Perfis: `DONO` e `GERENTE_ADMINISTRATIVO`
-  recebem todas; `GERENTE_FINANCEIRO` recebe `PURCHASE_VIEW`. Pagar a conta continua exigindo `FINANCE_PAYABLE`.
+  Permissões (códigos da branch antiga preservados): `PURCHASE_VIEW`, `PURCHASE_SUPPLIER_MANAGE` (V22, entregues),
+  `PURCHASE_ORDER_MANAGE`, `PURCHASE_RECEIVE`, `PURCHASE_DIVERGENCE_ACCEPT`, `PURCHASE_CANCEL`, `PURCHASE_IMPORT_XML`
+  (+ `PURCHASE_APPROVE` em I5 e `PURCHASE_RETURN` em I6). Perfis: `DONO` e `GERENTE_ADMINISTRATIVO` recebem todas;
+  `GERENTE_FINANCEIRO` recebe `PURCHASE_VIEW`. Pagar a conta continua exigindo `FINANCE_PAYABLE`.
 - A criação das contas a pagar **derivadas** da compra ocorre dentro do caso de uso de importação, autorizado por
   `PURCHASE_IMPORT_XML`; isso é deliberado (o gerente administrativo não tem `FINANCE_PAYABLE`), fica registrado em
   `purchase_event` e **não** concede poder de pagar ou cancelar contas.
