@@ -22,7 +22,8 @@ public class QuoteExceptionHandler {
             "CONCURRENT_MODIFICATION",
             "PUBLIC_QUOTE_ACCESS_ALREADY_REVOKED",
             "QUOTE_REVISION_NOT_PRESENTED",
-            "QUOTE_ITEM_PRODUCT_ALREADY_LINKED");
+            "QUOTE_ITEM_PRODUCT_ALREADY_LINKED",
+            "WORK_ORDER_CLOSED");
 
     /** Link inexistente e link revogado respondem igual: confirmar a diferença entregaria informação. */
     private static final Set<String> NOT_FOUND = Set.of(

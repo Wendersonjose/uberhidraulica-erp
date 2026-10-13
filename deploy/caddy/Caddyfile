@@ -1,0 +1,23 @@
+# Borda HTTPS do ERP (compose.https.yaml): o Caddy obtém e renova o certificado (Let's Encrypt) sozinho, redireciona
+# HTTP -> HTTPS e fala HTTP puro, dentro da rede do compose, com o nginx do ERP.
+#
+# SITE_ADDRESS é o domínio público (ex.: erp.suaoficina.com.br), com o DNS apontando para este servidor e as portas
+# 80 e 443 abertas (o desafio ACME HTTP-01 usa a 80). Para testar sem domínio, use SITE_ADDRESS=localhost: o Caddy
+# emite um certificado de uma CA interna (o navegador avisará que não é confiável; é só para validação).
+{
+	# Sem `servers { trusted_proxies ... }`: o Caddy é a borda. Um X-Forwarded-For / X-Forwarded-Proto enviado pelo
+	# cliente é DESCARTADO e reescrito com o endereço real da conexão; o nginx do ERP só confia neste container
+	# (TRUSTED_PROXY_CIDRS no compose.https.yaml).
+}
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	header {
+		# O navegador passa a exigir HTTPS neste domínio por um ano. Só vale numa instalação HTTPS-only como esta.
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+
+	reverse_proxy frontend:80
+}

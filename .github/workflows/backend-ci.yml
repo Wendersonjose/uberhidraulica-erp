@@ -89,6 +89,37 @@ jobs:
           fi
           echo "Nenhuma migration existente foi alterada."
 
+  # Vulnerabilidades conhecidas nas dependências. Maven: as dependências de runtime resolvidas são consultadas no OSV
+  # (scripts/ci/osv_check.py; falha com HIGH/CRITICAL e também se o OSV não puder ser consultado). npm: `npm audit`.
+  dependency-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Dependências Maven de runtime x OSV
+        run: |
+          mvn -B -ntp -q dependency:list -DincludeScope=runtime -DoutputFile=target/deps.txt
+          python3 scripts/ci/osv_check.py target/deps.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: npm audit (alta ou crítica)
+        working-directory: frontend
+        run: npm audit --audit-level=high
+
   # Sobe o stack do piloto (compose.yaml) com Docker de verdade, roda o fluxo E2E da oficina pelo nginx, reinicia,
   # confere a persistência do volume e valida backup + restore em um volume novo. Ver scripts/deploy/compose-smoke.sh.
   deploy-smoke:
@@ -101,3 +132,8 @@ jobs:
 
       - name: Compose smoke (build, health, E2E, restart, backup, restore)
         run: scripts/deploy/compose-smoke.sh
+
+      - name: Proxy confiável (X-Forwarded-For forjado, falha fechada, limite por IP real)
+        run: |
+          docker build -f frontend/Dockerfile -t erp-frontend-ci .
+          scripts/deploy/proxy-trust-check.sh erp-frontend-ci

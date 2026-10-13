@@ -86,3 +86,74 @@ Decisão final: PENDENTE
 
 Limite de requisições no nginx para o login; mínimo de 8 caracteres; a delegação de `IAM_*` a gerentes **não
 deve ser concedida** no piloto (por padrão não é: só o perfil `DONO` possui `IAM_*`).
+
+## 9. Resumo para a decisão do proprietário (atualizado em 2026-10-05, fase de produção)
+
+Esta seção reúne, por item, o problema, o risco, as opções com o impacto de cada uma e a recomendação técnica. **Nada
+aqui está decidido nem implementado**: a decisão é do proprietário e a `Decisão final` da seção 7 continua `PENDENTE`.
+
+### 9.1 Bloqueio por tentativas de login (item 1)
+
+```text
+Situação hoje: nginx limita 6 tentativas/min por IP (rajada 20, resposta 429). O backend não conta falhas por conta.
+Risco: força bruta LENTA (abaixo de 6/min) ou distribuída em vários IPs não é barrada; cada falha fica em
+       iam.audit_event (LOGIN_FAILED), mas ninguém é avisado. O alvo mais valioso é a conta do Dono.
+Risco inverso: bloqueio duro por conta deixa um atacante travar o Dono de propósito (negação de serviço dirigida).
+```
+
+| Opção | Segurança | Custo / impacto | Efeito para o usuário |
+| --- | --- | --- | --- |
+| **A.** Atraso progressivo por conta + IP (sem bloqueio duro) | reduz força bruta; sem trava dirigida | migration aditiva (contador), testes de concorrência | login fica mais lento após várias falhas |
+| **B.** Bloqueio temporário (ex.: 5 falhas → 15 min) | mais forte contra força bruta; abre negação de serviço contra o Dono | migration, regra de desbloqueio, aviso ao Dono | conta travada por 15 min depois de erros (inclusive dos outros) |
+| **C.** Manter só o nginx e monitorar `LOGIN_FAILED` | risco residual permanece | custo zero; alguém precisa olhar a auditoria | nenhum |
+
+Recomendação técnica: **A**. Enquanto não houver decisão: senha do Dono forte (a primeira troca é obrigatória, mínimo 8
+caracteres), nginx ativo e `LOGIN_FAILED` revisado com periodicidade combinada com a oficina.
+
+### 9.2 Política de senha avançada (item 2)
+
+| Opção | Impacto |
+| --- | --- |
+| **A.** Manter o mínimo atual (8 a 72 bytes) | custo zero; senhas como `12345678` ainda passam |
+| **B.** A + recusa de senhas comuns (lista embarcada) | pequeno; sem migration; mensagem de erro nova |
+| **C.** Composição obrigatória e expiração periódica | contraria as diretrizes atuais (NIST SP 800-63B); mais senhas anotadas e reaproveitadas |
+
+Recomendação técnica: **B**, sem expiração periódica.
+
+### 9.3 Quem pode criar, alterar ou delegar o perfil `DONO` (item 3)
+
+```text
+Situação hoje: só o perfil DONO possui as permissões IAM_* (padrão da migration). Quem tiver IAM_USERS_MANAGE
+               consegue criar um usuário com profileCode = DONO. IAM_PROFILE_PERMISSIONS_MANAGE altera as permissões
+               de qualquer perfil, inclusive DONO, e IAM_USER_EXCEPTIONS_MANAGE concede exceções individuais.
+Risco: se o Dono delegar qualquer uma dessas permissões a um gerente, o gerente pode se promover a Dono
+       (escalada de privilégio), e tudo o que ele fizer depois passa a valer como ação do Dono.
+```
+
+| Opção | Impacto |
+| --- | --- |
+| **A.** Só o `DONO` cria/altera usuário `DONO`, altera o perfil `DONO` ou concede `IAM_*` ao próprio perfil (invariante no backend, resposta 403) | endurecimento sem custo funcional (o Dono continua podendo tudo); novo código de erro e testes de matriz de permissão |
+| **B.** Manter (a delegação a gerente é decisão consciente do Dono) | custo zero; o risco passa a ser aceito por escrito pelo proprietário |
+
+Recomendação técnica: **A**.
+
+**Controle vigente enquanto não houver decisão: NÃO delegue nenhuma permissão `IAM_*` a gerentes em produção.** Por
+padrão ninguém além do Dono as tem, e `scripts/ops/preflight.sh` falha se encontrar `IAM_*` em perfil não-Dono ou em
+exceção `ALLOW` de usuário ativo não-Dono (executado antes de liberar e a cada deploy). Com esse controle o item 3 não
+bloqueia a produção; ele só deixa de valer se alguém delegar permissão IAM.
+
+### 9.4 Segundo fator para o Dono (item 4)
+
+Fora do MVP e não pedido pelos requisitos. Recomendação: não implementar agora; planejar TOTP para o Dono como Task
+pós-MVP se a oficina quiser.
+
+### 9.5 O que o proprietário precisa responder
+
+1. Item 1: A, B ou C?
+2. Item 2: A, B ou C?
+3. Item 3: A (restringir) ou B (manter e aceitar o risco)?
+4. Item 4: confirma que fica fora do MVP?
+
+Efeito sobre a produção: o item 3 está coberto pelo controle operacional acima. Os itens 1 e 2 deixam um **risco
+residual de força bruta lenta e de senha fraca** que só o proprietário pode aceitar (item 1 opção C; item 2 opção A)
+ou mandar resolver (item 1 opção A ou B; item 2 opção B) antes da exposição pública.

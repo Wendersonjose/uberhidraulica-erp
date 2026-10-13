@@ -186,6 +186,16 @@ test('nova conta a pagar exige vencimento e envia chave de idempotência', async
   expect(await screen.findByTestId('payable-balance')).toHaveTextContent('3.000,00')
 })
 
+test('conta a pagar sem nenhuma categoria ativa orienta a cadastrar uma em vez de mostrar um select vazio', async () => {
+  mockApi({
+    'GET /api/finance/expense-categories': [{ id: 'cat2', name: 'Antiga', active: false }],
+    'GET /api/finance/payment-methods': methods,
+  }, as(ALL))
+  renderAt('/financeiro/contas-a-pagar/nova')
+  const notice = await screen.findByText(/Nenhuma categoria de despesa ativa/)
+  expect(within(notice).getByRole('link', { name: /Configurações/ })).toHaveAttribute('href', '/financeiro/configuracoes')
+})
+
 test('editor de orçamento cobra um item físico da OS com o vínculo da DR-0008', async () => {
   const fetch = mockApi({
     'GET /api/work-orders/o1/quotes/q1': { id: 'q1', workOrderId: 'o1', createdAt: '2026-09-18T10:00:00Z', revisions: [], items: [] },

@@ -1,3 +1,8 @@
+# Ambiente declarado. `production` (padrão) exige HTTPS e cookie Secure; `homologation` é o único valor que permite
+# SESSION_COOKIE_SECURE=false (homologação temporária em HTTP puro). Ver ProductionStartupGuard.
+app:
+  environment: ${APP_ENVIRONMENT:production}
+
 server:
   forward-headers-strategy: framework
   servlet:
