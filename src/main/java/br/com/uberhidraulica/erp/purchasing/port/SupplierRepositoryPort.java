@@ -30,6 +30,9 @@ public interface SupplierRepositoryPort {
 
     boolean documentInUse(String document, UUID excludingId);
 
+    /** Fornecedor pelo documento sem máscara, para casar o emitente da NF-e com o cadastro (DR-0022 D6). */
+    Optional<Supplier> findByDocument(String document);
+
     List<SupplierContact> contacts(UUID supplierId, boolean includeInactive);
 
     Optional<SupplierContact> findContact(UUID supplierId, UUID contactId);

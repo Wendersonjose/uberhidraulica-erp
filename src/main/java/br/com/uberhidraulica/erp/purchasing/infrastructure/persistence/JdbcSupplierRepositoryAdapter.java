@@ -110,6 +110,13 @@ class JdbcSupplierRepositoryAdapter implements SupplierRepositoryPort {
     }
 
     @Override
+    public Optional<Supplier> findByDocument(String document) {
+        if (document == null || document.isBlank()) return Optional.empty();
+        return jdbc.query("select * from purchasing.supplier where document = :document",
+                Map.of("document", document.trim()), (rs, i) -> supplier(rs)).stream().findFirst();
+    }
+
+    @Override
     public boolean documentInUse(String document, UUID excludingId) {
         Boolean exists = jdbc.queryForObject("""
                 select exists (select 1 from purchasing.supplier where document = :document and (cast(:excluding as uuid) is null or id <> :excluding))
