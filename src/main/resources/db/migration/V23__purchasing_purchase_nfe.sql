@@ -298,7 +298,7 @@ CREATE TRIGGER tg_purchase_payable_no_delete
 -- Aditivo e opcional: nenhum produto existente é afetado. O dígito verificador do GTIN é validado na
 -- aplicação (Gtin, entregue no I1); aqui o banco garante apenas o formato e a unicidade quando informado.
 ALTER TABLE productcatalog.product ADD COLUMN gtin VARCHAR(14);
-ALTER TABLE productcatalog.product ADD COLUMN ncm CHAR(8);
+ALTER TABLE productcatalog.product ADD COLUMN ncm VARCHAR(8);
 
 ALTER TABLE productcatalog.product
     ADD CONSTRAINT ck_product_gtin_format CHECK (gtin IS NULL OR gtin ~ '^[0-9]{8}$|^[0-9]{12,14}$');

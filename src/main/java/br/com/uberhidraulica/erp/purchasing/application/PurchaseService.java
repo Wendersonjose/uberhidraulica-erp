@@ -11,6 +11,7 @@ import br.com.uberhidraulica.erp.purchasing.domain.PurchasingException;
 import br.com.uberhidraulica.erp.purchasing.domain.SupplierProductLink;
 import br.com.uberhidraulica.erp.purchasing.port.PurchaseRepositoryPort;
 import br.com.uberhidraulica.erp.purchasing.port.PurchaseRepositoryPort.Page;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,6 +37,7 @@ public class PurchaseService {
     private final CurrentUser currentUser;
     private final Clock clock;
 
+    @Autowired
     public PurchaseService(PurchaseRepositoryPort repository, PurchasePayables payables, CurrentUser currentUser) {
         this(repository, payables, currentUser, Clock.systemUTC());
     }

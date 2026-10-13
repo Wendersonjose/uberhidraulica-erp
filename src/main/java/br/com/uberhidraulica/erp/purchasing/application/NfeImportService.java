@@ -25,6 +25,7 @@ import br.com.uberhidraulica.erp.purchasing.domain.nfe.NfeDocument;
 import br.com.uberhidraulica.erp.purchasing.domain.nfe.NfeXmlParser;
 import br.com.uberhidraulica.erp.purchasing.port.PurchaseRepositoryPort;
 import br.com.uberhidraulica.erp.purchasing.port.SupplierRepositoryPort;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -64,6 +65,7 @@ public class NfeImportService {
     private final CurrentUser currentUser;
     private final Clock clock;
 
+    @Autowired
     public NfeImportService(PurchaseRepositoryPort purchases, SupplierRepositoryPort suppliers,
                             SupplierService supplierService, ProductCatalogQuery catalog, PurchasePayables payables,
                             PurchasingSettingsService settings, NfePreviewService previews, CurrentUser currentUser) {

@@ -10,39 +10,41 @@ import java.util.List;
  * apenas a forma (12 linhas somando 1.943,10 em 3 duplicatas de 647,70) imita o caso descrito na TASK-0021.
  * A chave de acesso é calculada de modo consistente com o conteúdo, a menos que se peça o contrário.
  */
-final class NfeFixtures {
-    static final String ISSUER = "67757350000178";
-    static final String RECIPIENT = "01637003000101";
+public final class NfeFixtures {
+    public static final String ISSUER = "67757350000178";
+    public static final String RECIPIENT = "01637003000101";
 
-    record Line(String code, String description, String qty, String unitPrice, String total) {}
+    public record Line(String code, String description, String qty, String unitPrice, String total) {}
 
-    String issuer = ISSUER;
-    String recipient = RECIPIENT;
+    public String issuer = ISSUER;
+    public String recipient = RECIPIENT;
     String model = "55";
     int series = 1;
-    long number = 21;
+    public long number = 21;
     String issuedAt = "2026-10-09T10:15:00-03:00";
     String environment = "1";
     String direction = "1";
     String status = "100";
     boolean protocol = true;
     boolean signature = true;
-    String keyOverride;
+    public String keyOverride;
     String protocolKeyOverride;
-    String invoiceAmount;
+    public String invoiceAmount;
     String productsAmountOverride;
-    String freightTotal = "0.00";
-    String ipiTotal = "0.00";
-    List<Line> lines = new ArrayList<>(defaultLines());
-    List<String[]> installments = new ArrayList<>(List.of(
+    public String freightTotal = "0.00";
+    /** Unidade comercial emitida nos itens; a D7 exige fator quando ela nao equivale a do catalogo. */
+    public String commercialUnit = "UN";
+    public String ipiTotal = "0.00";
+    public List<Line> lines = new ArrayList<>(defaultLines());
+    public List<String[]> installments = new ArrayList<>(List.of(
             new String[]{"001", "2026-10-23", "647.70"},
             new String[]{"002", "2026-10-30", "647.70"},
             new String[]{"003", "2026-11-06", "647.70"}));
 
-    static NfeFixtures valid() { return new NfeFixtures(); }
+    public static NfeFixtures valid() { return new NfeFixtures(); }
 
     /** 12 linhas que somam exatamente 1943.10. */
-    static List<Line> defaultLines() {
+    public static List<Line> defaultLines() {
         return List.of(
                 new Line("S-001", "Item sintetico 01", "2.0000", "150.00", "300.00"),
                 new Line("S-002", "Item sintetico 02", "1.0000", "245.90", "245.90"),
@@ -58,7 +60,7 @@ final class NfeFixtures {
                 new Line("S-012", "Item sintetico 12", "1.0000", "102.30", "102.30"));
     }
 
-    String accessKey() {
+    public String accessKey() {
         if (keyOverride != null) return keyOverride;
         LocalDate date = OffsetDateTimeParse.date(issuedAt);
         String base = "31" + String.format("%02d%02d", date.getYear() % 100, date.getMonthValue())
@@ -83,7 +85,7 @@ final class NfeFixtures {
         return lines.stream().map(l -> new BigDecimal(l.total())).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    String xml() {
+    public String xml() {
         String key = accessKey();
         String products = productsAmountOverride != null ? productsAmountOverride : linesTotal().toPlainString();
         String vnf = invoiceAmount != null ? invoiceAmount : linesTotal().toPlainString();
@@ -103,9 +105,11 @@ final class NfeFixtures {
         int n = 1;
         for (Line l : lines) {
             sb.append("<det nItem=\"").append(n++).append("\"><prod><cProd>").append(l.code()).append("</cProd><cEAN>SEM GTIN</cEAN><xProd>")
-                    .append(l.description()).append("</xProd><NCM>84133090</NCM><CFOP>5102</CFOP><uCom>UN</uCom><qCom>").append(l.qty())
+                    .append(l.description()).append("</xProd><NCM>84133090</NCM><CFOP>5102</CFOP><uCom>")
+                    .append(commercialUnit).append("</uCom><qCom>").append(l.qty())
                     .append("</qCom><vUnCom>").append(l.unitPrice()).append("</vUnCom><vProd>").append(l.total())
-                    .append("</vProd><cEANTrib>SEM GTIN</cEANTrib><uTrib>UN</uTrib><qTrib>").append(l.qty()).append("</qTrib><vUnTrib>")
+                    .append("</vProd><cEANTrib>SEM GTIN</cEANTrib><uTrib>")
+                    .append(commercialUnit).append("</uTrib><qTrib>").append(l.qty()).append("</qTrib><vUnTrib>")
                     .append(l.unitPrice()).append("</vUnTrib><indTot>1</indTot></prod><imposto><ICMS><ICMSSN102><orig>0</orig><CSOSN>102</CSOSN>")
                     .append("</ICMSSN102></ICMS></imposto></det>");
         }

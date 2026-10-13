@@ -18,6 +18,7 @@ import br.com.uberhidraulica.erp.purchasing.domain.nfe.NfeValidator;
 import br.com.uberhidraulica.erp.purchasing.domain.nfe.NfeXmlParser;
 import br.com.uberhidraulica.erp.purchasing.port.PurchaseRepositoryPort;
 import br.com.uberhidraulica.erp.purchasing.port.SupplierRepositoryPort;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -50,6 +51,7 @@ public class NfePreviewService {
     private final PurchasingSettingsService settings;
     private final Clock clock;
 
+    @Autowired
     public NfePreviewService(PurchaseRepositoryPort purchases, SupplierRepositoryPort suppliers,
                              ProductCatalogQuery catalog, PurchasingSettingsService settings) {
         this(purchases, suppliers, catalog, settings, Clock.systemUTC());
