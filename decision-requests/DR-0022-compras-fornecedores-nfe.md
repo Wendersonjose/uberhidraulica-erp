@@ -502,7 +502,10 @@ autorizado, e a raiz não serve como prova de identidade. Consequências:
 2. A comparação é por **CNPJ completo (14 dígitos)**. Nota emitida para outra filial do mesmo grupo é
    **recusada**, não alertada. Se a oficina tiver mais de um estabelecimento, `OWN_TAX_ID` precisa aceitar uma
    **lista** de CNPJs autorizados; com um único estabelecimento, um valor basta.
-3. A raiz do CNPJ continua útil apenas para o que a `D10`/`I1` já fazem — *informar* que o emitente é pessoa
+3. **Confirmado pelo proprietário em 2026-10-13: a oficina tem um único estabelecimento.** Logo `OWN_TAX_ID`
+   guarda **um** CNPJ de 14 dígitos e nota emitida para qualquer outro CNPJ é recusada na confirmação — não
+   há necessidade de lista de CNPJs autorizados nesta fase.
+4. A raiz do CNPJ continua útil apenas para o que a `D10`/`I1` já fazem — *informar* que o emitente é pessoa
    jurídica do mesmo grupo. Deixa de ter qualquer efeito de autorização.
 
 Observação de escopo que não muda nenhuma decisão: a `D10` já está implementada na `V22`, logo a aprovação
