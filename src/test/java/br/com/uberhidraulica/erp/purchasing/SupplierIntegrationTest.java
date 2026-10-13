@@ -78,6 +78,17 @@ class SupplierIntegrationTest {
 
     // ------------------------------------------------------------------ dados de teste
 
+    /**
+     * CPF válido e único por chamada. Documento fixo não serve: a classe não limpa fornecedores entre
+     * testes e o índice único global faria o segundo teste a usar o mesmo CPF receber 409.
+     */
+    private static String cpf() {
+        String base = String.format("%09d", SEQUENCE.incrementAndGet());
+        int d1 = digit(base, new int[] {10, 9, 8, 7, 6, 5, 4, 3, 2});
+        int d2 = digit(base + d1, new int[] {11, 10, 9, 8, 7, 6, 5, 4, 3, 2});
+        return base + d1 + d2;
+    }
+
     /** CNPJ numérico válido e único por chamada (raiz sequencial + dígitos verificadores calculados). */
     private static String cnpj() {
         String base = String.format("%08d0001", SEQUENCE.incrementAndGet());
@@ -198,6 +209,24 @@ class SupplierIntegrationTest {
         create(owner, "Sem documento 1", "PJ", null);
         create(owner, "Sem documento 2", "PJ", null);
         assertThat((Integer) JsonPath.read(listing(owner, "q", "Sem documento"), "$.totalItems")).isEqualTo(2);
+    }
+
+    /**
+     * Regressão: `relatedParty` e `primary` são opcionais no corpo. Com campo primitivo no record de
+     * entrada, a ausência virava "Cannot map `null` into type `boolean`" e todo cadastro respondia 400,
+     * sem o formulário do frontend perceber (ele sempre envia o campo). Ausente significa `false`.
+     */
+    @Test
+    void optionalBooleansMayBeOmittedAndDefaultToFalse() throws Exception {
+        String id = JsonPath.read(api.send(owner, post("/api/purchasing/suppliers"),
+                        "{\"personType\":\"PJ\",\"legalName\":\"Booleano Ausente Ltda\",\"document\":\"" + cnpj() + "\"}")
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.relatedParty").value(false))
+                .andReturn().getResponse().getContentAsString(), "$.id");
+
+        api.send(owner, post("/api/purchasing/suppliers/" + id + "/contacts"), "{\"name\":\"Contato sem primary\"}")
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.primary").value(false));
+
+        assertThat(jdbc.queryForObject("select related_party from purchasing.supplier where id = ?::uuid", Boolean.class, id)).isFalse();
     }
 
     // ------------------------------------------------------------------ unicidade e versão
@@ -388,7 +417,7 @@ class SupplierIntegrationTest {
     void searchFiltersByTextDocumentAndTypeAndCapsThePageSize() throws Exception {
         String document = cnpj();
         create(owner, "Busca Sintética Ltda", "PJ", document);
-        create(owner, "Busca Pessoa", "PF", "390.533.447-05");
+        create(owner, "Busca Pessoa", "PF", cpf());
 
         assertThat((Integer) JsonPath.read(listing(owner, "q", "Busca Sint"), "$.totalItems")).isEqualTo(1);
         assertThat((Integer) JsonPath.read(listing(owner, "q", document.substring(0, 8)), "$.totalItems")).isGreaterThanOrEqualTo(1);

@@ -157,19 +157,19 @@ class SupplierController {
     record SupplierRequest(@NotNull Supplier.PersonType personType, @NotBlank @Size(max = 160) String legalName,
                            @Size(max = 160) String tradeName, @Size(max = 24) String document, @Size(max = 30) String stateRegistration,
                            @Size(max = 24) String phone, @Size(max = 254) String email, @Valid AddressPayload address,
-                           @Valid TermsPayload commercialTerms, boolean relatedParty, @Size(max = 300) String relatedPartyNote, Long version) {
+                           @Valid TermsPayload commercialTerms, Boolean relatedParty, @Size(max = 300) String relatedPartyNote, Long version) {
         Supplier.Draft draft() {
             return new Supplier.Draft(personType, legalName, tradeName, document, stateRegistration, phone, email,
                     address == null ? null : address.value(), commercialTerms == null ? null : commercialTerms.value(),
-                    relatedParty, relatedPartyNote);
+                    relatedParty != null && relatedParty, relatedPartyNote);
         }
     }
 
     record ReasonRequest(@NotBlank @Size(max = 500) String reason) {}
 
     record ContactRequest(@NotBlank @Size(max = 160) String name, @Size(max = 80) String role, @Size(max = 24) String phone,
-                          @Size(max = 254) String email, boolean primary) {
-        SupplierContact.Draft draft() { return new SupplierContact.Draft(name, role, phone, email, primary); }
+                          @Size(max = 254) String email, Boolean primary) {
+        SupplierContact.Draft draft() { return new SupplierContact.Draft(name, role, phone, email, primary != null && primary); }
     }
 
     record SupplierResponse(UUID id, Supplier.PersonType personType, String legalName, String tradeName, String document,
