@@ -14,7 +14,11 @@ import java.util.Set;
 public class PurchasingExceptionHandler {
     private static final Set<String> CONFLICTS = Set.of(
             "SUPPLIER_DOCUMENT_DUPLICATE", "SUPPLIER_VERSION_CONFLICT", "SUPPLIER_ALREADY_INACTIVE", "SUPPLIER_ALREADY_ACTIVE",
-            "SUPPLIER_CONTACT_PRIMARY_CONFLICT");
+            "SUPPLIER_CONTACT_PRIMARY_CONFLICT",
+            // I3: estado já atingido ou recurso já usado. 409 e não 400, porque o pedido é válido — o que
+            // mudou foi o estado do lado do servidor, e repetir não vai passar a dar certo.
+            "PURCHASE_DUPLICATE_NFE", "PURCHASE_IDEMPOTENCY_KEY_REUSED", "PURCHASE_ALREADY_CANCELLED",
+            "PURCHASE_DOCUMENT_ALREADY_VOIDED", "PURCHASE_NFE_CONTENT_DIVERGES");
 
     @ExceptionHandler(PurchasingException.class)
     ResponseEntity<ErrorResponse> domain(PurchasingException exception) {

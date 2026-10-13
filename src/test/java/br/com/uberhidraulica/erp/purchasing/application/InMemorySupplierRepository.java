@@ -63,6 +63,12 @@ class InMemorySupplierRepository implements SupplierRepositoryPort {
     }
 
     @Override
+    public Optional<Supplier> findByDocument(String document) {
+        if (document == null || document.isBlank()) return Optional.empty();
+        return suppliers.values().stream().filter(s -> document.equals(s.document())).findFirst();
+    }
+
+    @Override
     public List<SupplierContact> contacts(UUID supplierId, boolean includeInactive) {
         return contacts.values().stream().filter(c -> c.supplierId().equals(supplierId) && (includeInactive || c.active())).toList();
     }
