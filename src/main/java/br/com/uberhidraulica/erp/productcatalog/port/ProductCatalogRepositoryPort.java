@@ -9,4 +9,7 @@ public interface ProductCatalogRepositoryPort {
     CatalogProduct save(CatalogProduct product);
     Optional<CatalogProduct> findById(UUID id);
     List<CatalogProduct> findAll();
+
+    /** Produto pelo GTIN, para o critério 2 de casamento da importação de NF-e (DR-0022 D6). */
+    Optional<CatalogProduct> findByGtin(String gtin);
 }
