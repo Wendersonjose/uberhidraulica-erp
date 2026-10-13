@@ -2,7 +2,7 @@
 
 ## Identificação
 
-- Status: `IN_PROGRESS` (I1 concluído; I2 implementado, pendente apenas o checkpoint de banco; I3+ aguardam o DR-0022)
+- Status: `IN_PROGRESS` (I1 e I2 concluídos com o checkpoint de banco executado; I3+ aguardam o `DR-0022`)
 - Prioridade: alta
 - Criada em: `2026-10-13`
 - Origem: briefing do proprietário de 2026-10-13; `DR-0021` (DECIDED) libera a abertura
@@ -32,9 +32,9 @@ fiscal e pagamento (`AG-05` §130).
 | # | Entrega | Migration | Estado |
 | --- | --- | --- | --- |
 | I1 | Domínio puro de NF-e: chave de acesso, CNPJ/CPF (inclui alfanumérico), GTIN, parser XML seguro, validador, testes | nenhuma | **CONCLUÍDO** (31 testes) |
-| I2 | Fornecedores PF/PJ, contatos, situação, condições comerciais, trilha de auditoria, API e telas | `V22` (`V22__purchasing_suppliers.sql`) | **implementado**; falta executar a suíte de banco (Testcontainers) |
-| I3 | Prévia e confirmação de NF-e: fornecedor, vínculo de itens, compra, documento, contas a pagar parceladas | `V23` | bloqueado: Flyway; `DR-0022` D4–D7, D9, D11 |
-| I4 | Recebimento físico total/parcial, divergência, entrada em estoque com custo, estorno | `V24` | bloqueado: Flyway; `DR-0022` D1–D3, D7 |
+| I2 | Fornecedores PF/PJ, contatos, situação, condições comerciais, trilha de auditoria, API e telas | `V22` (`V22__purchasing_suppliers.sql`) | **CONCLUÍDO** (16 testes de integração + 22 unitários; checkpoint de banco executado) |
+| I3 | Prévia e confirmação de NF-e: fornecedor, vínculo de itens, compra, documento, contas a pagar parceladas | `V23` | bloqueado: `DR-0022` D4–D7, D9, D11 |
+| I4 | Recebimento físico total/parcial, divergência, entrada em estoque com custo, estorno | `V24` | bloqueado: `DR-0022` D1–D3, D7 |
 | I5 | Solicitação, cotação multi-fornecedor, comparação, pedido, aprovação, compra direta, vínculo com OS | `V25+` | pendente |
 | I6 | Devolução, crédito do fornecedor, histórico de preços, relatórios | `V26+` | pendente |
 
@@ -43,7 +43,8 @@ fiscal e pagamento (`AG-05` §130).
 1. ~~Versão Flyway do Supabase~~ — **resolvido**: o owner confirmou em 2026-10-13 `erp_meta`, última migration `V21` (cash session, `success = true`); a próxima é `V22`. Nenhuma migration foi executada no Supabase.
 2. **NF-e real** (`31261067757350000178550010000000211010202158-procNFe.xml`) ainda não está no ambiente; hoje só XML sintético, nunca confundido com a nota fiscal verdadeira.
 3. `DR-0022` D1–D7 aguardam decisão do owner antes de qualquer regra de custo, rateio, divergência, obrigação ou importação definitiva.
-4. **Checkpoint de banco do I2 não executado**: o Docker Desktop não iniciou (socket travado `dockerInference`/`engine.sock`, problema de ambiente já conhecido). `SupplierIntegrationTest` e a suíte backend completa precisam rodar antes do I2 ser dado como DONE.
+4. ~~Checkpoint de banco do I2 não executado~~ — **resolvido em 2026-10-13**: Docker subiu, `SupplierIntegrationTest`
+   rodou contra PostgreSQL 18 real e a suíte completa foi executada. Ver "Resultado do I2".
 
 ## Critérios de aceite do I1 (atendidos)
 
@@ -67,12 +68,52 @@ Entregue: `V22`, módulo `purchasing` (domínio, porta, serviço, adaptador JDBC
 inativação/reativação com motivo, histórico), testes. Reconciliação com a branch antiga: ver
 `docs/architecture/compras/TASK-0021-arquitetura-compras.md` §3.1.
 
+### Checkpoint de banco (2026-10-13, PostgreSQL 18 real via Testcontainers)
+
 | Verificação | Resultado |
 | --- | --- |
-| Backend, unitários (domínio e serviço com repositório em memória), arquitetura (sem float) e `ModularityTest` | passaram |
-| Frontend: `tsc -b`, oxlint, Vitest (157 testes, 19 arquivos, 20 novos de Compras) | passaram |
-| Backend, integração PostgreSQL (`SupplierIntegrationTest`, 14 cenários, mais `IamAuthenticationIntegrationTest` com o catálogo atualizado) | **não executados** — Docker indisponível |
-| Suíte backend completa | **não executada** |
+| Compilação Maven | OK |
+| Flyway: 22 migrations aplicadas da `V1` à `V22` em banco limpo | OK (`now at version v22`) |
+| `ModularityTest` (`ApplicationModules.verify()`) com o módulo `purchasing` | passou |
+| Arquitetura monetária: `PurchasingMonetaryArchitectureTest` (sem `double`/`float`) | passou |
+| `SupplierIntegrationTest` — 16 cenários, inclui autenticação, permissões e mascaramento de CPF | **16/16** |
+| Unitários de Compras: `SupplierServiceTest` 12, `SupplierTest` 10, NF-e (chave, CNPJ/GTIN, parser, validador) 29 | passaram |
+| IAM com as permissões novas: `IamAuthenticationIntegrationTest` 11, `ModulePermissionsIntegrationTest` 7 | passaram |
+| Sem regressão em OS: `Task0004` 6, `Task0006` 5, `Task0012` 8 | passaram |
+| Sem regressão em Estoque: `Task0014InventoryIntegrationTest` 16, `StockAverageCostTest` 5 | passaram |
+| Sem regressão em Financeiro: `Task0015` 40, `Task0016CashSession` 5, dashboard 3, domínio 17 | passaram |
+| Sem regressão em Orçamento: `Task0007` 19, `Task0008` 20, `Task0013` 5 | passaram |
+| Frontend: `tsc -p tsconfig.app.json --noEmit`, oxlint, `npm run build` | saída 0 |
+| Frontend: Vitest | **157/157** em 19 arquivos |
+
+Suíte backend completa: **343 testes executados em 40 classes, 0 falhas de asserção e 20 *errors***, todos os 20 na
+mesma classe e pela causa de ambiente descrita abaixo. Com a reexecução dessa classe e do `SupplierIntegrationTest`
+atualizado (36 testes, `BUILD SUCCESS`), o conjunto efetivamente verificado é de 344 testes sem vermelho remanescente.
+
+**Falha de ambiente, não de código — registrada por honestidade.** Na execução completa a classe
+`Task0008PublicQuoteDecisionIntegrationTest` acusou 20 *errors* e o Maven terminou em `BUILD FAILURE`. A causa no log
+não é o teste: é `java.nio.file.FileSystemException: …\crm\package-info.class: Não existem recursos de sistema
+suficientes para concluir o serviço solicitado` durante o `ClassPathScanning` — esgotamento de recursos do Windows
+com a RAM livre em ~0,3 GB (notebook de pouca memória com o Docker ocupando ~5 GB). O arquivo está íntegro e a classe
+seguinte passou na mesma execução. Reexecutada isoladamente com memória livre: **20/20**, `BUILD SUCCESS`.
+Pelo mesmo motivo o Vitest em paralelo perdeu *workers* (3 arquivos, 16 *errors*); com `--maxWorkers=1`: **157/157**.
+
+Nada de I2 foi dado como verde com gate vermelho: os dois casos vermelhos foram reexecutados até resultado limpo e
+a causa está documentada acima.
+
+### Defeitos encontrados e corrigidos no checkpoint
+
+1. **Defeito de produção (`SupplierController`)**: `relatedParty` e `primary` eram `boolean` primitivo nos records de
+   entrada. Campo ausente no JSON fazia o Jackson falhar com "Cannot map `null` into type `boolean`" e **todo cadastro
+   de fornecedor respondia 400**. Corrigido para `Boolean` com normalização `!= null &&`, padrão já usado em
+   `ProductCatalogController`. O formulário do frontend sempre envia o campo, por isso os testes de tela nunca viram.
+   Coberto agora por teste nomeado (`optionalBooleansMayBeOmittedAndDefaultToFalse`), além de ser exercido
+   implicitamente por todos os outros cenários.
+2. **Defeito de teste (`SupplierIntegrationTest`)**: um CPF fixo era usado em dois cenários; como a classe não limpa
+   fornecedores entre testes e `uq_supplier_document` é global, o segundo recebia 409 em vez de 201. Corrigido com
+   gerador de CPF válido e único por chamada.
 
 Observação: a suíte do frontend tem testes antigos sensíveis a carga (`work-order-products` estourou o tempo em uma execução
 paralela e passou em outra). Os testes novos colam texto e têm folga de tempo para não aumentar essa fragilidade.
+
+Contrato REST e roteiro de teste manual (Insomnia): `docs/api/TASK-0021-contrato-rest-fornecedores.md`.
