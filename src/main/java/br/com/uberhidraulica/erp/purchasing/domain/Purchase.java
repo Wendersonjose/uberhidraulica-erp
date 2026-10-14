@@ -18,7 +18,9 @@ public record Purchase(UUID id, long number, UUID supplierId, Origin origin, Sta
                        BigDecimal insuranceTotal, BigDecimal otherTotal, BigDecimal taxAddedTotal,
                        BigDecimal payableTotal, UUID expenseCategoryId, String commercialSnapshot,
                        UUID workOrderId, String notes, String idempotencyKey, Instant createdAt, UUID createdBy,
-                       Instant cancelledAt, UUID cancelledBy, String cancellationReason, List<PurchaseItem> items) {
+                       Instant cancelledAt, UUID cancelledBy, String cancellationReason, long version,
+                       Instant updatedAt, UUID updatedBy, Instant approvedAt, UUID approvedBy,
+                       List<PurchaseItem> items) {
 
     /** De onde a compra nasceu. A nota importada nasce {@code APPROVED}: ela já é o fato comercial. */
     public enum Origin { NFE_IMPORT, DIRECT, ORDER }
@@ -31,6 +33,11 @@ public record Purchase(UUID id, long number, UUID supplierId, Origin origin, Sta
 
     public boolean cancelled() {
         return status == Status.CANCELLED;
+    }
+
+    /** Pedido e compra direta passam pelo fluxo de aprovação; a nota importada nasce aprovada. */
+    public boolean needsApproval() {
+        return origin != Origin.NFE_IMPORT;
     }
 
     /**

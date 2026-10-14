@@ -160,7 +160,8 @@ class PurchaseController {
                           UUID expenseCategoryId, UUID workOrderId, String notes, Instant createdAt,
                           Instant cancelledAt, String cancellationReason, List<ItemResponse> items,
                           List<DocumentResponse> documents, List<InstallmentResponse> installments,
-                          String receiptStatus) {
+                          String receiptStatus, long version, UUID createdBy, Instant updatedAt, Instant approvedAt,
+                          UUID approvedBy) {
         static DetailResponse from(PurchaseService.Detail d) {
             Purchase p = d.purchase();
             return new DetailResponse(p.id(), p.number(), p.supplierId(), p.origin().name(), p.status().name(),
@@ -169,7 +170,8 @@ class PurchaseController {
                     p.createdAt(), p.cancelledAt(), p.cancellationReason(),
                     p.items().stream().map(ItemResponse::from).toList(),
                     d.documents().stream().map(DocumentResponse::from).toList(),
-                    d.payables().stream().map(InstallmentResponse::from).toList(), d.receiptStatus().name());
+                    d.payables().stream().map(InstallmentResponse::from).toList(), d.receiptStatus().name(),
+                    p.version(), p.createdBy(), p.updatedAt(), p.approvedAt(), p.approvedBy());
         }
     }
 
@@ -177,11 +179,12 @@ class PurchaseController {
     record ItemResponse(UUID id, int lineNo, UUID productId, String supplierCode, String description,
                         String unitOriginal, BigDecimal quantityOriginal, BigDecimal unitConversionFactor,
                         BigDecimal quantity, BigDecimal unitPrice, BigDecimal unitCost, BigDecimal discount,
-                        BigDecimal lineTotal, String ncm, String cfop, String gtin, CostResponse cost) {
+                        BigDecimal lineTotal, String ncm, String cfop, String gtin, UUID workOrderItemId,
+                        CostResponse cost) {
         static ItemResponse from(PurchaseItem i) {
             return new ItemResponse(i.id(), i.lineNo(), i.productId(), i.supplierCode(), i.description(),
                     i.unitOriginal(), i.quantityOriginal(), i.unitConversionFactor(), i.quantity(), i.unitPrice(),
-                    i.unitCost(), i.discount(), i.lineTotal(), i.ncm(), i.cfop(), i.gtin(),
+                    i.unitCost(), i.discount(), i.lineTotal(), i.ncm(), i.cfop(), i.gtin(), i.workOrderItemId(),
                     CostResponse.from(i.cost()));
         }
     }

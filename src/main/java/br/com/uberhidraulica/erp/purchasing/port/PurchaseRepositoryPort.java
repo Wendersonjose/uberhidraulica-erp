@@ -45,6 +45,28 @@ public interface PurchaseRepositoryPort {
 
     Page<PurchaseSummary> search(Filter filter, int page, int size);
 
+    // ---------------------------------------------------------------- pedido (I5)
+
+    /**
+     * Regrava cabeçalho e totais do <b>rascunho</b> e avança a versão. O chamador já travou a compra; mesmo assim a
+     * própria instrução só atinge linha em {@code DRAFT}, para uma corrida nunca editar pedido já enviado.
+     *
+     * @throws br.com.uberhidraulica.erp.purchasing.domain.PurchasingException {@code PURCHASE_ORDER_NOT_EDITABLE}
+     */
+    void updateDraft(Purchase purchase, java.time.Instant at, UUID by);
+
+    /** Troca os itens do rascunho. O banco só aceita apagar item de compra em {@code DRAFT} (V25). */
+    void replaceItems(UUID purchaseId, List<PurchaseItem> items);
+
+    /**
+     * Muda a situação de {@code from} para {@code to}, avançando a versão e registrando aprovador quando a
+     * destinação é {@code APPROVED}.
+     *
+     * @throws br.com.uberhidraulica.erp.purchasing.domain.PurchasingException {@code PURCHASE_ORDER_STATE_CHANGED}
+     *         quando a compra já não está em {@code from}
+     */
+    void transition(UUID purchaseId, Purchase.Status from, Purchase.Status to, java.time.Instant at, UUID by);
+
     // ---------------------------------------------------------------- documento fiscal
 
     void insertDocument(PurchaseDocument document);

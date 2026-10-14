@@ -21,9 +21,13 @@ public class PurchasingExceptionHandler {
             "PURCHASE_DOCUMENT_ALREADY_VOIDED", "PURCHASE_NFE_CONTENT_DIVERGES",
             // I4: o pedido é válido, mas o estado do recebimento ou do estoque do lado do servidor impede.
             "PURCHASE_NOT_RECEIVABLE", "PURCHASE_RECEIPT_ALREADY_REVERSED", "PURCHASE_RECEIPT_STOCK_CONSUMED",
-            "PURCHASE_HAS_ACTIVE_RECEIPT", "PURCHASE_STOCK_REFUSED");
+            "PURCHASE_HAS_ACTIVE_RECEIPT", "PURCHASE_STOCK_REFUSED",
+            // I5: o pedido é válido; o que mudou foi a situação ou a versão do lado do servidor.
+            "PURCHASE_ORDER_NOT_EDITABLE", "PURCHASE_ORDER_VERSION_CONFLICT", "PURCHASE_ORDER_NOT_AWAITING_APPROVAL",
+            "PURCHASE_ORDER_STATE_CHANGED");
     /** Sem a permissão de aceitar divergência a operação é negada, e não apenas inválida. */
-    private static final Set<String> FORBIDDEN = Set.of("PURCHASE_DIVERGENCE_NOT_AUTHORIZED");
+    private static final Set<String> FORBIDDEN = Set.of("PURCHASE_DIVERGENCE_NOT_AUTHORIZED",
+            "PURCHASE_APPROVAL_SELF_FORBIDDEN");
 
     @ExceptionHandler(PurchasingException.class)
     ResponseEntity<ErrorResponse> domain(PurchasingException exception) {

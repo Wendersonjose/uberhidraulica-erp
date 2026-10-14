@@ -196,6 +196,50 @@ class JdbcPurchaseRepositoryAdapter implements PurchaseRepositoryPort {
         return new Page<>(items, total == null ? 0 : total, page, size);
     }
 
+    // ================================================================ pedido (I5)
+
+    @Override
+    public void updateDraft(Purchase p, Instant at, UUID by) {
+        int rows = jdbc.update("""
+                update purchasing.purchase set supplier_id = :supplier, goods_total = :goods,
+                    discount_total = :discount, freight_total = :freight, insurance_total = :insurance,
+                    other_total = :other, tax_added_total = :tax, payable_total = :payable,
+                    commercial_snapshot = cast(:snapshot as jsonb), work_order_id = :workOrder, notes = :notes,
+                    version = version + 1, updated_at = :at, updated_by = :by
+                where id = :id and status = DRAFT
+                """, new MapSqlParameterSource("id", p.id()).addValue("supplier", p.supplierId())
+                .addValue("goods", p.goodsTotal()).addValue("discount", p.discountTotal())
+                .addValue("freight", p.freightTotal()).addValue("insurance", p.insuranceTotal())
+                .addValue("other", p.otherTotal()).addValue("tax", p.taxAddedTotal())
+                .addValue("payable", p.payableTotal()).addValue("snapshot", p.commercialSnapshot())
+                .addValue("workOrder", p.workOrderId()).addValue("notes", p.notes())
+                .addValue("at", Timestamp.from(at)).addValue("by", by));
+        if (rows == 0) {
+            throw new PurchasingException("PURCHASE_ORDER_NOT_EDITABLE", "Só o rascunho pode ser alterado");
+        }
+    }
+
+    @Override
+    public void replaceItems(UUID purchaseId, List<PurchaseItem> items) {
+        jdbc.update("delete from purchasing.purchase_item where purchase_id = :id", Map.of("id", purchaseId));
+        insertItems(items);
+    }
+
+    @Override
+    public void transition(UUID purchaseId, Purchase.Status from, Purchase.Status to, Instant at, UUID by) {
+        int rows = jdbc.update("""
+                update purchasing.purchase set status = :to, version = version + 1, updated_at = :at, updated_by = :by,
+                    approved_at = case when :to = APPROVED then cast(:at as timestamptz) else approved_at end,
+                    approved_by = case when :to = APPROVED then cast(:by as uuid) else approved_by end
+                where id = :id and status = :from
+                """, new MapSqlParameterSource("id", purchaseId).addValue("from", from.name())
+                .addValue("to", to.name()).addValue("at", Timestamp.from(at)).addValue("by", by));
+        if (rows == 0) {
+            throw new PurchasingException("PURCHASE_ORDER_STATE_CHANGED",
+                    "A situação da compra mudou enquanto a operação era processada: recarregue e tente de novo");
+        }
+    }
+
     // ================================================================ documento fiscal
 
     @Override
@@ -389,7 +433,8 @@ class JdbcPurchaseRepositoryAdapter implements PurchaseRepositoryPort {
                 p.discountTotal(), p.freightTotal(), p.insuranceTotal(), p.otherTotal(), p.taxAddedTotal(),
                 p.payableTotal(), p.expenseCategoryId(), p.commercialSnapshot(), p.workOrderId(), p.notes(),
                 p.idempotencyKey(), p.createdAt(), p.createdBy(), p.cancelledAt(), p.cancelledBy(),
-                p.cancellationReason(), items);
+                p.cancellationReason(), p.version(), p.updatedAt(), p.updatedBy(), p.approvedAt(), p.approvedBy(),
+                items);
     }
 
     private static Purchase purchase(ResultSet rs) throws SQLException {
@@ -402,7 +447,9 @@ class JdbcPurchaseRepositoryAdapter implements PurchaseRepositoryPort {
                 rs.getObject("expense_category_id", UUID.class), rs.getString("commercial_snapshot"),
                 rs.getObject("work_order_id", UUID.class), rs.getString("notes"), rs.getString("idempotency_key"),
                 instant(rs, "created_at"), rs.getObject("created_by", UUID.class), instant(rs, "cancelled_at"),
-                rs.getObject("cancelled_by", UUID.class), rs.getString("cancellation_reason"), List.of());
+                rs.getObject("cancelled_by", UUID.class), rs.getString("cancellation_reason"), rs.getLong("version"),
+                instant(rs, "updated_at"), rs.getObject("updated_by", UUID.class), instant(rs, "approved_at"),
+                rs.getObject("approved_by", UUID.class), List.of());
     }
 
     private static PurchaseItem item(ResultSet rs) throws SQLException {

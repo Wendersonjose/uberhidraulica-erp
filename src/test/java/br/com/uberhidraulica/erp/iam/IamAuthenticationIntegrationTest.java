@@ -72,7 +72,11 @@ class IamAuthenticationIntegrationTest {
             "PURCHASE_VIEW", "PURCHASE_SUPPLIER_MANAGE",
             "PURCHASE_ORDER_MANAGE", "PURCHASE_CANCEL", "PURCHASE_IMPORT_XML",
             // V24: recebimento físico e aceite de divergência.
-            "PURCHASE_RECEIVE", "PURCHASE_DIVERGENCE_ACCEPT");
+            "PURCHASE_RECEIVE", "PURCHASE_DIVERGENCE_ACCEPT",
+            // V25: aprovar e devolver pedido (DONO e GERENTE_ADMINISTRATIVO).
+            "PURCHASE_APPROVE");
+    /** V25 (DR-0022 D8): aprovar o PRÓPRIO pedido é exceção só do DONO; o gerente aprova o pedido dos outros. */
+    private static final java.util.List<String> PURCHASING_OWNER_ONLY = java.util.List.of("PURCHASE_APPROVE_OWN");
 
     private static final String OWNER_EMAIL = "owner@example.test";
     private static final String OWNER_PASSWORD = "bootstrap-secret-for-test";
@@ -112,7 +116,7 @@ class IamAuthenticationIntegrationTest {
         assertThat(authorizations.profilePermissions(ProfileCode.DONO)).containsExactlyInAnyOrderElementsOf(
                 Stream.of(br.com.uberhidraulica.erp.iam.domain.IamPermissions.ALL.stream(),
                         Stream.of("QUOTE_PRESENT", "QUOTE_DISCOUNT"), FINANCE.stream(), CASH.stream(), MODULE_ROUTINE.stream(), MODULE_SENSITIVE.stream(),
-                        PURCHASING.stream())
+                        PURCHASING.stream(), PURCHASING_OWNER_ONLY.stream())
                         .flatMap(s -> s).toList());
         assertThat(authorizations.profilePermissions(ProfileCode.GERENTE_ADMINISTRATIVO)).containsExactlyInAnyOrderElementsOf(
                 Stream.of(Stream.of("QUOTE_PRESENT", "QUOTE_DISCOUNT", "FINANCE_VIEW", "FINANCE_RECEIVE", "FINANCE_BILL"),

@@ -486,7 +486,8 @@ class GoodsReceiptIntegrationTest {
                 .andExpect(jsonPath("$.reversal.reason").value("Mercadoria devolvida na conferência"));
 
         assertThat(stock(product)).isEqualByComparingTo("0");
-        assertThat(jdbc.queryForList("select movement_type from inventory.stock_movement where product_id = ? order by occurred_at, id",
+        assertThat(jdbc.queryForList("select movement_type from inventory.stock_movement where product_id = ?"
+                + " order by occurred_at, case movement_type when 'ENTRY' then 0 else 1 end",
                 String.class, product)).containsExactly("ENTRY", "REVERSAL");
         // O recebimento original permanece; o estorno é registro próprio e a situação volta a pendente.
         assertThat(jdbc.queryForObject("select count(*) from purchasing.goods_receipt where id = ?", Long.class, receipt)).isEqualTo(1L);

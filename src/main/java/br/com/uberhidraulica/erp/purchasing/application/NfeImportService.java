@@ -153,7 +153,7 @@ public class NfeImportService {
                 Purchase.Status.APPROVED, totals.goods(), totals.discount(), totals.freight(), totals.insurance(),
                 totals.other(), totals.taxAdded(), payableTotal, command.expenseCategoryId(),
                 commercialSnapshot(supplier), command.workOrderId(), command.notes(), key, now, actor, null, null,
-                null, items);
+                null, 0L, null, null, null, null, items);
 
         // 10. Gravação. A nota importada nasce APPROVED: ela já é o fato comercial.
         purchases.insert(purchase);
@@ -187,7 +187,8 @@ public class NfeImportService {
                         "total", PurchaseMoney.sumCharged(links.stream().map(PurchasePayableLink::amount).toList())
                                 .toPlainString()))));
 
-        return new Result(purchase, links, false);
+        // Relê a compra: o número sequencial é gerado pelo banco, e devolver o objeto em memória mostraria 0.
+        return new Result(purchases.find(purchaseId).orElse(purchase), links, false);
     }
 
     // ------------------------------------------------------------------ passos
