@@ -248,6 +248,26 @@ class PurchaseOrderTest {
     }
 
     @Test
+    void onlyAnApprovedInvoicePurchaseReceivesBecauseItIsTheOnlyOneWithAnIdentity() {
+        UUID author = UUID.randomUUID();
+        purchase(Purchase.Origin.NFE_IMPORT, Purchase.Status.APPROVED, author, 0).requireReceivable();
+
+        // Sem a ligação da DR-0023, pedido e compra direta aprovados não entram em estoque: o mesmo material entraria
+        // de novo quando a nota fosse recebida.
+        for (Purchase.Origin origin : List.of(Purchase.Origin.ORDER, Purchase.Origin.DIRECT)) {
+            assertThat(codeOf(() -> purchase(origin, Purchase.Status.APPROVED, author, 0).requireReceivable()))
+                    .as("origem " + origin).isEqualTo("PURCHASE_RECEIPT_REQUIRES_INVOICE");
+        }
+        // A situação vem antes da origem: compra cancelada ou não aprovada é "não recebível" de qualquer origem.
+        for (Purchase.Status status : List.of(Purchase.Status.DRAFT, Purchase.Status.AWAITING_APPROVAL, Purchase.Status.CANCELLED)) {
+            assertThat(codeOf(() -> purchase(Purchase.Origin.ORDER, status, author, 0).requireReceivable()))
+                    .as("situação " + status).isEqualTo("PURCHASE_NOT_RECEIVABLE");
+            assertThat(codeOf(() -> purchase(Purchase.Origin.NFE_IMPORT, status, author, 0).requireReceivable()))
+                    .as("nota em " + status).isEqualTo("PURCHASE_NOT_RECEIVABLE");
+        }
+    }
+
+    @Test
     void submittingRequiresAnEditableOrderWithItems() {
         UUID author = UUID.randomUUID();
         // Sem itens carregados, o envio é recusado: um pedido vazio não tem o que aprovar.

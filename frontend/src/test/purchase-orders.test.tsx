@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
 import { json, lastBody, mockApi, page, renderAt, requestsTo, session } from './harness'
@@ -331,9 +331,31 @@ test('pedido aprovado avisa que ainda não há ligação com a NF-e e não mostr
 
   const flow = await workflow()
   expect(flow.getByText(/Aprovado em/)).toBeInTheDocument()
-  expect(flow.getByRole('note')).toHaveTextContent('nunca nos dois')
+  expect(flow.getByRole('note')).toHaveTextContent('não dá entrada em estoque')
   const installments = screen.getByRole('region', { name: 'Parcelas' })
   expect(within(installments).getByText(/não geram contas a pagar/)).toBeInTheDocument()
+})
+
+test('pedido e compra direta aprovados não oferecem recebimento e mandam receber na nota (DR-0023)', async () => {
+  for (const origin of ['ORDER', 'DIRECT'] as const) {
+    const fetchSpy = mockApi({
+      ...detailRoutes(order({ origin, status: 'APPROVED', approvedAt: '2026-10-14T15:00:00Z', approvedBy: OTHER })),
+      'GET /api/purchasing/purchases/p1/receiving': { purchaseId: 'p1', status: 'NONE', lines: [{
+        purchaseItemId: 'i1', lineNo: 1, productId: 'prod1', description: 'Retentor 35x62', unitOriginal: 'UNIDADE',
+        productUnit: 'UNIDADE', ordered: 10, received: 0, closed: 0, pending: 10, unitCost: 11 }] },
+    }, as([...VIEW, 'PURCHASE_RECEIVE']))
+    const view = renderAt('/compras/notas/p1')
+
+    const receiving = within(await screen.findByRole('region', { name: 'Recebimento' }))
+    expect(await receiving.findByText('Retentor 35x62')).toBeInTheDocument()
+    expect(receiving.getByRole('note')).toHaveTextContent('compra da nota importada')
+    expect(receiving.queryByRole('button', { name: 'Registrar recebimento' })).not.toBeInTheDocument()
+    expect(receiving.queryByLabelText('Quantidade recebida do item 1')).not.toBeInTheDocument()
+    expect(requestsTo(fetchSpy, 'POST', '/api/purchasing/purchases/p1/receipts')).toHaveLength(0)
+    cleanup()
+    view.clear()
+    fetchSpy.mockRestore()
+  }
 })
 
 test('aprovado pelo próprio autor fica dito na tela', async () => {

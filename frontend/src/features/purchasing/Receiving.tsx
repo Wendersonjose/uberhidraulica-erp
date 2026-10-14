@@ -85,7 +85,10 @@ export function ReceivingSection({ purchase }: { purchase: PurchaseDetail }) {
     ])
   }
 
-  const open = purchase.status === 'APPROVED'
+  // DR-0023: só a compra nascida de NF-e tem identidade (chave de acesso única). Pedido e compra direta não recebem
+  // enquanto não houver vínculo com a nota; senão o mesmo material entraria duas vezes no estoque.
+  const hasIdentity = purchase.origin === 'NFE_IMPORT'
+  const open = purchase.status === 'APPROVED' && hasIdentity
 
   return <section className="card" aria-label="Recebimento">
     <h2>Recebimento físico {sheet.data && <Badge tone={receiptTone(sheet.data.status)}>{RECEIPT_STATUS_LABEL[sheet.data.status]}</Badge>}</h2>
@@ -124,7 +127,11 @@ export function ReceivingSection({ purchase }: { purchase: PurchaseDetail }) {
       </table></div>
     </QueryState>
 
-    {!open && <p className="notice">Compra {purchase.status === 'CANCELLED' ? 'cancelada' : 'não aprovada'}: não recebe mercadoria.</p>}
+    {!open && purchase.status === 'APPROVED' && !hasIdentity && <div role="note" className="notice">
+      {purchase.origin === 'ORDER' ? 'Pedido' : 'Compra direta'} ainda não recebe mercadoria: sem ligação com a NF-e do
+      fornecedor (decisão pendente, DR-0023) o mesmo material poderia entrar duas vezes no estoque.
+      Receba na <strong>compra da nota importada</strong>.</div>}
+    {!open && purchase.status !== 'APPROVED' && <p className="notice">Compra {purchase.status === 'CANCELLED' ? 'cancelada' : 'não aprovada'}: não recebe mercadoria.</p>}
 
     {open && canReceive && lines.length > 0 && <>
       {error && <div role="alert" className="notice error">{error}</div>}

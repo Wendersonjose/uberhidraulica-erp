@@ -10,9 +10,9 @@
 A autorização é do **backend**. Esconder ou desabilitar botão no frontend é conforto de interface e não substitui a
 proteção do endpoint (`AG-09`).
 
-> **Validação neste contrato.** Os endpoints de I4 e I5 foram escritos e cobertos por testes unitários e de frontend, mas os
-> testes de integração contra PostgreSQL real **ainda não foram executados** (ver `TASK-0021`, "Pendência de checkpoint").
-> Valide no Insomnia contra o banco **de teste/local**, nunca contra o Supabase de produção.
+> **Validação neste contrato.** Os endpoints de I4 e I5 têm testes de integração contra PostgreSQL 18 real (Testcontainers) no CI do
+> PR #4; ver `TASK-0021`, "Checkpoint de banco no CI". Valide no Insomnia contra o banco **de teste/local**, nunca contra o
+> Supabase de produção.
 
 ## 1. Permissões
 
@@ -112,6 +112,7 @@ aprova a versão que viu.
 | 409 | `PURCHASE_ORDER_VERSION_CONFLICT` | `version` velha |
 | 409 | `PURCHASE_ORDER_STATE_CHANGED` | a situação mudou durante a operação |
 | 409 | `PURCHASE_IDEMPOTENCY_KEY_REUSED` | chave de idempotência já usada por outra compra |
+| 409 | `PURCHASE_RECEIPT_REQUIRES_INVOICE` | receber pedido/compra direta (`POST /purchases/{id}/receipts`), DR-0023 |
 
 ## 4. Recebimento (I4)
 
@@ -129,8 +130,9 @@ aprova a versão que viu.
 }
 ```
 
-- Só compra `APPROVED` recebe (`409 PURCHASE_NOT_RECEIVABLE`). Entra no estoque **apenas** o que foi conferido, ao custo de aquisição
-  do item.
+- Só compra `APPROVED` recebe (`409 PURCHASE_NOT_RECEIVABLE`) e **só a compra nascida de NF-e** (`origin = NFE_IMPORT`): pedido e
+  compra direta são recusados com `409 PURCHASE_RECEIPT_REQUIRES_INVOICE` enquanto a `DR-0023` não os ligar à nota. Entra no estoque
+  **apenas** o que foi conferido, ao custo de aquisição do item.
 - Receber menos que o pendente **sem** encerrar é recebimento parcial: não é divergência.
 - Receber a mais, ou encerrar o saldo (`closeRemaining`), é divergência: exige `justification` (`400
   PURCHASE_DIVERGENCE_JUSTIFICATION_REQUIRED`) e `PURCHASE_DIVERGENCE_ACCEPT` (`403 PURCHASE_DIVERGENCE_NOT_AUTHORIZED`).
@@ -140,7 +142,7 @@ aprova a versão que viu.
 
 ## 5. O que este contrato **não** faz
 
-- Pedido não cria conta a pagar, não movimenta estoque e não tem ligação com a NF-e: ver `DR-0023` (aberta). Até a decisão,
-  receba **no pedido ou na compra da nota, nunca nos dois**.
+- Pedido não cria conta a pagar, não movimenta estoque e não tem ligação com a NF-e: ver `DR-0023` (aberta). Pedido e compra
+  direta **não recebem**; o recebimento é só na compra da nota importada.
 - Solicitação, cotação e comparação de fornecedores não existem (`DR-0023` C4).
 - Não há consulta oficial à SEFAZ: a autorização é a declarada no XML (`officialCheckPerformed: false`).

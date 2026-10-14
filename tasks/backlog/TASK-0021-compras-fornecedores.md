@@ -2,7 +2,7 @@
 
 ## Identificação
 
-- Status: `IN_PROGRESS` (I1, I2 e I3 concluídos e validados com a NF-e 21 real; I4 e I5 entregues e **aguardando o checkpoint de banco**; solicitação/cotação e I6 em aberto)
+- Status: `IN_PROGRESS` (I1, I2 e I3 concluídos e validados com a NF-e 21 real; I4 e I5 entregues; recebimento restrito à compra de NF-e enquanto a `DR-0023` estiver aberta; solicitação/cotação e I6 em aberto)
 - Prioridade: alta
 - Criada em: `2026-10-13`
 - Origem: briefing do proprietário de 2026-10-13; `DR-0021` (DECIDED) libera a abertura
@@ -34,8 +34,8 @@ fiscal e pagamento (`AG-05` §130).
 | I1 | Domínio puro de NF-e: chave de acesso, CNPJ/CPF (inclui alfanumérico), GTIN, parser XML seguro, validador, testes | nenhuma | **CONCLUÍDO** (31 testes) |
 | I2 | Fornecedores PF/PJ, contatos, situação, condições comerciais, trilha de auditoria, API e telas | `V22` (`V22__purchasing_suppliers.sql`) | **CONCLUÍDO** (16 testes de integração + 22 unitários; checkpoint de banco executado) |
 | I3 | Prévia e confirmação de NF-e: fornecedor, vínculo de itens, compra, documento, contas a pagar parceladas | `V23` (`V23__purchasing_purchase_nfe.sql`) | **CONCLUÍDO** (21 testes de integração + 7 de aceitação com a NF-e 21 real + 28 unitários; telas entregues, incluindo a prévia com as escolhas do operador) |
-| I4 | Recebimento físico total/parcial, divergência, entrada em estoque com custo, estorno | `V24` (`V24__purchasing_receipts.sql`) | **ENTREGUE** — unitários e frontend executados; **`GoodsReceiptIntegrationTest` escrito e ainda não executado** (Docker indisponível) |
-| I5 | Pedido de compra, compra direta, vínculo com OS, aprovação segregada (D8) | `V25` (`V25__purchasing_orders.sql`) | **ENTREGUE** — unitários e frontend executados; **`PurchaseOrderIntegrationTest` escrito e ainda não executado** |
+| I4 | Recebimento físico total/parcial, divergência, entrada em estoque com custo, estorno | `V24` (`V24__purchasing_receipts.sql`) | **ENTREGUE** — `GoodsReceiptIntegrationTest` 18/18 contra PostgreSQL 18 no CI; recebe **somente compra de NF-e** (DR-0023) |
+| I5 | Pedido de compra, compra direta, vínculo com OS, aprovação segregada (D8) | `V25` (`V25__purchasing_orders.sql`) | **ENTREGUE** — aprova, devolve e cancela; pedido **não recebe** (DR-0023). Defeito de SQL achado pelo CI e corrigido; reexecução no CI do PR #4 |
 | I5b | Solicitação, cotação multi-fornecedor, comparação, ligação pedido × NF-e | `V26+` | **bloqueado pela `DR-0023`** (aberta) |
 | I6 | Devolução, crédito do fornecedor, histórico de preços, relatórios | `V26+` | pendente |
 
@@ -172,8 +172,9 @@ ser ligada junto com `goods_receipt`, em `PurchaseService.cancel`.
 - **Concorrência:** a compra é travada (`SELECT … FOR UPDATE`) antes de ler o pendente; dois recebimentos do último saldo não passam.
 - **API:** `GET /purchases/{id}/receiving`, `GET|POST /purchases/{id}/receipts` (`Idempotency-Key`), `POST /receipts/{id}/reversal`.
 - **Tela:** conferência por item, divergência com justificativa, lista de recebimentos e estorno.
-- **Testes executados:** `ReceiptLineEvaluationTest` (11) e frontend `receiving.test.tsx` (14). **Não executado:** `GoodsReceiptIntegrationTest`
-  (PostgreSQL real) — ver "Pendência de checkpoint".
+- **Testes executados:** `ReceiptLineEvaluationTest` (11), frontend `receiving.test.tsx` (14) e `GoodsReceiptIntegrationTest` (18, PostgreSQL 18 no
+  CI: parcial/total, custo médio, divergência, concorrência, estorno) — ver "Checkpoint de banco no CI".
+- **Restrição (DR-0023):** o recebimento só vale para compra de NF-e; pedido e compra direta recebem `409 PURCHASE_RECEIPT_REQUIRES_INVOICE`.
 
 ## Resultado do I5 (2026-10-14) — pedido de compra e aprovação
 
@@ -192,17 +193,24 @@ ser ligada junto com `goods_receipt`, em `PurchaseService.cancel`.
 - **API:** `POST /orders` (`Idempotency-Key`), `PUT /orders/{id}`, `POST /orders/{id}/submit|approve|return`. Consulta e cancelamento usam
   `/purchases`.
 - **Vínculo com OS:** o pedido pode apontar uma OS (cabeçalho) e, na API, o item da OS do mesmo produto; a tela entrega o vínculo de cabeçalho.
-- **Testes executados:** `PurchaseOrderTest` (17) e frontend `order-rules` (13) e `purchase-orders` (23). **Não executado:**
-  `PurchaseOrderIntegrationTest` (PostgreSQL real).
+- **Testes executados:** `PurchaseOrderTest` (18) e frontend `order-rules` (13) e `purchase-orders` (24). `PurchaseOrderIntegrationTest` (16)
+  roda contra PostgreSQL 18 no CI; a primeira execução acusou o defeito de SQL descrito em "Checkpoint de banco no CI".
 
-### Decisão que o I5 abriu: `DR-0023` (aberta)
+### Decisão que o I5 abriu: `DR-0023` (aberta) — e o bloqueio em vigor
 
-Pedido e nota são hoje duas compras sem ligação. Há risco real de **estoque em dobro** (receber nos dois) e de custo divergente. A
-mitigação provisória é o aviso na tela do pedido aprovado. A decisão do proprietário sobre a ligação bloqueia o I5b.
+Pedido e nota são duas compras sem ligação. O risco de **estoque em dobro** (receber nos dois) era real no código entregue; o
+proprietário determinou (2026-10-14) que não se habilitem dois caminhos de recebimento sem controle de identidade e idempotência.
+**Hoje só a compra nascida de NF-e recebe** (`Purchase.requireReceivable()`; `409 PURCHASE_RECEIPT_REQUIRES_INVOICE` para pedido e
+compra direta). A decisão do proprietário sobre a ligação (C1) reabre o recebimento de pedido e bloqueia o I5b.
 
-### Pendência de checkpoint (2026-10-14)
+### Checkpoint de banco no CI (2026-10-14) — o primeiro contra PostgreSQL 18 real
 
-O ambiente de desenvolvimento não conseguiu manter o Docker estável (memória insuficiente), então **nenhuma classe de integração do I3
-(prévia com escolhas), I4 e I5 foi executada contra PostgreSQL**. As migrations `V24` e `V25` foram revisadas por leitura, **não** aplicadas
-em nenhum banco, nem no Supabase. Antes de qualquer merge: executar `mvn test` completo numa máquina com Docker estável e corrigir o que
-aparecer — a ordem de risco é V24 (view, trigger, constraint) → concorrência do recebimento → V25.
+O Docker local não subiu (socket travado), então o CI do PR #4 foi o primeiro lugar a executar as migrations e os testes de integração do
+I3-prévia, I4 e I5. Resultado do commit `af8e32d`: **462 testes, 455 passaram**. `V24` e `V25` aplicaram sem erro; `GoodsReceiptIntegrationTest`
+18/18 (recebimento parcial/total, custo médio, divergência, concorrência, estorno), `NfeImportIntegrationTest` 22/22,
+`IamAuthenticationIntegrationTest` 11/11, `Task0014InventoryIntegrationTest` 16/16, `RealNfe21AcceptanceTest` 7/7.
+
+**Os 7 erros tinham uma única causa, um defeito de código meu e não de migration:** `PurchaseOrderIntegrationTest` (7 de 15). Em
+`JdbcPurchaseRepositoryAdapter` (`updateDraft` e `transition`), os literais `'DRAFT'` e `'APPROVED'` do SQL perderam as aspas numa edição por
+script de shell, e o PostgreSQL leu como colunas: `column "approved" does not exist` / `column "draft" does not exist`. Compilava (o SQL é texto)
+e os testes unitários não tocam o banco — só o banco real acusaria. Corrigido; a falha provou o valor do checkpoint.

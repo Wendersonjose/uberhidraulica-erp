@@ -118,10 +118,7 @@ public class GoodsReceiptService {
         replay = receipts.findByIdempotencyKey(key);
         if (replay.isPresent()) return replayOf(replay.get(), command.purchaseId(), hash);
 
-        if (purchase.status() != Purchase.Status.APPROVED) {
-            throw new PurchasingException("PURCHASE_NOT_RECEIVABLE",
-                    "Só compra aprovada pode ser recebida (situação atual: " + purchase.status() + ")");
-        }
+        purchase.requireReceivable();
         if (command.lines() == null || command.lines().isEmpty()) {
             throw new PurchasingException("PURCHASE_RECEIPT_EMPTY", "Informe ao menos um item recebido");
         }

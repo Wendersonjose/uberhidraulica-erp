@@ -35,6 +35,28 @@ public record Purchase(UUID id, long number, UUID supplierId, Origin origin, Sta
         return status == Status.CANCELLED;
     }
 
+    /**
+     * Recusa o recebimento físico quando a compra não pode dar entrada em estoque.
+     *
+     * <p>Só a compra nascida de NF-e recebe. Ela tem identidade própria: a chave de acesso é única entre os documentos
+     * não anulados, a importação e o recebimento são idempotentes e o banco impede duas entradas para o mesmo item.
+     * Pedido e compra direta <b>não têm</b> essa identidade nem ligação com a nota que o fornecedor emitirá para a
+     * mesma mercadoria (DR-0023, aberta). Habilitar os dois caminhos sem esse vínculo deixaria o mesmo material entrar
+     * duas vezes no estoque, sem nada no sistema que o impedisse. Por isso fecha-se o caminho sem identidade, e a
+     * trava só sai com a decisão do proprietário.</p>
+     */
+    public void requireReceivable() {
+        if (status != Status.APPROVED) {
+            throw new PurchasingException("PURCHASE_NOT_RECEIVABLE",
+                    "Só compra aprovada pode ser recebida (situação atual: " + status + ")");
+        }
+        if (origin != Origin.NFE_IMPORT) {
+            throw new PurchasingException("PURCHASE_RECEIPT_REQUIRES_INVOICE",
+                    "Pedido e compra direta ainda não recebem mercadoria: sem ligação com a NF-e (DR-0023) o mesmo "
+                            + "material poderia entrar duas vezes no estoque. Receba na compra da nota importada.");
+        }
+    }
+
     /** Pedido e compra direta passam pelo fluxo de aprovação; a nota importada nasce aprovada. */
     public boolean needsApproval() {
         return origin != Origin.NFE_IMPORT;

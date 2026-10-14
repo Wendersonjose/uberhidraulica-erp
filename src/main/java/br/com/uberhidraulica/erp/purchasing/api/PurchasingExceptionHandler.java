@@ -24,7 +24,9 @@ public class PurchasingExceptionHandler {
             "PURCHASE_HAS_ACTIVE_RECEIPT", "PURCHASE_STOCK_REFUSED",
             // I5: o pedido é válido; o que mudou foi a situação ou a versão do lado do servidor.
             "PURCHASE_ORDER_NOT_EDITABLE", "PURCHASE_ORDER_VERSION_CONFLICT", "PURCHASE_ORDER_NOT_AWAITING_APPROVAL",
-            "PURCHASE_ORDER_STATE_CHANGED");
+            "PURCHASE_ORDER_STATE_CHANGED",
+            // DR-0023: pedido e compra direta não recebem enquanto não houver vínculo de identidade com a NF-e.
+            "PURCHASE_RECEIPT_REQUIRES_INVOICE");
     /** Sem a permissão de aceitar divergência a operação é negada, e não apenas inválida. */
     private static final Set<String> FORBIDDEN = Set.of("PURCHASE_DIVERGENCE_NOT_AUTHORIZED",
             "PURCHASE_APPROVAL_SELF_FORBIDDEN");

@@ -120,7 +120,9 @@ expõe `inventory.PurchaseStockEntry` e continua dono do próprio saldo e custo 
   é trocar itens). Compra, documento e parcela continuam sem `DELETE`.
 - `purchase_event.event_type` ganha `ORDER_UPDATED | ORDER_SUBMITTED | ORDER_RETURNED | ORDER_APPROVED`.
 - Permissões `PURCHASE_APPROVE` (`…038`; DONO e GERENTE_ADMINISTRATIVO) e `PURCHASE_APPROVE_OWN` (`…039`; só DONO).
-- Pedido **não** cria `purchase_payable` nem toca `inventory`; a ligação com a NF-e depende da `DR-0023`.
+- Pedido **não** cria `purchase_payable` nem toca `inventory`; a ligação com a NF-e depende da `DR-0023`. Enquanto ela não
+  existir, **só a compra de NF-e recebe** (`Purchase.requireReceivable()`): é a única com identidade (chave de acesso única) e
+  idempotência, e dois caminhos de recebimento para a mesma mercadoria não são habilitados sem isso.
 
 ### I5b/I6 (desenho posterior, uma migration por incremento)
 
@@ -211,7 +213,7 @@ aceite com o arquivo de referência quando fornecido (hoje apenas XML sintético
 3. Contas a pagar criadas por contrato interno ampliam a superfície de privilégio; mitigação: evento auditável + teste de
    que `GERENTE_ADMINISTRATIVO` não consegue pagar.
 4. Concorrência no recebimento; mitigação: bloqueio de linha + teste.
-5. Pedido e NF-e sem ligação (`DR-0023`): estoque em dobro e custo divergente; mitigação provisória: aviso na tela do pedido
-   aprovado; mitigação definitiva depende da decisão do proprietário.
-6. Testes de integração de I3-prévia/I4/I5 escritos e não executados contra PostgreSQL (Docker indisponível em 2026-10-14);
-   as migrations `V24`/`V25` só foram revisadas por leitura. Executar `mvn test` completo antes de qualquer merge.
+5. Pedido e NF-e sem ligação (`DR-0023`): estoque em dobro e custo divergente; **mitigado por bloqueio** — só a compra de NF-e
+   recebe. A entrada manual do Estoque é caminho à parte e depende de disciplina do operador.
+6. Defeito achado só pelo banco real: literais SQL sem aspas no adaptador do pedido passaram em compilação e em testes unitários e
+   foram acusados pelo CI (PostgreSQL 18). Regra mantida: mudança de SQL só vale depois de executar o teste de integração.

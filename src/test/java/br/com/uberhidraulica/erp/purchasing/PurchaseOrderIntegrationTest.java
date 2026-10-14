@@ -177,7 +177,7 @@ class PurchaseOrderIntegrationTest {
     // ================================================================ fluxo completo
 
     @Test
-    void anOrderWalksTheWholeFlowAndOnlyThePhysicalReceiptMovesStock() throws Exception {
+    void anOrderWalksTheWholeFlowWithoutTouchingStockOrPayables() throws Exception {
         UUID supplier = supplier();
         UUID first = product();
         UUID second = product();
@@ -232,21 +232,45 @@ class PurchaseOrderIntegrationTest {
         assertThat(jdbc.queryForObject("select count(*) from purchasing.purchase_payable where purchase_id = ?", Long.class,
                 id)).isZero();
 
-        // Aprovado, o pedido pode ser recebido; só o físico conferido entra, ao custo do item (10,6670).
+        // DR-0023: aprovado, o pedido AINDA NÃO recebe. Sem ligação com a NF-e que o fornecedor emitirá, receber aqui e
+        // de novo na compra da nota lançaria o mesmo material duas vezes. A trava fecha o caminho sem identidade.
         String item = JsonPath.read(detail(id), "$.items[0].id");
         api.send(otherAdmin, post("/api/purchasing/purchases/" + id + "/receipts").header("Idempotency-Key", UUID.randomUUID().toString()),
-                "{\"lines\":[{\"purchaseItemId\":\"" + item + "\",\"quantity\":4}]}").andExpect(status().isCreated());
-        assertThat(stock(first)).isEqualByComparingTo("4");
-        assertThat(jdbc.queryForObject("select average_cost from inventory.stock_balance where product_id = ?",
-                BigDecimal.class, first)).isEqualByComparingTo("10.6670");
-        assertThat(stock(second)).isEqualByComparingTo("0");
+                "{\"lines\":[{\"purchaseItemId\":\"" + item + "\",\"quantity\":4}]}")
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("PURCHASE_RECEIPT_REQUIRES_INVOICE"));
+        assertThat(stock(first)).isEqualByComparingTo("0");
+        assertThat(jdbc.queryForObject("select count(*) from purchasing.goods_receipt where purchase_id = ?", Long.class, id)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from inventory.stock_movement where product_id = ?", Long.class, first)).isZero();
 
-        // Com recebimento ativo o pedido não cancela (D5); a trilha conta a história na ordem em que ocorreu.
+        // Sem recebimento ativo, o pedido aprovado ainda pode ser cancelado; a trilha conta a história na ordem em que ocorreu.
         api.send(owner, post("/api/purchasing/purchases/" + id + "/cancel"), "{\"reason\":\"Desistência\"}")
-                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("PURCHASE_HAS_ACTIVE_RECEIPT"));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CANCELLED"));
         List<String> events = JsonPath.read(api.read(owner, "/api/purchasing/purchases/" + id + "/events?size=50")
                 .andReturn().getResponse().getContentAsString(), "$.items[*].type");
-        assertThat(events).contains("CREATED", "ORDER_UPDATED", "ORDER_SUBMITTED", "ORDER_APPROVED", "RECEIPT_REGISTERED");
+        assertThat(events).contains("CREATED", "ORDER_UPDATED", "ORDER_SUBMITTED", "ORDER_APPROVED", "CANCELLED")
+                .doesNotContain("RECEIPT_REGISTERED");
+    }
+
+    @Test
+    void neitherAnApprovedOrderNorADirectPurchaseReceivesBecauseOnlyTheInvoiceHasAnIdentity() throws Exception {
+        for (String origin : List.of("ORDER", "DIRECT")) {
+            UUID id = idOf(create(admin, UUID.randomUUID().toString(), createBody(origin, supplier(), null,
+                    lineJson(product(), "3", "9.90"))).andExpect(status().isCreated()));
+            act(admin, id, "submit", "{\"version\":0}").andExpect(status().isOk());
+            act(otherAdmin, id, "approve", "{\"version\":1}").andExpect(status().isOk());
+            String item = JsonPath.read(detail(id), "$.items[0].id");
+            UUID product = UUID.fromString(JsonPath.read(detail(id), "$.items[0].productId"));
+
+            // A recusa é por origem e vale com ou sem a mesma chave de idempotência, para qualquer perfil que receba.
+            for (Session receiver : List.of(owner, otherAdmin)) {
+                api.send(receiver, post("/api/purchasing/purchases/" + id + "/receipts").header("Idempotency-Key", UUID.randomUUID().toString()),
+                        "{\"lines\":[{\"purchaseItemId\":\"" + item + "\",\"quantity\":3}]}")
+                        .andExpect(status().isConflict())
+                        .andExpect(jsonPath("$.code").value("PURCHASE_RECEIPT_REQUIRES_INVOICE"));
+            }
+            assertThat(stock(product)).as("estoque após tentar receber " + origin).isEqualByComparingTo("0");
+            assertThat(jdbc.queryForObject("select count(*) from purchasing.goods_receipt where purchase_id = ?", Long.class, id)).isZero();
+        }
     }
 
     // ================================================================ D8

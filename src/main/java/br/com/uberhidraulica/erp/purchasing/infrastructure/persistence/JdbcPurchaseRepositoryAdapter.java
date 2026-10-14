@@ -206,7 +206,7 @@ class JdbcPurchaseRepositoryAdapter implements PurchaseRepositoryPort {
                     other_total = :other, tax_added_total = :tax, payable_total = :payable,
                     commercial_snapshot = cast(:snapshot as jsonb), work_order_id = :workOrder, notes = :notes,
                     version = version + 1, updated_at = :at, updated_by = :by
-                where id = :id and status = DRAFT
+                where id = :id and status = 'DRAFT'
                 """, new MapSqlParameterSource("id", p.id()).addValue("supplier", p.supplierId())
                 .addValue("goods", p.goodsTotal()).addValue("discount", p.discountTotal())
                 .addValue("freight", p.freightTotal()).addValue("insurance", p.insuranceTotal())
@@ -229,8 +229,8 @@ class JdbcPurchaseRepositoryAdapter implements PurchaseRepositoryPort {
     public void transition(UUID purchaseId, Purchase.Status from, Purchase.Status to, Instant at, UUID by) {
         int rows = jdbc.update("""
                 update purchasing.purchase set status = :to, version = version + 1, updated_at = :at, updated_by = :by,
-                    approved_at = case when :to = APPROVED then cast(:at as timestamptz) else approved_at end,
-                    approved_by = case when :to = APPROVED then cast(:by as uuid) else approved_by end
+                    approved_at = case when :to = 'APPROVED' then cast(:at as timestamptz) else approved_at end,
+                    approved_by = case when :to = 'APPROVED' then cast(:by as uuid) else approved_by end
                 where id = :id and status = :from
                 """, new MapSqlParameterSource("id", purchaseId).addValue("from", from.name())
                 .addValue("to", to.name()).addValue("at", Timestamp.from(at)).addValue("by", by));

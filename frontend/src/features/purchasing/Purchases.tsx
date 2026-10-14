@@ -333,9 +333,9 @@ function OrderWorkflow({ purchase, onChanged }: { purchase: PurchaseDetail; onCh
         {purchase.approvedBy && purchase.approvedBy === purchase.createdBy &&
           <> Aprovado pelo próprio autor, por exceção do proprietário.</>}</p>
       <div role="note" className="notice">
-        Ainda não existe ligação entre este pedido e a NF-e do fornecedor (decisão pendente, DR-0023). Registre o
-        recebimento <strong>neste pedido</strong> <em>ou</em> na compra da nota importada — <strong>nunca nos dois</strong> —
-        para o estoque não entrar em dobro.</div>
+        Aprovar autoriza a compra, mas <strong>não dá entrada em estoque</strong>. Ainda não existe ligação entre este
+        pedido e a NF-e do fornecedor (decisão pendente, DR-0023); enquanto isso, o recebimento é feito somente na
+        <strong> compra da nota importada</strong>, para o mesmo material não entrar duas vezes.</div>
     </>}
 
     {purchase.status === 'CANCELLED' && <p className="muted">Pedido cancelado: o histórico foi preservado.</p>}

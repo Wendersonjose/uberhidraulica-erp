@@ -2,8 +2,8 @@
 
 ## Status
 
-`OPEN` — **proposta, sem decisão do proprietário.** Nada abaixo está implementado como regra. O que existe hoje é uma
-mitigação provisória (aviso na tela), descrita em "Estado atual".
+`OPEN` — **proposta, sem decisão do proprietário.** As opções C1–C4 abaixo não estão implementadas. O que existe hoje é um
+**bloqueio de segurança** (fail closed), descrito em "Estado atual": só a compra nascida de NF-e recebe mercadoria.
 
 - Criada em: 2026-10-14
 - Task: `TASK-0021` (I5 entregue; esta decisão bloqueia o I5b — ligação pedido × nota — e o I6)
@@ -15,13 +15,13 @@ mitigação provisória (aviso na tela), descrita em "Estado atual".
 O I5 entregou **pedido de compra** e **compra direta**: rascunho, aprovação segregada (DR-0022 D8) e, depois de aprovado,
 recebimento físico (I4). O I3 já entregava a **NF-e importada**, que cria compra própria, já aprovada, com contas a pagar.
 
-Hoje pedido e nota são **duas compras independentes**, sem ligação:
+Pedido e nota são **duas compras independentes**, sem ligação. Se os dois pudessem receber:
 
-- o pedido aprovado pode ser recebido e entra em estoque ao **custo estimado do pedido** (preço combinado + rateio das
-  despesas informadas; sem IPI nem ICMS-ST, que só existem na nota);
-- a nota importada cria **outra** compra, com contas a pagar, que também pode ser recebida ao custo real da nota.
+- o pedido aprovado daria entrada em estoque ao **custo estimado do pedido** (preço combinado + rateio das despesas
+  informadas; sem IPI nem ICMS-ST, que só existem na nota);
+- a nota importada criaria **outra** compra, com contas a pagar, que também daria entrada ao custo real da nota.
 
-Dois riscos concretos:
+Dois riscos concretos (**ambos reais, e por isso o caminho do pedido está fechado — ver "Estado atual"**):
 
 1. **Estoque em dobro.** Se o operador receber a mercadoria no pedido e de novo na compra da nota, o saldo entra duas vezes.
 2. **Custo divergente.** Receber no pedido entra com custo sem tributos; receber na nota entra com o custo de aquisição da D1.
@@ -30,10 +30,29 @@ Dois riscos concretos:
 Pedido **não** gera conta a pagar (decisão de desenho do I5): gerar conta no pedido e importar a nota depois contaria a
 obrigação duas vezes. Isso fica como está até esta decisão.
 
-## Estado atual (mitigação provisória)
+## Estado atual (bloqueio, não aviso)
 
-- A tela de pedido aprovado exibe aviso permanente: registrar o recebimento **no pedido ou na compra da nota, nunca nos dois**.
-- Não há bloqueio no backend: bloquear sem a regra de ligação inventaria uma regra de negócio.
+O proprietário determinou em 2026-10-14: **não habilitar dois caminhos independentes de recebimento para a mesma aquisição sem
+controle de identidade e idempotência.** Verificação do estado do código naquela data: o risco de duplicar estoque era
+**real** — pedido aprovado e compra de NF-e eram ambos recebíveis, sem nada que ligasse os dois.
+
+Cada caminho tem hoje:
+
+| Caminho | Identidade da aquisição | Idempotência | Estado |
+| --- | --- | --- | --- |
+| Compra de NF-e importada | chave de acesso de 44 posições, **única entre documentos não anulados** (índice parcial); XML alterado com a mesma chave é bloqueado | `Idempotency-Key` na importação e no recebimento; `uq_stock_movement_purchase_entry` impede duas entradas para o mesmo item recebido; compra travada (`FOR UPDATE`) serializa recebimentos | **recebe** |
+| Pedido de compra / compra direta | **nenhuma** (não há chave, nota ou vínculo) | `Idempotency-Key` protege só o retry do mesmo recebimento, **não** a mesma mercadoria chegando por outra compra | **não recebe** |
+
+Implementação: `Purchase.requireReceivable()` recusa o recebimento de `ORDER` e `DIRECT` com `409 PURCHASE_RECEIPT_REQUIRES_INVOICE`,
+depois de checar a situação (`PURCHASE_NOT_RECEIVABLE`). O pedido continua existindo para **registrar e aprovar a intenção e o valor
+da compra**; estorno de recebimento já existente segue permitido (não prende estoque). A tela mostra a recusa e manda receber na
+compra da nota.
+
+O que **não** muda: a entrada manual do Estoque (`INVENTORY_MOVE`) é um caminho à parte, sem relação com Compras; usá-la para um
+material que também será recebido pela nota duplicaria o saldo, e só a disciplina do operador evita isso.
+
+**Consequência operacional (a decidir):** compra sem NF-e (balcão, fornecedor informal) não dá entrada pelo módulo Compras até a
+decisão desta DR; use a entrada manual do Estoque ou importe a nota quando existir. Reabrir o recebimento de pedido exige a C1.
 
 ## Decisões pendentes
 
@@ -86,9 +105,9 @@ C1-A, C2-A, C3-A e C4-A. É a combinação que elimina o risco de entrada em dob
 
 ## Riscos de não decidir
 
-Até a decisão, a proteção contra estoque em dobro é **somente o aviso na tela e a disciplina do operador**. Recomenda-se
-que, no piloto, pedidos sejam usados para **registrar e aprovar a intenção de compra**, e o recebimento seja feito na compra
-da nota importada.
+Com o bloqueio em vigor não há risco de estoque em dobro **dentro de Compras**. O custo de não decidir é de capacidade:
+pedido aprovado não vira entrada em estoque, e compra sem nota fiscal precisa da entrada manual do Estoque. Para reabrir o
+recebimento de pedido/compra direta é necessária a C1 (vínculo de identidade com a nota), com idempotência provada em teste.
 
 ## Decisão final
 
