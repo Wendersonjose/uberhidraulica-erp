@@ -345,8 +345,16 @@ class PurchaseOrderIntegrationTest {
         act(finance, id, "return", "{\"version\":1,\"reason\":\"sem permissão\"}").andExpect(status().isForbidden());
         edit(finance, id, updateBody(1, supplier, null, lineJson(product, "1", "1.00"))).andExpect(status().isForbidden());
 
-        mvc.perform(post("/api/purchasing/orders").contentType(MediaType.APPLICATION_JSON)
-                .content(createBody("ORDER", supplier, null, lineJson(product, "1", "1.00")))).andExpect(status().isUnauthorized());
+        // Sem sessão: nada é lido (401) nem gravado. A escrita anônima é recusada já pelo CSRF (403), antes da autenticação,
+        // como no cadastro de fornecedor; o que importa é que a recusa vem e que nada foi criado com aquela chave.
+        String anonymousKey = UUID.randomUUID().toString();
+        mvc.perform(get("/api/purchasing/purchases/" + id)).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/purchasing/orders").header("Idempotency-Key", anonymousKey)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createBody("ORDER", supplier, null, lineJson(product, "1", "1.00"))))
+                .andExpect(status().is4xxClientError());
+        assertThat(jdbc.queryForObject("select count(*) from purchasing.purchase where idempotency_key = ?", Long.class,
+                anonymousKey)).isZero();
         assertThat(detail(id)).contains("\"status\":\"AWAITING_APPROVAL\"");
     }
 
