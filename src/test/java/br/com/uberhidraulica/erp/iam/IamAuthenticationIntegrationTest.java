@@ -70,7 +70,9 @@ class IamAuthenticationIntegrationTest {
      */
     private static final java.util.List<String> PURCHASING = java.util.List.of(
             "PURCHASE_VIEW", "PURCHASE_SUPPLIER_MANAGE",
-            "PURCHASE_ORDER_MANAGE", "PURCHASE_CANCEL", "PURCHASE_IMPORT_XML");
+            "PURCHASE_ORDER_MANAGE", "PURCHASE_CANCEL", "PURCHASE_IMPORT_XML",
+            // V24: recebimento físico e aceite de divergência.
+            "PURCHASE_RECEIVE", "PURCHASE_DIVERGENCE_ACCEPT");
 
     private static final String OWNER_EMAIL = "owner@example.test";
     private static final String OWNER_PASSWORD = "bootstrap-secret-for-test";

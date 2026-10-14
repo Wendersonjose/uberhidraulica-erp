@@ -29,7 +29,8 @@ class JdbcStockRepositoryAdapter implements StockRepositoryPort {
             rs.getString("reason"), StockMovement.Source.valueOf(rs.getString("source_type")),
             rs.getObject("work_order_id", UUID.class), rs.getObject("work_order_item_id", UUID.class),
             rs.getObject("reverses_movement_id", UUID.class), rs.getTimestamp("occurred_at").toInstant(),
-            rs.getObject("recorded_by", UUID.class), "IN".equals(rs.getString("direction")));
+            rs.getObject("recorded_by", UUID.class), "IN".equals(rs.getString("direction")),
+            rs.getObject("purchase_receipt_item_id", UUID.class));
 
     @Override
     public Stock lockBalance(UUID productId) {
@@ -61,9 +62,10 @@ class JdbcStockRepositoryAdapter implements StockRepositoryPort {
     public StockMovement record(StockMovement m) {
         jdbc.update("""
                 insert into inventory.stock_movement (id, product_id, movement_type, direction, quantity, unit_cost, balance_after,
-                    average_cost_after, reason, source_type, work_order_id, work_order_item_id, reverses_movement_id, occurred_at, recorded_by)
+                    average_cost_after, reason, source_type, work_order_id, work_order_item_id, reverses_movement_id, occurred_at, recorded_by,
+                    purchase_receipt_item_id)
                 values (:id, :productId, :type, :direction, :quantity, :unitCost, :balanceAfter, :averageCostAfter, :reason, :source,
-                    :workOrderId, :workOrderItemId, :reverses, :occurredAt, :recordedBy)""",
+                    :workOrderId, :workOrderItemId, :reverses, :occurredAt, :recordedBy, :purchaseReceiptItemId)""",
                 new MapSqlParameterSource().addValue("id", m.id()).addValue("productId", m.productId())
                         .addValue("type", m.type().name()).addValue("direction", m.incoming() ? "IN" : "OUT")
                         .addValue("quantity", m.quantity()).addValue("unitCost", m.unitCost())
@@ -71,7 +73,7 @@ class JdbcStockRepositoryAdapter implements StockRepositoryPort {
                         .addValue("reason", m.reason()).addValue("source", m.source().name())
                         .addValue("workOrderId", m.workOrderId()).addValue("workOrderItemId", m.workOrderItemId())
                         .addValue("reverses", m.reversesMovementId()).addValue("occurredAt", Timestamp.from(m.occurredAt()))
-                        .addValue("recordedBy", m.recordedBy()));
+                        .addValue("recordedBy", m.recordedBy()).addValue("purchaseReceiptItemId", m.purchaseReceiptItemId()));
         return m;
     }
 
@@ -107,6 +109,18 @@ class JdbcStockRepositoryAdapter implements StockRepositoryPort {
         return Boolean.TRUE.equals(jdbc.queryForObject(
                 "select exists (select 1 from inventory.stock_movement where work_order_item_id = :id and movement_type = 'WORK_ORDER_OUT')",
                 Map.of("id", workOrderItemId), Boolean.class));
+    }
+
+    @Override
+    public Optional<StockMovement> findPurchaseEntry(UUID receiptItemId) {
+        return jdbc.query("select * from inventory.stock_movement where purchase_receipt_item_id = :id and movement_type = 'ENTRY'",
+                Map.of("id", receiptItemId), MOVEMENT).stream().findFirst();
+    }
+
+    @Override
+    public Optional<StockMovement> findReversalOf(UUID movementId) {
+        return jdbc.query("select * from inventory.stock_movement where reverses_movement_id = :id", Map.of("id", movementId), MOVEMENT)
+                .stream().findFirst();
     }
 
     @Override

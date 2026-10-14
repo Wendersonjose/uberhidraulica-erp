@@ -180,14 +180,19 @@ class JdbcPurchaseRepositoryAdapter implements PurchaseRepositoryPort {
         List<PurchaseSummary> items = jdbc.query("""
                 select p.id, p.number, p.supplier_id, s.legal_name, p.origin, p.status, p.payable_total,
                        d.access_key, d.number as invoice_number, d.issued_at, p.created_at,
-                       (select count(*) from purchasing.purchase_payable pp where pp.purchase_id = p.id) as installments
+                       (select count(*) from purchasing.purchase_payable pp where pp.purchase_id = p.id) as installments,
+                       (select case when not coalesce(bool_or(v.received_quantity > 0), false) then 'NONE'
+                                    when bool_and(v.pending_quantity <= 0) then 'COMPLETE' else 'PARTIAL' end
+                        from purchasing.purchase_item_receiving v where v.purchase_id = p.id) as receipt_status
                 """ + from + where + " order by p.created_at desc, p.id limit :limit offset :offset", p,
                 (rs, i) -> new PurchaseSummary(rs.getObject("id", UUID.class), rs.getLong("number"),
                         rs.getObject("supplier_id", UUID.class), rs.getString("legal_name"),
                         Purchase.Origin.valueOf(rs.getString("origin")), Purchase.Status.valueOf(rs.getString("status")),
                         rs.getBigDecimal("payable_total"), rs.getString("access_key"),
                         (Long) rs.getObject("invoice_number"), localDate(rs, "issued_at"),
-                        instant(rs, "created_at"), rs.getInt("installments")));
+                        instant(rs, "created_at"), rs.getInt("installments"),
+                        rs.getString("receipt_status") == null ? br.com.uberhidraulica.erp.purchasing.domain.GoodsReceipt.Status.NONE
+                                : br.com.uberhidraulica.erp.purchasing.domain.GoodsReceipt.Status.valueOf(rs.getString("receipt_status"))));
         return new Page<>(items, total == null ? 0 : total, page, size);
     }
 

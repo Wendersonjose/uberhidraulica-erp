@@ -108,7 +108,8 @@ public interface PurchaseRepositoryPort {
      */
     record PurchaseSummary(UUID id, long number, UUID supplierId, String supplierName, Purchase.Origin origin,
                            Purchase.Status status, BigDecimal payableTotal, String accessKey, Long invoiceNumber,
-                           LocalDate issuedOn, java.time.Instant createdAt, int installmentCount) {}
+                           LocalDate issuedOn, java.time.Instant createdAt, int installmentCount,
+                           br.com.uberhidraulica.erp.purchasing.domain.GoodsReceipt.Status receiptStatus) {}
 
     record PriceHistoryEntry(UUID id, UUID supplierId, UUID productId, BigDecimal unitPrice, BigDecimal quantity,
                              String sourceType, UUID sourceId, LocalDate occurredOn) {}

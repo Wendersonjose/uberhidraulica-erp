@@ -17,7 +17,9 @@ public record PurchaseEvent(UUID id, UUID purchaseId, Type type, UUID actorId, I
 
     public enum Type {
         IMPORTED, CREATED, CANCELLED, DOCUMENT_VOIDED, PAYABLES_REGISTERED, PAYABLES_CANCELLED,
-        ITEM_LINK_CONFIRMED, SUPPLIER_CREATED_FROM_NFE
+        ITEM_LINK_CONFIRMED, SUPPLIER_CREATED_FROM_NFE,
+        /** Recebimento físico registrado ou estornado (I4); o payload traz o resumo, nunca o XML. */
+        RECEIPT_REGISTERED, RECEIPT_REVERSED
     }
 
     public static PurchaseEvent of(UUID purchaseId, Type type, UUID actorId, Instant at, String reason, String payload) {

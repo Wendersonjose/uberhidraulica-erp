@@ -8,6 +8,9 @@ import br.com.uberhidraulica.erp.purchasing.domain.PurchaseDocument;
 import br.com.uberhidraulica.erp.purchasing.domain.PurchaseEvent;
 import br.com.uberhidraulica.erp.purchasing.domain.PurchasePayableLink;
 import br.com.uberhidraulica.erp.purchasing.domain.PurchasingException;
+import br.com.uberhidraulica.erp.purchasing.domain.ReceivingLine;
+import br.com.uberhidraulica.erp.purchasing.domain.GoodsReceipt;
+import br.com.uberhidraulica.erp.purchasing.port.GoodsReceiptRepositoryPort;
 import br.com.uberhidraulica.erp.purchasing.domain.SupplierProductLink;
 import br.com.uberhidraulica.erp.purchasing.port.PurchaseRepositoryPort;
 import br.com.uberhidraulica.erp.purchasing.port.PurchaseRepositoryPort.Page;
@@ -33,18 +36,21 @@ public class PurchaseService {
     public static final int MAX_PAGE_SIZE = 100;
 
     private final PurchaseRepositoryPort repository;
+    private final GoodsReceiptRepositoryPort receipts;
     private final PurchasePayables payables;
     private final CurrentUser currentUser;
     private final Clock clock;
 
     @Autowired
-    public PurchaseService(PurchaseRepositoryPort repository, PurchasePayables payables, CurrentUser currentUser) {
-        this(repository, payables, currentUser, Clock.systemUTC());
+    public PurchaseService(PurchaseRepositoryPort repository, GoodsReceiptRepositoryPort receipts, PurchasePayables payables,
+                           CurrentUser currentUser) {
+        this(repository, receipts, payables, currentUser, Clock.systemUTC());
     }
 
-    PurchaseService(PurchaseRepositoryPort repository, PurchasePayables payables, CurrentUser currentUser,
-                    Clock clock) {
+    PurchaseService(PurchaseRepositoryPort repository, GoodsReceiptRepositoryPort receipts, PurchasePayables payables,
+                    CurrentUser currentUser, Clock clock) {
         this.repository = repository;
+        this.receipts = receipts;
         this.payables = payables;
         this.currentUser = currentUser;
         this.clock = clock;
@@ -61,7 +67,8 @@ public class PurchaseService {
     @Transactional(readOnly = true)
     public Detail detail(UUID id) {
         Purchase purchase = get(id);
-        return new Detail(purchase, repository.documents(id), repository.payableLinks(id));
+        return new Detail(purchase, repository.documents(id), repository.payableLinks(id),
+                ReceivingLine.statusOf(receipts.receiving(id)));
     }
 
     @Transactional(readOnly = true)
@@ -100,9 +107,9 @@ public class PurchaseService {
      * simultâneas cancelariam as mesmas contas duas vezes. Conta já paga faz o Financeiro recusar, e aí a
      * transação inteira volta atrás — melhor do que deixar metade das obrigações canceladas.</p>
      *
-     * <p>No `I3` não existe recebimento: a entrada física é o `I4`. Quando ela existir, cancelar passará a
-     * exigir que não haja recebimento ativo, porque anular nota com estoque já lançado deixaria saldo sem
-     * origem e o custo médio contaminado — é parte da `D5`, não detalhe.</p>
+     * <p>Recusa cancelar com recebimento ativo (`D5`): cancelar a compra com estoque já lançado deixaria saldo sem
+     * origem e o custo médio contaminado. O caminho correto é estornar o recebimento primeiro — registro próprio,
+     * que o Estoque só aceita se a peça ainda não foi consumida.</p>
      */
     @Transactional
     public Purchase cancel(UUID id, String reason) {
@@ -110,6 +117,10 @@ public class PurchaseService {
         Purchase purchase = repository.lock(id).orElseThrow(() -> new PurchasingException("PURCHASE_NOT_FOUND",
                 "Compra não encontrada"));
         purchase.checkCancellation();
+        if (receipts.hasActiveReceipt(id)) {
+            throw new PurchasingException("PURCHASE_HAS_ACTIVE_RECEIPT",
+                    "A compra tem recebimento ativo: estorne o recebimento antes de cancelar a compra");
+        }
 
         UUID actor = currentUser.requireId();
         Instant now = Instant.now(clock);
@@ -169,5 +180,6 @@ public class PurchaseService {
         return reason.trim();
     }
 
-    public record Detail(Purchase purchase, List<PurchaseDocument> documents, List<PurchasePayableLink> payables) {}
+    public record Detail(Purchase purchase, List<PurchaseDocument> documents, List<PurchasePayableLink> payables,
+                         GoodsReceipt.Status receiptStatus) {}
 }

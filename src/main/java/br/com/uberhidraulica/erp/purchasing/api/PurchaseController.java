@@ -146,11 +146,11 @@ class PurchaseController {
 
     record SummaryResponse(UUID id, long number, UUID supplierId, String supplierName, String origin, String status,
                            BigDecimal payableTotal, String accessKey, Long invoiceNumber, LocalDate issuedOn,
-                           Instant createdAt, int installmentCount) {
+                           Instant createdAt, int installmentCount, String receiptStatus) {
         static SummaryResponse from(PurchaseRepositoryPort.PurchaseSummary s) {
             return new SummaryResponse(s.id(), s.number(), s.supplierId(), s.supplierName(), s.origin().name(),
                     s.status().name(), s.payableTotal(), s.accessKey(), s.invoiceNumber(), s.issuedOn(),
-                    s.createdAt(), s.installmentCount());
+                    s.createdAt(), s.installmentCount(), s.receiptStatus().name());
         }
     }
 
@@ -159,7 +159,8 @@ class PurchaseController {
                           BigDecimal otherTotal, BigDecimal taxAddedTotal, BigDecimal payableTotal,
                           UUID expenseCategoryId, UUID workOrderId, String notes, Instant createdAt,
                           Instant cancelledAt, String cancellationReason, List<ItemResponse> items,
-                          List<DocumentResponse> documents, List<InstallmentResponse> installments) {
+                          List<DocumentResponse> documents, List<InstallmentResponse> installments,
+                          String receiptStatus) {
         static DetailResponse from(PurchaseService.Detail d) {
             Purchase p = d.purchase();
             return new DetailResponse(p.id(), p.number(), p.supplierId(), p.origin().name(), p.status().name(),
@@ -168,7 +169,7 @@ class PurchaseController {
                     p.createdAt(), p.cancelledAt(), p.cancellationReason(),
                     p.items().stream().map(ItemResponse::from).toList(),
                     d.documents().stream().map(DocumentResponse::from).toList(),
-                    d.payables().stream().map(InstallmentResponse::from).toList());
+                    d.payables().stream().map(InstallmentResponse::from).toList(), d.receiptStatus().name());
         }
     }
 

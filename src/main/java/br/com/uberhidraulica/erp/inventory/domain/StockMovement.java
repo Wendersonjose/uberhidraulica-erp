@@ -14,7 +14,7 @@ import java.util.UUID;
 public record StockMovement(UUID id, UUID productId, Type type, BigDecimal quantity, BigDecimal unitCost,
                             BigDecimal balanceAfter, BigDecimal averageCostAfter, String reason, Source source,
                             UUID workOrderId, UUID workOrderItemId, UUID reversesMovementId,
-                            Instant occurredAt, UUID recordedBy, boolean incoming) {
+                            Instant occurredAt, UUID recordedBy, boolean incoming, UUID purchaseReceiptItemId) {
 
     public enum Type {
         ENTRY(true), EXIT(false), ADJUSTMENT_IN(true), ADJUSTMENT_OUT(false),
@@ -29,7 +29,8 @@ public record StockMovement(UUID id, UUID productId, Type type, BigDecimal quant
         public boolean adjustment() { return this == ADJUSTMENT_IN || this == ADJUSTMENT_OUT; }
     }
 
-    public enum Source { MANUAL, WORK_ORDER }
+    /** {@code PURCHASE}: entrada gerada pelo recebimento físico de uma compra (TASK-0021 I4). */
+    public enum Source { MANUAL, WORK_ORDER, PURCHASE }
 
     public StockMovement {
         if (id == null || productId == null || type == null || source == null || occurredAt == null)
@@ -41,6 +42,7 @@ public record StockMovement(UUID id, UUID productId, Type type, BigDecimal quant
         if (reason != null && reason.length() > 500) throw invalid("Motivo excede 500 caracteres");
         if (type.adjustment() && reason == null) throw invalid("Ajuste exige motivo");
         if ((source == Source.WORK_ORDER) != (workOrderId != null)) throw invalid("Origem e Ordem de Serviço inconsistentes");
+        if ((source == Source.PURCHASE) != (purchaseReceiptItemId != null)) throw invalid("Origem e recebimento de compra inconsistentes");
     }
 
     private static BigDecimal positive(BigDecimal value) {

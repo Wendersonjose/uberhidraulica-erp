@@ -35,6 +35,12 @@ public interface StockRepositoryPort {
      */
     boolean workOrderExitExists(UUID workOrderItemId);
 
+    /** Entrada gerada pelo recebimento de compra para este item recebido: é a chave de idempotência da entrada. */
+    Optional<StockMovement> findPurchaseEntry(UUID receiptItemId);
+
+    /** Estorno que já desfez este movimento, quando existe. */
+    Optional<StockMovement> findReversalOf(UUID movementId);
+
     String setting(String key);
 
     void saveSetting(String key, String value);
