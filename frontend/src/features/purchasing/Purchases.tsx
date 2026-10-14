@@ -12,6 +12,8 @@ import { useCan } from '../finance/hooks'
 import { useDebouncedValue } from '../../utils/useDebouncedValue'
 import { formatBrl, formatDate } from '../../utils/format'
 import { formatTaxId } from '../../utils/taxId'
+import { ReceivingSection } from './Receiving'
+import { RECEIPT_STATUS_LABEL, receiptTone } from './receivingRules'
 
 const PAGE_SIZE = 20
 
@@ -57,7 +59,7 @@ export function PurchasesPage() {
       <div className="card table-wrap"><table className="table">
         <thead><tr>
           <th>Compra</th><th>Fornecedor</th><th>Origem</th><th>Nota</th><th>Emissão</th>
-          <th>Parcelas</th><th>Total</th><th>Situação</th>
+          <th>Parcelas</th><th>Total</th><th>Situação</th><th>Recebimento</th>
         </tr></thead>
         <tbody>{list.data?.items.map(purchase => <tr key={purchase.id}>
           <td><Link to={`/compras/notas/${purchase.id}`}>#{purchase.number}</Link></td>
@@ -69,6 +71,7 @@ export function PurchasesPage() {
           <td>{formatBrl(purchase.payableTotal)}</td>
           <td><Badge tone={purchase.status === 'CANCELLED' ? 'warning' : 'success'}>
             {STATUS_LABEL[purchase.status]}</Badge></td>
+          <td><Badge tone={receiptTone(purchase.receiptStatus)}>{RECEIPT_STATUS_LABEL[purchase.receiptStatus]}</Badge></td>
         </tr>)}</tbody>
       </table></div>
       <Pagination page={list.data?.page ?? 0} totalPages={list.data?.totalPages ?? 0}
@@ -186,6 +189,8 @@ function PurchaseView({ purchase }: { purchase: PurchaseDetail }) {
         </tr>)}</tbody>
       </table></div>
     </section>
+
+    <ReceivingSection purchase={purchase} />
 
     <section className="card" aria-label="Parcelas">
       <h2>Parcelas</h2>

@@ -17,11 +17,11 @@ const cost = (base: number, extra = {}) => ({
 const summary = (extra = {}) => ({
   id: 'p1', number: 1, supplierId: 's1', supplierName: 'UBERHIDRAULICA PECAS LTDA', origin: 'NFE_IMPORT',
   status: 'APPROVED', payableTotal: 1943.1, accessKey: '31261067757350000178550010000000211010202158',
-  invoiceNumber: 21, issuedOn: '2026-10-09', createdAt: '2026-10-13T12:00:00Z', installmentCount: 3, ...extra,
+  invoiceNumber: 21, issuedOn: '2026-10-09', createdAt: '2026-10-13T12:00:00Z', installmentCount: 3, receiptStatus: 'NONE', ...extra,
 })
 
 const detail = (extra = {}) => ({
-  id: 'p1', number: 1, supplierId: 's1', origin: 'NFE_IMPORT', status: 'APPROVED',
+  id: 'p1', number: 1, supplierId: 's1', origin: 'NFE_IMPORT', status: 'APPROVED', receiptStatus: 'NONE',
   goodsTotal: 1943.1, discountTotal: 0, freightTotal: 0, insuranceTotal: 0, otherTotal: 0, taxAddedTotal: 0,
   payableTotal: 1943.1, expenseCategoryId: 'cat1', workOrderId: null, notes: null,
   createdAt: '2026-10-13T12:00:00Z', cancelledAt: null, cancellationReason: null,
@@ -53,6 +53,8 @@ const purchaseEvents = page([
 const detailRoutes = (value = detail()) => ({
   'GET /api/purchasing/purchases/p1': value,
   'GET /api/purchasing/purchases/p1/events': purchaseEvents,
+  'GET /api/purchasing/purchases/p1/receiving': { purchaseId: 'p1', status: 'NONE', lines: [] },
+  'GET /api/purchasing/purchases/p1/receipts': [],
 })
 
 // ====================================================================== lista

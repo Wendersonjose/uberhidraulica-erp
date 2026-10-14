@@ -78,12 +78,16 @@ export const PURCHASE_IMPORT_XML = 'PURCHASE_IMPORT_XML'
 export const PRODUCT_MANAGE = 'PRODUCT_MANAGE'
 export const PURCHASE_ORDER_MANAGE = 'PURCHASE_ORDER_MANAGE'
 export const PURCHASE_CANCEL = 'PURCHASE_CANCEL'
+export const PURCHASE_RECEIVE = 'PURCHASE_RECEIVE'
+export const PURCHASE_DIVERGENCE_ACCEPT = 'PURCHASE_DIVERGENCE_ACCEPT'
 
 export type RecipientCheck = 'AUTHORIZED' | 'OWN_TAX_ID_NOT_CONFIGURED' | 'RECIPIENT_MISMATCH' | 'RECIPIENT_MISSING'
 /** `MANUAL` é o produto escolhido pelo operador na prévia; descrição nunca casa sozinha (D6). */
 export type MatchKind = 'LINK' | 'GTIN' | 'MANUAL' | 'NONE'
 export type PurchaseStatus = 'DRAFT' | 'AWAITING_APPROVAL' | 'APPROVED' | 'CANCELLED'
 export type PurchaseOrigin = 'NFE_IMPORT' | 'DIRECT' | 'ORDER'
+export type ReceiptStatus = 'NONE' | 'PARTIAL' | 'COMPLETE'
+export type ReceiptDivergence = 'NONE' | 'OVER' | 'SHORT_CLOSED'
 
 export type NfeIssue = { code: string; severity: 'BLOCKING' | 'WARNING' | 'INFO'; message: string; itemNumber: number | null }
 export type AcquisitionCost = {
@@ -139,6 +143,8 @@ export type PurchaseSummary = {
   id: string; number: number; supplierId: string; supplierName: string; origin: PurchaseOrigin
   status: PurchaseStatus; payableTotal: number; accessKey: string | null; invoiceNumber: number | null
   issuedOn: string | null; createdAt: string; installmentCount: number
+  /** Derivada de Σ recebido ativo contra Σ pedido: nunca armazenada. */
+  receiptStatus: ReceiptStatus
 }
 export type PurchaseItem = {
   id: string; lineNo: number; productId: string | null; supplierCode: string | null; description: string
@@ -157,7 +163,7 @@ export type PurchaseDetail = {
   goodsTotal: number; discountTotal: number; freightTotal: number; insuranceTotal: number; otherTotal: number
   taxAddedTotal: number; payableTotal: number; expenseCategoryId: string | null; workOrderId: string | null
   notes: string | null; createdAt: string; cancelledAt: string | null; cancellationReason: string | null
-  items: PurchaseItem[]; documents: PurchaseDocument[]; installments: PurchaseInstallment[]
+  items: PurchaseItem[]; documents: PurchaseDocument[]; installments: PurchaseInstallment[]; receiptStatus: ReceiptStatus
 }
 export type PurchaseEvent = {
   id: string; type: string; actorId: string | null; occurredAt: string; reason: string | null; payload: string | null
@@ -178,12 +184,35 @@ export type SupplierProductLink = {
   unitOriginal: string | null; unitConversionFactor: number; confirmedAt: string
 }
 
+/** Linha da conferência. `pending` negativo marca recebimento acima do pedido, aceito com justificativa. */
+export type ReceivingLine = {
+  purchaseItemId: string; lineNo: number; productId: string | null; description: string; unitOriginal: string | null
+  productUnit: string | null; ordered: number; received: number; closed: number; pending: number; unitCost: number
+}
+export type ReceivingSheet = { purchaseId: string; status: ReceiptStatus; lines: ReceivingLine[] }
+export type ReceiptItem = {
+  id: string; purchaseItemId: string; productId: string; quantityReceived: number; unitCost: number; expectedQuantity: number
+  divergence: ReceiptDivergence; cancelledQuantity: number; justification: string | null; acceptedBy: string | null
+  stockMovementId: string | null
+}
+export type GoodsReceipt = {
+  id: string; number: number; purchaseId: string; documentId: string | null; receivedOn: string; notes: string | null
+  receivedBy: string; createdAt: string; items: ReceiptItem[]
+  reversal: { id: string; reason: string; reversedAt: string; reversedBy: string } | null
+}
+export type ReceiptInput = {
+  receivedOn?: string; documentId?: string | null; notes?: string | null
+  lines: { purchaseItemId: string; quantity: number; closeRemaining?: boolean; justification?: string }[]
+}
+
 export const purchaseKeys = {
   purchases: ['purchasing', 'purchases'] as const,
   purchaseList: (params: object) => ['purchasing', 'purchases', 'list', params] as const,
   purchase: (id: string) => ['purchasing', 'purchases', id] as const,
   purchaseEvents: (id: string, page: number) => ['purchasing', 'purchases', id, 'events', page] as const,
   settings: ['purchasing', 'settings'] as const,
+  receiving: (id: string) => ['purchasing', 'purchases', id, 'receiving'] as const,
+  receipts: (id: string) => ['purchasing', 'purchases', id, 'receipts'] as const,
   links: (supplierId: string) => ['purchasing', 'links', supplierId] as const,
 }
 
@@ -211,6 +240,13 @@ export const purchaseApi = {
     api<Page<PurchaseEvent>>(`${PURCHASING}/purchases/${id}/events${query({ page })}`),
   cancelPurchase: (id: string, reason: string) =>
     api<PurchaseDetail>(`${PURCHASING}/purchases/${id}/cancel`, json('POST', { reason })),
+  receiving: (id: string) => api<ReceivingSheet>(`${PURCHASING}/purchases/${id}/receiving`),
+  receipts: (id: string) => api<GoodsReceipt[]>(`${PURCHASING}/purchases/${id}/receipts`),
+  /** `Idempotency-Key` obrigatória no backend: sem ela, um retry de rede lançaria o estoque em dobro. */
+  registerReceipt: (id: string, body: ReceiptInput, idempotencyKey: string) => api<GoodsReceipt>(
+    `${PURCHASING}/purchases/${id}/receipts`, { method: 'POST', body: JSON.stringify(body), headers: { 'Idempotency-Key': idempotencyKey } }),
+  reverseReceipt: (receiptId: string, reason: string, idempotencyKey: string) => api<GoodsReceipt>(
+    `${PURCHASING}/receipts/${receiptId}/reversal`, { method: 'POST', body: JSON.stringify({ reason }), headers: { 'Idempotency-Key': idempotencyKey } }),
   voidDocument: (id: string, reason: string) =>
     api<PurchaseDocument>(`${PURCHASING}/documents/${id}/void`, json('POST', { reason })),
   settings: () => api<PurchasingSettings>(`${PURCHASING}/settings`),
