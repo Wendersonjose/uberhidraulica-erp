@@ -76,9 +76,34 @@ public class ProductCatalogApplicationService implements ProductCatalogQuery {
     @Transactional(readOnly = true)
     public List<ProductReference> products() { return repository.findAll().stream().map(ProductCatalogApplicationService::reference).toList(); }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<ProductReference> productByGtin(String gtin) {
+        return repository.findByGtin(gtin).map(ProductCatalogApplicationService::reference);
+    }
+
+    /**
+     * Preenche GTIN/NCM só quando ainda não existem. Sobrescrever permitiria que um XML errado repontasse a
+     * identidade fiscal de um produto em silêncio; corrigir GTIN gravado é operação de catálogo.
+     */
+    @Override
+    @Transactional
+    public boolean learnFiscalIdentity(UUID productId, String gtin, String ncm) {
+        CatalogProduct current = get(productId);
+        String newGtin = current.gtin() == null ? gtin : current.gtin();
+        String newNcm = current.ncm() == null ? ncm : current.ncm();
+        if (java.util.Objects.equals(newGtin, current.gtin()) && java.util.Objects.equals(newNcm, current.ncm())) {
+            return false;
+        }
+        persist(new CatalogProduct(current.id(), current.description(), current.internalCode(), current.category(),
+                current.type(), current.unit(), current.referenceCost(), current.salePrice(), current.minimumStock(),
+                current.active(), current.createdAt(), Instant.now(), newGtin, newNcm));
+        return true;
+    }
+
     private static ProductReference reference(CatalogProduct p) {
         return new ProductReference(p.id(), p.description(), p.internalCode(), p.unit().name(), p.salePrice(),
-                p.active(), p.category(), p.minimumStock());
+                p.active(), p.category(), p.minimumStock(), p.gtin(), p.ncm());
     }
 
     /** A unicidade do código interno é garantida pelo índice do PostgreSQL, não por leitura prévia. */

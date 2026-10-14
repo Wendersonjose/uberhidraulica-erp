@@ -13,7 +13,7 @@ import java.util.UUID;
 public record CatalogProduct(UUID id, String description, String internalCode, String category,
                              ProductType type, ProductUnit unit, BigDecimal referenceCost,
                              BigDecimal salePrice, BigDecimal minimumStock, boolean active,
-                             Instant createdAt, Instant updatedAt) {
+                             Instant createdAt, Instant updatedAt, String gtin, String ncm) {
 
     private static final int MONEY_SCALE = 2;
     private static final int QUANTITY_SCALE = 3;
@@ -28,6 +28,8 @@ public record CatalogProduct(UUID id, String description, String internalCode, S
         referenceCost = money(referenceCost, "custo de referência");
         salePrice = money(salePrice, "preço de venda");
         minimumStock = quantity(minimumStock, "estoque mínimo");
+        gtin = fiscalCode(gtin, "GTIN", "[0-9]{8}|[0-9]{12,14}", "8, 12, 13 ou 14 dígitos");
+        ncm = fiscalCode(ncm, "NCM", "[0-9]{8}", "8 dígitos");
     }
 
     /** Todo produto novo nasce ativo; inativação só ocorre por atualização explícita. */
@@ -35,14 +37,14 @@ public record CatalogProduct(UUID id, String description, String internalCode, S
                                         ProductUnit unit, BigDecimal referenceCost, BigDecimal salePrice,
                                         BigDecimal minimumStock, Instant now) {
         return requireUnitPrecision(new CatalogProduct(UUID.randomUUID(), description, internalCode, category, type, unit,
-                referenceCost, salePrice, minimumStock, true, now, now));
+                referenceCost, salePrice, minimumStock, true, now, now, null, null));
     }
 
     public CatalogProduct update(String description, String internalCode, String category, ProductType type,
                                  ProductUnit unit, BigDecimal referenceCost, BigDecimal salePrice,
                                  BigDecimal minimumStock, Boolean active, Instant now) {
         return requireUnitPrecision(new CatalogProduct(id, description, internalCode, category, type, unit, referenceCost,
-                salePrice, minimumStock, active == null ? this.active : active, createdAt, now));
+                salePrice, minimumStock, active == null ? this.active : active, createdAt, now, gtin, ncm));
     }
 
     /**
@@ -74,6 +76,19 @@ public record CatalogProduct(UUID id, String description, String internalCode, S
         if (value == null || value.isBlank()) return null;
         if (value.trim().length() > max) throw invalid(label + " inválida");
         return value.trim();
+    }
+
+    /**
+     * GTIN e NCM: só dígitos (DR-0022 D6). GTIN aceita 8, 12, 13 ou 14 posições — EAN-13 é o formato mais
+     * comum no varejo brasileiro, e exigir 14 recusaria a maioria dos códigos reais. NCM tem 8 posições.
+     * Ausente é {@code null}, nunca string vazia: o índice único parcial de GTIN depende de NULL para que
+     * produtos sem GTIN não colidam entre si.
+     */
+    private static String fiscalCode(String value, String label, String pattern, String rule) {
+        if (value == null || value.isBlank()) return null;
+        String digits = value.trim();
+        if (!digits.matches(pattern)) throw invalid(label + " deve ter " + rule);
+        return digits;
     }
 
     private static BigDecimal money(BigDecimal value, String label) {

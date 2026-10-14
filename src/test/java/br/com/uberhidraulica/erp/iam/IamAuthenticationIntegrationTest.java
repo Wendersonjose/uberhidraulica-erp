@@ -62,6 +62,21 @@ class IamAuthenticationIntegrationTest {
             "WORKORDER_MANAGE", "WORKORDER_CONFIG", "CRM_MANAGE", "SERVICE_MANAGE", "QUOTE_MANAGE");
     private static final java.util.List<String> MODULE_SENSITIVE = java.util.List.of("PRODUCT_COST_MANAGE", "INVENTORY_ADJUST",
             "SERVICE_PRICE_MANAGE");
+    // V22: Compras e Fornecedores (consulta + cadastro) vai para DONO e GERENTE_ADMINISTRATIVO.
+    /**
+     * Compras: `V22` entregou consulta e cadastro de fornecedor; `V23` (TASK-0021 I3) acrescentou as três de
+     * compra. A lista é declarada por extenso de propósito — afrouxar para {@code containsAll} esconderia
+     * permissão concedida sem decisão.
+     */
+    private static final java.util.List<String> PURCHASING = java.util.List.of(
+            "PURCHASE_VIEW", "PURCHASE_SUPPLIER_MANAGE",
+            "PURCHASE_ORDER_MANAGE", "PURCHASE_CANCEL", "PURCHASE_IMPORT_XML",
+            // V24: recebimento físico e aceite de divergência.
+            "PURCHASE_RECEIVE", "PURCHASE_DIVERGENCE_ACCEPT",
+            // V25: aprovar e devolver pedido (DONO e GERENTE_ADMINISTRATIVO).
+            "PURCHASE_APPROVE");
+    /** V25 (DR-0022 D8): aprovar o PRÓPRIO pedido é exceção só do DONO; o gerente aprova o pedido dos outros. */
+    private static final java.util.List<String> PURCHASING_OWNER_ONLY = java.util.List.of("PURCHASE_APPROVE_OWN");
 
     private static final String OWNER_EMAIL = "owner@example.test";
     private static final String OWNER_PASSWORD = "bootstrap-secret-for-test";
@@ -100,14 +115,16 @@ class IamAuthenticationIntegrationTest {
                 .containsAll(br.com.uberhidraulica.erp.iam.domain.IamPermissions.ALL);
         assertThat(authorizations.profilePermissions(ProfileCode.DONO)).containsExactlyInAnyOrderElementsOf(
                 Stream.of(br.com.uberhidraulica.erp.iam.domain.IamPermissions.ALL.stream(),
-                        Stream.of("QUOTE_PRESENT", "QUOTE_DISCOUNT"), FINANCE.stream(), CASH.stream(), MODULE_ROUTINE.stream(), MODULE_SENSITIVE.stream())
+                        Stream.of("QUOTE_PRESENT", "QUOTE_DISCOUNT"), FINANCE.stream(), CASH.stream(), MODULE_ROUTINE.stream(), MODULE_SENSITIVE.stream(),
+                        PURCHASING.stream(), PURCHASING_OWNER_ONLY.stream())
                         .flatMap(s -> s).toList());
         assertThat(authorizations.profilePermissions(ProfileCode.GERENTE_ADMINISTRATIVO)).containsExactlyInAnyOrderElementsOf(
-                Stream.concat(Stream.of("QUOTE_PRESENT", "QUOTE_DISCOUNT", "FINANCE_VIEW", "FINANCE_RECEIVE", "FINANCE_BILL"),
-                        MODULE_ROUTINE.stream()).toList());
-        // DR-0015/DR-0018: o Gerente Financeiro recebe Financeiro + Caixa e as permissões sensíveis do V20.
+                Stream.of(Stream.of("QUOTE_PRESENT", "QUOTE_DISCOUNT", "FINANCE_VIEW", "FINANCE_RECEIVE", "FINANCE_BILL"),
+                        MODULE_ROUTINE.stream(), PURCHASING.stream()).flatMap(s -> s).toList());
+        // DR-0015/DR-0018: o Gerente Financeiro recebe Financeiro + Caixa e as permissões sensíveis do V20;
+        // V22/V23 (TASK-0021): apenas consulta de Compras. Não cadastra fornecedor, não importa NF-e e não cancela.
         assertThat(authorizations.profilePermissions(ProfileCode.GERENTE_FINANCEIRO)).containsExactlyInAnyOrderElementsOf(
-                Stream.of(FINANCE.stream(), CASH.stream(), MODULE_SENSITIVE.stream()).flatMap(s -> s).toList());
+                Stream.of(FINANCE.stream(), CASH.stream(), MODULE_SENSITIVE.stream(), Stream.of("PURCHASE_VIEW")).flatMap(s -> s).toList());
         assertThat(jdbc.queryForObject("select count(*) from iam.audit_event where action='FIRST_OWNER_BOOTSTRAPPED'", Long.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("select must_change_password from iam.credential", Boolean.class)).isTrue();
         assertThat(jdbc.queryForObject("select password_hash from iam.credential", String.class))

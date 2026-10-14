@@ -22,4 +22,8 @@ class ProductEntity {
     @Column(nullable = false) boolean active;
     @Column(name = "created_at", nullable = false) Instant createdAt;
     @Column(name = "updated_at", nullable = false) Instant updatedAt;
+    // Identidade fiscal do produto (DR-0022 D6/D7). Opcional: no Brasil o GTIN vem em branco ou inválido com
+    // frequência, por isso é critério 2 de casamento na importação, nunca o primeiro.
+    @Column(length = 14) String gtin;
+    @Column(length = 8) String ncm;
 }

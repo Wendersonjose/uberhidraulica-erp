@@ -50,7 +50,7 @@ Legenda: **Entregue** · **Parcial** (existe, com lacuna declarada) · **Planeja
 
 | Área | Status | Situação |
 | --- | --- | --- |
-| Compras e Fornecedores | Planejado / Bloqueado | especificado em `agents/AG-05`; sem Task nem Decision Request — ver [DR-0021](decision-requests/DR-0021-escopo-piloto-modulos-especificados.md) |
+| Compras e Fornecedores | Parcial | [TASK-0021](tasks/backlog/TASK-0021-compras-fornecedores.md): fornecedores (V22), importação de NF-e com contas a pagar parceladas (V23), recebimento físico com entrada em estoque (V24), pedido/compra direta com aprovação segregada (V25). **Hoje só a compra de NF-e dá entrada em estoque**; pedido e compra direta são aprovados mas não recebem. **Faltam:** solicitação/cotação, devolução/crédito e a ligação pedido × NF-e ([DR-0023](decision-requests/DR-0023-conciliacao-pedido-nfe.md), aberta) |
 | Comissões | Planejado / Bloqueado | regra descrita no README e em `AG-06`; exige confirmar as regras — DR-0021 |
 | Conciliação bancária (Itaú, Rede, OFX, CSV) | Planejado / Bloqueado | exige layouts reais e credenciais — DR-0021 |
 | Fiscal / NFS-e (Uberlândia/MG) | Planejado / Bloqueado | exige certificado A1, API municipal e ambiente de homologação fiscal (todos externos) — DR-0021 |
