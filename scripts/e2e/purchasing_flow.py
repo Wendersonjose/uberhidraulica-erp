@@ -219,9 +219,11 @@ def main():
     check("as contas citam o fornecedor da nota", all((x.get("supplier") or "") != "" for x in payables),
           str([x.get("supplier") for x in payables]))
     if adm:
-        check("Gerente Administrativo NÃO paga conta a pagar (403)", adm.post(
-            f"/api/finance/payables/{installments[0]['payableId']}/payments",
-            {"amount": 10, "method": "PIX", "paidOn": "2026-10-14"}, headers={"Idempotency-Key": str(uuid.uuid4())}).status == 403)
+        # O corpo precisa ser VÁLIDO: a validação do corpo roda antes da autorização, e um corpo malformado daria 400.
+        attempt = adm.post(f"/api/finance/payables/{installments[0]['payableId']}/payments",
+                           {"amount": 10, "paymentMethodId": str(uuid.uuid4()), "paidOn": "2026-10-14"},
+                           headers={"Idempotency-Key": str(uuid.uuid4())})
+        check("Gerente Administrativo NÃO paga conta a pagar (403)", attempt.status == 403, f"{attempt.status} {attempt.raw[:200]}")
 
     # ------------------------------------------------------------------ recebimento, estoque e estorno
     section("Recebimento físico, estoque e estorno")
