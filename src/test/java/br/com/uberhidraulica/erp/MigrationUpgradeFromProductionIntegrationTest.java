@@ -96,7 +96,7 @@ class MigrationUpgradeFromProductionIntegrationTest {
 
     private Set<String> relations() {
         return Set.copyOf(jdbc().queryForList("""
-                select n.nspname || '.' || c.relname || ':' || c.relkind
+                select n.nspname || '.' || c.relname || ':' || c.relkind::text
                 from pg_class c join pg_namespace n on n.oid = c.relnamespace
                 where n.nspname not in ('pg_catalog', 'information_schema', 'pg_toast') and n.nspname not like 'pg_temp%'
                 """, String.class));

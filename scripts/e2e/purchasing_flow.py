@@ -69,7 +69,7 @@ def cnpj():
 
 
 def stock_line(client, product_id):
-    page = client.get("/api/inventory/stock?size=200").json
+    page = client.get("/api/inventory/stock?size=100").json
     for line in page["items"]:
         if line["productId"] == product_id:
             return line
