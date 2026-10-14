@@ -74,11 +74,14 @@ export const purchasingApi = {
 // ---------------------------------------------------------------- I3: importação de NF-e e compras
 
 export const PURCHASE_IMPORT_XML = 'PURCHASE_IMPORT_XML'
+/** Cadastro assistido de produto a partir da linha da nota exige a permissão do catálogo. */
+export const PRODUCT_MANAGE = 'PRODUCT_MANAGE'
 export const PURCHASE_ORDER_MANAGE = 'PURCHASE_ORDER_MANAGE'
 export const PURCHASE_CANCEL = 'PURCHASE_CANCEL'
 
 export type RecipientCheck = 'AUTHORIZED' | 'OWN_TAX_ID_NOT_CONFIGURED' | 'RECIPIENT_MISMATCH' | 'RECIPIENT_MISSING'
-export type MatchKind = 'LINK' | 'GTIN' | 'NONE'
+/** `MANUAL` é o produto escolhido pelo operador na prévia; descrição nunca casa sozinha (D6). */
+export type MatchKind = 'LINK' | 'GTIN' | 'MANUAL' | 'NONE'
 export type PurchaseStatus = 'DRAFT' | 'AWAITING_APPROVAL' | 'APPROVED' | 'CANCELLED'
 export type PurchaseOrigin = 'NFE_IMPORT' | 'DIRECT' | 'ORDER'
 
@@ -118,6 +121,7 @@ export type NfePreview = {
   /** Sempre falso nesta Task: a autorização é a declarada no XML, sem consulta à SEFAZ (D12). */
   officialCheckPerformed: boolean
 }
+export type PreviewSelection = { lineNo: number; productId: string; unitConversionFactor?: number }
 export type ItemDecision = { lineNo: number; productId: string; unitConversionFactor?: number; saveLink?: boolean }
 export type ConfirmInput = {
   xml: string; createSupplier?: boolean; expenseCategoryId: string; decisions: ItemDecision[]
@@ -189,6 +193,12 @@ export const purchaseApi = {
   /** Prévia somente leitura: nada é gravado, então pode ser chamada quantas vezes for preciso. */
   preview: (xml: string) => api<NfePreview>(`${PURCHASING}/nfe/preview`,
     { method: 'POST', body: xml, headers: { 'Content-Type': 'application/xml' } }),
+  /**
+   * Prévia que considera o produto e o fator já escolhidos: mostra o custo que entra no estoque e quais fatores
+   * ainda faltam. Também é somente leitura.
+   */
+  previewWith: (xml: string, decisions: PreviewSelection[]) =>
+    api<NfePreview>(`${PURCHASING}/nfe/preview`, json('POST', { xml, decisions })),
   /**
    * Confirma a importação. A `Idempotency-Key` é obrigatória no backend: sem ela um retry de rede
    * duplicaria a compra e as contas a pagar.
