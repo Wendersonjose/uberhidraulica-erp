@@ -25,10 +25,11 @@ const detail = (extra = {}) => ({
   goodsTotal: 1943.1, discountTotal: 0, freightTotal: 0, insuranceTotal: 0, otherTotal: 0, taxAddedTotal: 0,
   payableTotal: 1943.1, expenseCategoryId: 'cat1', workOrderId: null, notes: null,
   createdAt: '2026-10-13T12:00:00Z', cancelledAt: null, cancellationReason: null,
+  version: 0, createdBy: 'a1', updatedAt: null, approvedAt: null, approvedBy: null,
   items: [{
     id: 'i1', lineNo: 1, productId: 'prod1', supplierCode: '70893E19BR', description: 'OLEO LUB 0W20 SINTETICO 1L',
     unitOriginal: 'un', quantityOriginal: 4, unitConversionFactor: 1, quantity: 4, unitPrice: 55, unitCost: 55,
-    discount: 0, lineTotal: 220, ncm: '27101932', cfop: '5405', gtin: null, cost: cost(220, { quantity: 4, unitCost: 55 }),
+    discount: 0, lineTotal: 220, ncm: '27101932', cfop: '5405', gtin: null, workOrderItemId: null, cost: cost(220, { quantity: 4, unitCost: 55 }),
   }],
   documents: [{
     id: 'd1', kind: 'NFE', accessKey: '31261067757350000178550010000000211010202158', series: '1', number: 21,

@@ -80,6 +80,9 @@ export const PURCHASE_ORDER_MANAGE = 'PURCHASE_ORDER_MANAGE'
 export const PURCHASE_CANCEL = 'PURCHASE_CANCEL'
 export const PURCHASE_RECEIVE = 'PURCHASE_RECEIVE'
 export const PURCHASE_DIVERGENCE_ACCEPT = 'PURCHASE_DIVERGENCE_ACCEPT'
+export const PURCHASE_APPROVE = 'PURCHASE_APPROVE'
+/** Exceção da segregação de funções (DR-0022 D8): aprovar o pedido que o próprio usuário criou. */
+export const PURCHASE_APPROVE_OWN = 'PURCHASE_APPROVE_OWN'
 
 export type RecipientCheck = 'AUTHORIZED' | 'OWN_TAX_ID_NOT_CONFIGURED' | 'RECIPIENT_MISMATCH' | 'RECIPIENT_MISSING'
 /** `MANUAL` é o produto escolhido pelo operador na prévia; descrição nunca casa sozinha (D6). */
@@ -150,7 +153,7 @@ export type PurchaseItem = {
   id: string; lineNo: number; productId: string | null; supplierCode: string | null; description: string
   unitOriginal: string | null; quantityOriginal: number | null; unitConversionFactor: number
   quantity: number; unitPrice: number; unitCost: number; discount: number; lineTotal: number
-  ncm: string | null; cfop: string | null; gtin: string | null; cost: AcquisitionCost | null
+  ncm: string | null; cfop: string | null; gtin: string | null; workOrderItemId: string | null; cost: AcquisitionCost | null
 }
 export type PurchaseDocument = {
   id: string; kind: string; accessKey: string | null; series: string | null; number: number | null
@@ -164,7 +167,19 @@ export type PurchaseDetail = {
   taxAddedTotal: number; payableTotal: number; expenseCategoryId: string | null; workOrderId: string | null
   notes: string | null; createdAt: string; cancelledAt: string | null; cancellationReason: string | null
   items: PurchaseItem[]; documents: PurchaseDocument[]; installments: PurchaseInstallment[]; receiptStatus: ReceiptStatus
+  /** Controle otimista do pedido: toda alteração e toda aprovação carregam a versão que a tela leu. */
+  version: number; createdBy: string; updatedAt: string | null; approvedAt: string | null; approvedBy: string | null
 }
+
+/** Linha do pedido como o operador a informa; a unidade é a do catálogo e o custo é calculado pelo servidor. */
+export type OrderLineInput = {
+  productId: string; quantity: number; unitPrice: number; discount?: number; supplierCode?: string | null
+}
+export type OrderInput = {
+  supplierId: string; workOrderId?: string | null; notes?: string | null
+  freight?: number; insurance?: number; other?: number; lines: OrderLineInput[]
+}
+export type OrderCreateInput = OrderInput & { origin: Extract<PurchaseOrigin, 'ORDER' | 'DIRECT'> }
 export type PurchaseEvent = {
   id: string; type: string; actorId: string | null; occurredAt: string; reason: string | null; payload: string | null
 }
@@ -247,6 +262,17 @@ export const purchaseApi = {
     `${PURCHASING}/purchases/${id}/receipts`, { method: 'POST', body: JSON.stringify(body), headers: { 'Idempotency-Key': idempotencyKey } }),
   reverseReceipt: (receiptId: string, reason: string, idempotencyKey: string) => api<GoodsReceipt>(
     `${PURCHASING}/receipts/${receiptId}/reversal`, { method: 'POST', body: JSON.stringify({ reason }), headers: { 'Idempotency-Key': idempotencyKey } }),
+  /** `Idempotency-Key` obrigatória: um retry de rede não pode criar o mesmo pedido duas vezes. */
+  createOrder: (body: OrderCreateInput, idempotencyKey: string) => api<PurchaseDetail>(`${PURCHASING}/orders`,
+    { method: 'POST', body: JSON.stringify(body), headers: { 'Idempotency-Key': idempotencyKey } }),
+  updateOrder: (id: string, version: number, body: OrderInput) =>
+    api<PurchaseDetail>(`${PURCHASING}/orders/${id}`, json('PUT', { ...body, version })),
+  submitOrder: (id: string, version: number) =>
+    api<PurchaseDetail>(`${PURCHASING}/orders/${id}/submit`, json('POST', { version })),
+  approveOrder: (id: string, version: number) =>
+    api<PurchaseDetail>(`${PURCHASING}/orders/${id}/approve`, json('POST', { version })),
+  returnOrder: (id: string, version: number, reason: string) =>
+    api<PurchaseDetail>(`${PURCHASING}/orders/${id}/return`, json('POST', { version, reason })),
   voidDocument: (id: string, reason: string) =>
     api<PurchaseDocument>(`${PURCHASING}/documents/${id}/void`, json('POST', { reason })),
   settings: () => api<PurchasingSettings>(`${PURCHASING}/settings`),

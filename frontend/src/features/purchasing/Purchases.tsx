@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  PURCHASE_CANCEL, PURCHASE_IMPORT_XML, PURCHASE_ORDER_MANAGE, purchaseApi, purchaseKeys,
-  type PurchaseDetail, type PurchaseOrigin, type PurchaseStatus, type PurchasingSettings,
+  PURCHASE_APPROVE, PURCHASE_APPROVE_OWN, PURCHASE_CANCEL, PURCHASE_IMPORT_XML, PURCHASE_ORDER_MANAGE, purchaseApi,
+  purchaseKeys, type PurchaseDetail, type PurchaseOrigin, type PurchaseStatus, type PurchasingSettings,
 } from '../../api/purchasing'
+import { useAuth } from '../../auth/useAuth'
 import { Badge, PageHeader } from '../../components/ui'
 import { QueryState } from '../../components/QueryState'
 import { ConfirmAction, Pagination } from '../../components/controls'
@@ -14,6 +15,7 @@ import { formatBrl, formatDate } from '../../utils/format'
 import { formatTaxId } from '../../utils/taxId'
 import { ReceivingSection } from './Receiving'
 import { RECEIPT_STATUS_LABEL, receiptTone } from './receivingRules'
+import { canApprove } from './orderRules'
 
 const PAGE_SIZE = 20
 
@@ -23,16 +25,31 @@ const STATUS_LABEL: Record<PurchaseStatus, string> = {
 const ORIGIN_LABEL: Record<PurchaseOrigin, string> = {
   NFE_IMPORT: 'NF-e importada', DIRECT: 'Compra direta', ORDER: 'Pedido de compra',
 }
+const statusTone = (status: PurchaseStatus) =>
+  (status === 'CANCELLED' ? 'warning' : status === 'APPROVED' ? 'success' : 'info') as 'warning' | 'success' | 'info'
+const EVENT_LABEL: Record<string, string> = {
+  IMPORTED: 'NF-e importada', CREATED: 'Criada', CANCELLED: 'Cancelada', DOCUMENT_VOIDED: 'Documento anulado',
+  PAYABLES_REGISTERED: 'Contas a pagar criadas', PAYABLES_CANCELLED: 'Contas a pagar canceladas',
+  ITEM_LINK_CONFIRMED: 'Vínculo de item confirmado', SUPPLIER_CREATED_FROM_NFE: 'Fornecedor cadastrado pela nota',
+  RECEIPT_REGISTERED: 'Recebimento registrado', RECEIPT_REVERSED: 'Recebimento estornado',
+  ORDER_UPDATED: 'Rascunho alterado', ORDER_SUBMITTED: 'Enviado para aprovação',
+  ORDER_RETURNED: 'Devolvido para correção', ORDER_APPROVED: 'Aprovado',
+}
 
 // ====================================================================== lista
 
 export function PurchasesPage() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
+  const [origin, setOrigin] = useState('')
   const [page, setPage] = useState(0)
   const canImport = useCan(PURCHASE_IMPORT_XML)
+  const canOrder = useCan(PURCHASE_ORDER_MANAGE)
   const q = useDebouncedValue(search.trim())
-  const params = { q: q || undefined, status: (status || undefined) as PurchaseStatus | undefined, page, size: PAGE_SIZE }
+  const params = {
+    q: q || undefined, status: (status || undefined) as PurchaseStatus | undefined,
+    origin: (origin || undefined) as PurchaseOrigin | undefined, page, size: PAGE_SIZE,
+  }
   const list = useQuery({
     queryKey: purchaseKeys.purchaseList(params),
     queryFn: () => purchaseApi.purchases(params),
@@ -41,7 +58,8 @@ export function PurchasesPage() {
 
   return <>
     <PageHeader title="Compras"
-                subtitle="Notas importadas e compras da oficina. A situação de cada parcela é do Financeiro; o estoque entra no recebimento.">
+                subtitle="Pedidos, compras diretas e notas importadas. A situação de cada parcela é do Financeiro; o estoque entra no recebimento.">
+      {canOrder && <Link className="btn secondary" to="/compras/pedidos/novo">Novo pedido</Link>}
       {canImport && <Link className="btn" to="/compras/notas/importar">Importar NF-e</Link>}
     </PageHeader>
     <div className="toolbar">
@@ -50,8 +68,16 @@ export function PurchasesPage() {
              value={search} onChange={e => { setSearch(e.target.value); setPage(0) }} />
       <select aria-label="Situação" className="select" value={status} onChange={e => { setStatus(e.target.value); setPage(0) }}>
         <option value="">Todas as situações</option>
+        <option value="DRAFT">Rascunho</option>
+        <option value="AWAITING_APPROVAL">Aguardando aprovação</option>
         <option value="APPROVED">Aprovada</option>
         <option value="CANCELLED">Cancelada</option>
+      </select>
+      <select aria-label="Origem" className="select" value={origin} onChange={e => { setOrigin(e.target.value); setPage(0) }}>
+        <option value="">Todas as origens</option>
+        <option value="ORDER">Pedido de compra</option>
+        <option value="DIRECT">Compra direta</option>
+        <option value="NFE_IMPORT">NF-e importada</option>
       </select>
     </div>
     <QueryState label="as compras" loading={list.isLoading} error={list.error} retry={list.refetch}
@@ -69,8 +95,7 @@ export function PurchasesPage() {
           <td>{purchase.issuedOn ? formatDate(purchase.issuedOn) : '—'}</td>
           <td>{purchase.installmentCount}</td>
           <td>{formatBrl(purchase.payableTotal)}</td>
-          <td><Badge tone={purchase.status === 'CANCELLED' ? 'warning' : 'success'}>
-            {STATUS_LABEL[purchase.status]}</Badge></td>
+          <td><Badge tone={statusTone(purchase.status)}>{STATUS_LABEL[purchase.status]}</Badge></td>
           <td><Badge tone={receiptTone(purchase.receiptStatus)}>{RECEIPT_STATUS_LABEL[purchase.receiptStatus]}</Badge></td>
         </tr>)}</tbody>
       </table></div>
@@ -114,6 +139,8 @@ function PurchaseView({ purchase }: { purchase: PurchaseDetail }) {
                 subtitle={`${ORIGIN_LABEL[purchase.origin]} · ${STATUS_LABEL[purchase.status]}`} />
     {purchase.cancelledAt && <div className="notice">
       Cancelada em {formatDate(purchase.cancelledAt)}. Motivo: {purchase.cancellationReason}</div>}
+
+    {purchase.origin !== 'NFE_IMPORT' && <OrderWorkflow purchase={purchase} onChanged={refresh} />}
 
     <section className="card" aria-label="Totais">
       <h2>Totais</h2>
@@ -194,7 +221,10 @@ function PurchaseView({ purchase }: { purchase: PurchaseDetail }) {
 
     <section className="card" aria-label="Parcelas">
       <h2>Parcelas</h2>
-      {purchase.installments.length === 0 ? <p className="muted">Sem parcelas.</p>
+      {purchase.installments.length === 0 && purchase.origin !== 'NFE_IMPORT'
+        ? <p className="muted">Pedido e compra direta não geram contas a pagar. A obrigação financeira nasce com a nota
+            fiscal do fornecedor, importada em Compras.</p>
+        : purchase.installments.length === 0 ? <p className="muted">Sem parcelas.</p>
         : <div className="table-wrap"><table className="table">
             <thead><tr><th>Parcela</th><th>Duplicata</th><th>Vencimento</th><th>Valor</th><th>Conta a pagar</th></tr></thead>
             <tbody>{purchase.installments.map(installment => <tr key={installment.payableId}>
@@ -232,13 +262,84 @@ function PurchaseView({ purchase }: { purchase: PurchaseDetail }) {
       <QueryState label="o histórico" loading={events.isLoading} error={events.error} retry={events.refetch}
                   empty={!events.data?.items.length} emptyMessage="Sem eventos.">
         <ul className="timeline">{events.data?.items.map(event => <li key={event.id}>
-          <strong>{event.type}</strong>{' '}
+          <strong>{EVENT_LABEL[event.type] ?? event.type}</strong>{' '}
           <span className="muted">{formatDate(event.occurredAt)}</span>
           {event.reason && <p className="muted">{event.reason}</p>}
         </li>)}</ul>
       </QueryState>
     </section>
   </>
+}
+
+// ====================================================================== fluxo do pedido (I5)
+
+/**
+ * Edição do rascunho, envio, aprovação e devolução (DR-0022 D8). Os botões orientam; quem decide é o backend, que
+ * também confere a versão: aprovar é aprovar o que esta tela mostra.
+ */
+function OrderWorkflow({ purchase, onChanged }: { purchase: PurchaseDetail; onChanged: () => Promise<void> }) {
+  const { session } = useAuth()
+  const canManage = useCan(PURCHASE_ORDER_MANAGE)
+  const hasApprove = useCan(PURCHASE_APPROVE)
+  const hasApproveOwn = useCan(PURCHASE_APPROVE_OWN)
+  const [returnReason, setReturnReason] = useState('')
+  const mine = purchase.createdBy === session?.id
+  const mayApprove = canApprove(hasApprove, hasApproveOwn, purchase.createdBy, session?.id)
+
+  return <section className="card" aria-label="Aprovação do pedido">
+    <h2>Aprovação</h2>
+
+    {purchase.status === 'DRAFT' && <>
+      <p className="muted">Rascunho: ainda pode ser alterado. Envie para aprovação quando estiver pronto.</p>
+      {canManage ? <div className="form-actions">
+        <Link className="btn secondary" to={`/compras/pedidos/${purchase.id}/editar`}>Editar rascunho</Link>
+        <ConfirmAction label="Enviar para aprovação" tone="primary" confirmLabel="Confirmar envio"
+                       question="Enviar o pedido para aprovação? Depois de enviado, ele não pode mais ser alterado a menos que seja devolvido."
+                       onConfirm={async () => {
+                         await purchaseApi.submitOrder(purchase.id, purchase.version)
+                         await onChanged()
+                       }} />
+      </div> : <p className="muted">Você não tem permissão para alterar nem enviar pedidos.</p>}
+    </>}
+
+    {purchase.status === 'AWAITING_APPROVAL' && <>
+      <p>Aguardando aprovação. O pedido está bloqueado para edição.</p>
+      {mayApprove ? <div className="form-actions">
+        <ConfirmAction label="Aprovar pedido" tone="primary" confirmLabel="Confirmar aprovação"
+                       question={`Aprovar o pedido de ${formatBrl(purchase.payableTotal)}? Aprovado, ele passa a poder ser recebido.`}
+                       onConfirm={async () => {
+                         await purchaseApi.approveOrder(purchase.id, purchase.version)
+                         await onChanged()
+                       }} />
+        <ConfirmAction label="Devolver para correção" confirmLabel="Confirmar devolução" tone="primary"
+                       question="Devolver o pedido para o rascunho? O autor poderá corrigi-lo e enviá-lo de novo."
+                       onConfirm={async () => {
+                         if (returnReason.trim().length < 3) throw new Error('Informe o motivo da devolução')
+                         await purchaseApi.returnOrder(purchase.id, purchase.version, returnReason.trim())
+                         setReturnReason('')
+                         await onChanged()
+                       }}>
+          <div className="field"><label>Motivo da devolução *
+            <input className="input" value={returnReason} onChange={e => setReturnReason(e.target.value)} /></label></div>
+        </ConfirmAction>
+      </div> : hasApprove && mine
+        ? <div role="note" className="notice">Você criou este pedido e não pode aprová-lo: a segregação de funções
+            pede outra pessoa com permissão de aprovar.</div>
+        : <p className="muted">Quem tem permissão de aprovar pedidos fará a análise.</p>}
+    </>}
+
+    {purchase.status === 'APPROVED' && <>
+      <p>Aprovado{purchase.approvedAt ? ` em ${formatDate(purchase.approvedAt)}` : ''}.
+        {purchase.approvedBy && purchase.approvedBy === purchase.createdBy &&
+          <> Aprovado pelo próprio autor, por exceção do proprietário.</>}</p>
+      <div role="note" className="notice">
+        Ainda não existe ligação entre este pedido e a NF-e do fornecedor (decisão pendente, DR-0023). Registre o
+        recebimento <strong>neste pedido</strong> <em>ou</em> na compra da nota importada — <strong>nunca nos dois</strong> —
+        para o estoque não entrar em dobro.</div>
+    </>}
+
+    {purchase.status === 'CANCELLED' && <p className="muted">Pedido cancelado: o histórico foi preservado.</p>}
+  </section>
 }
 
 // ====================================================================== configuração
