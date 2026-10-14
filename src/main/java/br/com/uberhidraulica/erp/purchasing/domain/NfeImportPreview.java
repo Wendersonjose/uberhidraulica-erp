@@ -67,7 +67,8 @@ public record NfeImportPreview(String accessKey, String issuerDocument, String i
             candidates = candidates == null ? List.of() : List.copyOf(candidates);
         }
 
-        public enum MatchKind { LINK, GTIN, NONE }
+        /** {@code MANUAL} é o produto escolhido pelo operador na prévia: nunca vem de descrição (`D6`). */
+        public enum MatchKind { LINK, GTIN, MANUAL, NONE }
 
         public record Candidate(UUID productId, String description, String internalCode, String unit) {}
     }

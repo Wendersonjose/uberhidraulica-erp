@@ -68,13 +68,34 @@ public class NfePreviewService {
 
     @Transactional(readOnly = true)
     public NfeImportPreview preview(byte[] xml) {
+        return previewWith(xml, List.of());
+    }
+
+    /**
+     * Prévia com as escolhas já feitas pelo operador (produto e fator por item).
+     *
+     * <p>Sem isto, o custo, a quantidade convertida e a necessidade de fator só seriam calculados para os itens
+     * que o servidor casou sozinho (vínculo ou GTIN): quem escolhe o produto à mão veria custo em branco e
+     * seria obrigado a informar fator até para {@code UN → UNIDADE}. A prévia continua somente leitura.</p>
+     */
+    @Transactional(readOnly = true)
+    public NfeImportPreview previewWith(byte[] xml, List<Selection> selections) {
         NfeDocument document = NfeXmlParser.parse(xml);
         PurchasingSettings configuration = settings.current();
-        return build(document, configuration);
+        return build(document, configuration, selections);
     }
+
+    /** Escolha do operador para uma linha da nota. */
+    public record Selection(int lineNo, UUID productId, BigDecimal unitConversionFactor) {}
 
     /** Montagem compartilhada com a confirmação, para prévia e confirmação não divergirem de regra. */
     NfeImportPreview build(NfeDocument document, PurchasingSettings configuration) {
+        return build(document, configuration, List.of());
+    }
+
+    NfeImportPreview build(NfeDocument document, PurchasingSettings configuration, List<Selection> selections) {
+        java.util.Map<Integer, Selection> chosen = new java.util.HashMap<>();
+        if (selections != null) selections.forEach(selection -> chosen.put(selection.lineNo(), selection));
         LocalDate today = LocalDate.ofInstant(clock.instant(), ZONE);
         String ownTaxId = configuration.ownTaxId();
         List<NfeIssue> issues = NfeValidator.validate(document, new NfeValidator.Context(ownTaxId, today));
@@ -111,7 +132,7 @@ public class NfePreviewService {
         NfeImportPreview.SupplierMatch supplier = matchSupplier(document, blockers);
         Totals totals = totals(document);
         List<NfeImportPreview.ItemPreview> items =
-                items(document, supplier, configuration, totals, blockers);
+                items(document, supplier, configuration, totals, chosen, blockers);
         List<NfeImportPreview.InstallmentPreview> installments = installments(document);
         boolean fromInvoice = !installments.isEmpty();
         if (!fromInvoice) {
@@ -159,6 +180,7 @@ public class NfePreviewService {
     private List<NfeImportPreview.ItemPreview> items(NfeDocument document,
                                                      NfeImportPreview.SupplierMatch supplier,
                                                      PurchasingSettings configuration, Totals totals,
+                                                     java.util.Map<Integer, Selection> chosen,
                                                      List<String> blockers) {
         List<NfeDocument.Item> source = document.items();
         List<BigDecimal> netValues = source.stream()
@@ -174,12 +196,17 @@ public class NfePreviewService {
         List<NfeImportPreview.ItemPreview> result = new ArrayList<>(source.size());
         for (int index = 0; index < source.size(); index++) {
             NfeDocument.Item item = source.get(index);
-            Resolution resolution = resolve(supplier.supplierId(), item);
+            Selection selection = chosen.get(item.itemNumber());
+            // A escolha do operador vale sobre o que o servidor sugeriria sozinho (D6): quem vê o custo do que
+            // escolheu decide melhor do que quem só vê uma lista.
+            Resolution resolution = selection != null && selection.productId() != null
+                    ? manual(selection, item, blockers) : resolve(supplier.supplierId(), item);
 
             BigDecimal factor = null;
             BigDecimal quantity = null;
             AcquisitionCost cost = null;
             boolean needsFactor = resolution.productUnit() == null;
+            boolean reported = false;
             if (resolution.productUnit() != null) {
                 // Falta de fator é estado esperado da prévia, não erro — mas só ela. Qualquer outro problema
                 // do item (desconto maior que o valor, por exemplo) tem de aparecer como bloqueio próprio, e
@@ -188,15 +215,22 @@ public class NfePreviewService {
                         && !UnitConversion.needsNoFactor(item.unit(), resolution.productUnit())) {
                     needsFactor = true;
                 } else {
-                    factor = UnitConversion.effectiveFactor(item.unit(), resolution.productUnit(),
-                            resolution.factor());
-                    quantity = UnitConversion.convertQuantity(item.quantity(), factor);
                     try {
+                        factor = UnitConversion.effectiveFactor(item.unit(), resolution.productUnit(),
+                                resolution.factor());
+                        quantity = UnitConversion.convertQuantity(item.quantity(), factor);
                         cost = AcquisitionCost.of(item.grossTotal(), item.discount(), item.ipiAmount(),
                                 item.icmsStAmount(), item.icmsAmount(), freightShares.get(index),
                                 insuranceShares.get(index), otherShares.get(index), quantity,
                                 configuration.costParameters());
                     } catch (PurchasingException inconsistent) {
+                        // Fator informado inválido ou custo incoerente: vira bloqueio do item, e não erro da
+                        // prévia inteira, porque ler a nota é justamente como se descobre o que consertar.
+                        needsFactor = inconsistent.code().startsWith("PURCHASE_UNIT_FACTOR");
+                        factor = null;
+                        quantity = null;
+                        cost = null;
+                        reported = true;
                         blockers.add("Item " + item.itemNumber() + ": " + inconsistent.getMessage());
                     }
                 }
@@ -204,7 +238,7 @@ public class NfePreviewService {
             if (resolution.productId() == null) {
                 blockers.add("Item " + item.itemNumber() + " (" + item.description()
                         + ") não está vinculado a um produto do catálogo");
-            } else if (needsFactor) {
+            } else if (needsFactor && !reported) {
                 blockers.add("Item " + item.itemNumber() + ": unidade " + UnitConversion.normalize(item.unit())
                         + " da nota exige fator de conversão para " + resolution.productUnit());
             }
@@ -245,6 +279,26 @@ public class NfePreviewService {
             }
         }
         return new Resolution(null, null, null, NfeImportPreview.ItemPreview.MatchKind.NONE, null,
+                candidates(item.description()));
+    }
+
+    /**
+     * Produto escolhido pelo operador. Produto inexistente ou inativo não derruba a prévia: vira bloqueio do item,
+     * e o item volta a aparecer como não vinculado.
+     */
+    private Resolution manual(Selection selection, NfeDocument.Item item, List<String> blockers) {
+        Optional<ProductCatalogQuery.ProductReference> product = catalog.product(selection.productId());
+        if (product.isEmpty()) {
+            blockers.add("Item " + item.itemNumber() + ": o produto escolhido não existe no catálogo");
+            return new Resolution(null, null, null, NfeImportPreview.ItemPreview.MatchKind.NONE, null,
+                    candidates(item.description()));
+        }
+        if (!product.get().active()) {
+            blockers.add("Item " + item.itemNumber() + ": o produto " + product.get().description()
+                    + " está inativo e não recebe compra");
+        }
+        return new Resolution(product.get().id(), product.get().description(), product.get().unit(),
+                NfeImportPreview.ItemPreview.MatchKind.MANUAL, selection.unitConversionFactor(),
                 candidates(item.description()));
     }
 

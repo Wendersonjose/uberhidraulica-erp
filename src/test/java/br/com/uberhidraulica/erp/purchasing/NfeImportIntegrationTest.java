@@ -117,6 +117,15 @@ class NfeImportIntegrationTest {
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         }
 
+    /** Prévia que já considera o produto e o fator escolhidos pelo operador. */
+    private String previewWith(Session as, NfeFixtures fixture, String decisions) throws Exception {
+        return mvc.perform(post("/api/purchasing/nfe/preview").cookie(as.cookie())
+                        .header(as.csrfHeader(), as.csrfToken())
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"xml\":" + quote(fixture.xml()) + ",\"decisions\":" + decisions + "}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+    }
+
     /** Decisões de item: vincula cada linha da nota a um produto e guarda o vínculo. */
     private String decisions(NfeFixtures fixture, UUID productId, String factor) {
         StringBuilder out = new StringBuilder("[");
@@ -438,6 +447,55 @@ class NfeImportIntegrationTest {
         // A unidade e a quantidade originais da nota ficam preservadas, senão a conversão não é auditável.
         assertThat(jdbc.queryForObject("select unit_original from purchasing.purchase_item where purchase_id = ?",
                 String.class, purchaseId)).isEqualTo("CX");
+    }
+
+    @Test
+    void thePreviewWithTheOperatorsChoiceShowsTheCostAndOnlyDemandsAFactorWhereTheUnitsDiffer() throws Exception {
+        NfeFixtures box = singleItemNote("S-PRV-CX", "1.0000", "120.00", "120.00");
+        box.commercialUnit = "CX";
+        UUID product = product("Produto previa " + SEQUENCE.incrementAndGet(), "UNIDADE");
+        String choice = "[{\"lineNo\":1,\"productId\":\"" + product + "\"";
+
+        // Sem escolha o servidor não calcula nada para o item: não há produto, logo não há unidade nem custo.
+        String blank = preview(owner, box);
+        assertThat((Object) JsonPath.read(blank, "$.items[0].cost")).isNull();
+
+        // Escolhido à mão, mas sem fator: a caixa não equivale à unidade, então continua exigindo fator.
+        String noFactor = previewWith(owner, box, choice + "}]");
+        assertThat((String) JsonPath.read(noFactor, "$.items[0].matchedBy")).isEqualTo("MANUAL");
+        assertThat((Boolean) JsonPath.read(noFactor, "$.items[0].needsFactor")).isTrue();
+        assertThat((Object) JsonPath.read(noFactor, "$.items[0].cost")).isNull();
+        assertThat((Boolean) JsonPath.read(noFactor, "$.confirmable")).isFalse();
+
+        // Com o fator, a prévia mostra a quantidade convertida e o custo que entraria no estoque.
+        String withFactor = previewWith(owner, box, choice + ",\"unitConversionFactor\":12}]");
+        assertThat((Boolean) JsonPath.read(withFactor, "$.items[0].needsFactor")).isFalse();
+        assertThat(new BigDecimal(String.valueOf((Object) JsonPath.read(withFactor, "$.items[0].convertedQuantity"))))
+                .isEqualByComparingTo("12");
+        assertThat(new BigDecimal(String.valueOf((Object) JsonPath.read(withFactor, "$.items[0].cost.unitCost"))))
+                .isEqualByComparingTo("10.0000");
+
+        // Fator inválido não derruba a prévia: vira bloqueio do item, e o item volta a pedir fator.
+        String invalid = previewWith(owner, box, choice + ",\"unitConversionFactor\":0}]");
+        assertThat((Boolean) JsonPath.read(invalid, "$.items[0].needsFactor")).isTrue();
+        assertThat((Boolean) JsonPath.read(invalid, "$.confirmable")).isFalse();
+        assertThat(JsonPath.<List<String>>read(invalid, "$.blockers").toString()).contains("maior que zero");
+
+        // Unidade que equivale ao catálogo (UN → UNIDADE) não exige fator nenhum.
+        NfeFixtures unit = singleItemNote("S-PRV-UN", "3.0000", "50.00", "150.00");
+        String direct = previewWith(owner, unit, "[{\"lineNo\":1,\"productId\":\"" + product + "\"}]");
+        assertThat((Boolean) JsonPath.read(direct, "$.items[0].needsFactor")).isFalse();
+        assertThat(new BigDecimal(String.valueOf((Object) JsonPath.read(direct, "$.items[0].cost.unitCost"))))
+                .isEqualByComparingTo("50.0000");
+
+        // Produto que não existe é bloqueio do item, não erro 500.
+        String missing = previewWith(owner, unit, "[{\"lineNo\":1,\"productId\":\"" + UUID.randomUUID() + "\"}]");
+        assertThat((String) JsonPath.read(missing, "$.items[0].matchedBy")).isEqualTo("NONE");
+        assertThat((Boolean) JsonPath.read(missing, "$.confirmable")).isFalse();
+
+        // E nada foi gravado por nenhuma dessas prévias.
+        assertThat(jdbc.queryForObject("select count(*) from purchasing.purchase_document where access_key = ?",
+                Long.class, box.accessKey())).isZero();
     }
 
     @Test

@@ -57,6 +57,19 @@ class NfeImportController {
     }
 
     /**
+     * Prévia que já considera o produto e o fator escolhidos pelo operador, para ele ver o custo que entra no
+     * estoque e quais fatores ainda faltam <b>antes</b> de confirmar. Continua somente leitura.
+     */
+    @PostMapping(path = "/preview", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'PURCHASE_IMPORT_XML')")
+    NfeImportPreview previewWithDecisions(@Valid @RequestBody PreviewRequest request) {
+        List<NfePreviewService.Selection> selections = request.decisions() == null ? List.of()
+                : request.decisions().stream()
+                .map(d -> new NfePreviewService.Selection(d.lineNo(), d.productId(), d.unitConversionFactor())).toList();
+        return previews.previewWith(request.xml().getBytes(StandardCharsets.UTF_8), selections);
+    }
+
+    /**
      * Confirma a importação e grava compra, documento e contas a pagar em uma transação.
      *
      * <p>O XML vai no corpo como texto em vez de multipart porque a confirmação carrega também as decisões do
@@ -88,6 +101,8 @@ class NfeImportController {
     }
 
     // ------------------------------------------------------------------ contratos
+
+    record PreviewRequest(@NotBlank String xml, List<NfeImportService.ItemDecision> decisions) {}
 
     /** {@code createSupplier} e {@code saveLink} são opcionais: ausente significa {@code false}. */
     record ConfirmRequest(@NotBlank String xml, Boolean createSupplier, UUID expenseCategoryId,
