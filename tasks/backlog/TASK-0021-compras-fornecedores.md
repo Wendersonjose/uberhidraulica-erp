@@ -2,7 +2,7 @@
 
 ## Identificação
 
-- Status: `IN_PROGRESS` (I1, I2 e I3 concluídos e validados com a NF-e 21 real; I4 e I5 em aberto)
+- Status: `IN_PROGRESS` (I1, I2 e I3 concluídos e validados com a NF-e 21 real; I4 e I5 entregues e **aguardando o checkpoint de banco**; solicitação/cotação e I6 em aberto)
 - Prioridade: alta
 - Criada em: `2026-10-13`
 - Origem: briefing do proprietário de 2026-10-13; `DR-0021` (DECIDED) libera a abertura
@@ -33,9 +33,10 @@ fiscal e pagamento (`AG-05` §130).
 | --- | --- | --- | --- |
 | I1 | Domínio puro de NF-e: chave de acesso, CNPJ/CPF (inclui alfanumérico), GTIN, parser XML seguro, validador, testes | nenhuma | **CONCLUÍDO** (31 testes) |
 | I2 | Fornecedores PF/PJ, contatos, situação, condições comerciais, trilha de auditoria, API e telas | `V22` (`V22__purchasing_suppliers.sql`) | **CONCLUÍDO** (16 testes de integração + 22 unitários; checkpoint de banco executado) |
-| I3 | Prévia e confirmação de NF-e: fornecedor, vínculo de itens, compra, documento, contas a pagar parceladas | `V23` (`V23__purchasing_purchase_nfe.sql`) | **CONCLUÍDO** (21 testes de integração + 7 de aceitação com a NF-e 21 real + 28 unitários; telas entregues) |
-| I4 | Recebimento físico total/parcial, divergência, entrada em estoque com custo, estorno | `V24` | próximo (decisões liberadas) |
-| I5 | Solicitação, cotação multi-fornecedor, comparação, pedido, aprovação, compra direta, vínculo com OS | `V25+` | pendente |
+| I3 | Prévia e confirmação de NF-e: fornecedor, vínculo de itens, compra, documento, contas a pagar parceladas | `V23` (`V23__purchasing_purchase_nfe.sql`) | **CONCLUÍDO** (21 testes de integração + 7 de aceitação com a NF-e 21 real + 28 unitários; telas entregues, incluindo a prévia com as escolhas do operador) |
+| I4 | Recebimento físico total/parcial, divergência, entrada em estoque com custo, estorno | `V24` (`V24__purchasing_receipts.sql`) | **ENTREGUE** — unitários e frontend executados; **`GoodsReceiptIntegrationTest` escrito e ainda não executado** (Docker indisponível) |
+| I5 | Pedido de compra, compra direta, vínculo com OS, aprovação segregada (D8) | `V25` (`V25__purchasing_orders.sql`) | **ENTREGUE** — unitários e frontend executados; **`PurchaseOrderIntegrationTest` escrito e ainda não executado** |
+| I5b | Solicitação, cotação multi-fornecedor, comparação, ligação pedido × NF-e | `V26+` | **bloqueado pela `DR-0023`** (aberta) |
 | I6 | Devolução, crédito do fornecedor, histórico de preços, relatórios | `V26+` | pendente |
 
 ## Bloqueios
@@ -156,3 +157,52 @@ proprietário. Na prática o operador informa o fator uma vez por item, e o vín
 Cancelar compra ainda **não** verifica ausência de recebimento ativo, porque recebimento não existe antes do
 `I4`. No `I3` o invariante não pode ser violado (não há como existir recebimento), mas a trava da `D5` tem de
 ser ligada junto com `goods_receipt`, em `PurchaseService.cancel`.
+
+## Resultado do I4 (2026-10-14) — recebimento físico e entrada em estoque
+
+- **Migration `V24`** (aditiva): `goods_receipt`, `goods_receipt_item`, `goods_receipt_reversal` (append-only por trigger), view
+  `purchasing.purchase_item_receiving` (a situação de recebimento é **derivada**, nunca armazenada), `inventory.stock_movement` passa a
+  aceitar `source_type = 'PURCHASE'` com `purchase_receipt_item_id` único por entrada, permissões `PURCHASE_RECEIVE` e
+  `PURCHASE_DIVERGENCE_ACCEPT`.
+- **Contrato público do Estoque** `inventory.PurchaseStockEntry` (`registerEntry` / `reverseEntry`, idempotentes por item recebido): Compras
+  não conhece repositório nem tabela do Estoque.
+- **Regras** (DR-0022 D1/D3/D5): só entra o que foi conferido, ao custo de aquisição do item da compra; receber menos é parcial e não
+  é divergência; receber a mais ou encerrar o saldo que não virá exige justificativa **e** `PURCHASE_DIVERGENCE_ACCEPT`; compra com
+  recebimento ativo não cancela (a pendência do I3 foi fechada); estorno desfaz a entrada e devolve o saldo ao pendente.
+- **Concorrência:** a compra é travada (`SELECT … FOR UPDATE`) antes de ler o pendente; dois recebimentos do último saldo não passam.
+- **API:** `GET /purchases/{id}/receiving`, `GET|POST /purchases/{id}/receipts` (`Idempotency-Key`), `POST /receipts/{id}/reversal`.
+- **Tela:** conferência por item, divergência com justificativa, lista de recebimentos e estorno.
+- **Testes executados:** `ReceiptLineEvaluationTest` (11) e frontend `receiving.test.tsx` (14). **Não executado:** `GoodsReceiptIntegrationTest`
+  (PostgreSQL real) — ver "Pendência de checkpoint".
+
+## Resultado do I5 (2026-10-14) — pedido de compra e aprovação
+
+- **Migration `V25`** (aditiva, sem tabela nova): `purchase.version` (controle otimista), `updated_*`, `approved_at/approved_by` (par
+  consistente por CHECK), itens apagáveis **somente** com a compra em `DRAFT` (trigger `tg_purchase_item_delete_draft_only`), eventos
+  `ORDER_UPDATED/SUBMITTED/RETURNED/APPROVED`, permissões `PURCHASE_APPROVE` (DONO, GERENTE_ADMINISTRATIVO) e
+  `PURCHASE_APPROVE_OWN` (**só DONO**).
+- **Fluxo:** `DRAFT → AWAITING_APPROVAL → APPROVED`, com devolução `AWAITING_APPROVAL → DRAFT` (motivo obrigatório). Só o rascunho edita.
+  `ORDER` (pedido prévio) e `DIRECT` (compra direta) seguem o mesmo fluxo; a NF-e importada nasce aprovada e não é editável.
+- **D8 (aprovada):** quem criou não aprova, exceto com `PURCHASE_APPROVE_OWN`. A exceção é **permissão**, não nome de perfil no código:
+  o proprietário a concede ou retira sem deploy. Aprovação pela exceção fica marcada na trilha (`ownApproval`).
+- **Aprovar é aprovar o que foi visto:** toda transição envia a `version` lida; versão velha dá 409 `PURCHASE_ORDER_VERSION_CONFLICT`.
+  Fornecedor desativado ou produto inativo entre o envio e a aprovação bloqueia a aprovação.
+- **Valorização:** bruto = quantidade × preço; frete, seguro e outras despesas rateados por valor com fechamento exato dos centavos (D2);
+  o custo do item é uma **estimativa** (sem IPI/ICMS-ST, que só existem na nota). Pedido **não** gera conta a pagar e **não** movimenta estoque.
+- **API:** `POST /orders` (`Idempotency-Key`), `PUT /orders/{id}`, `POST /orders/{id}/submit|approve|return`. Consulta e cancelamento usam
+  `/purchases`.
+- **Vínculo com OS:** o pedido pode apontar uma OS (cabeçalho) e, na API, o item da OS do mesmo produto; a tela entrega o vínculo de cabeçalho.
+- **Testes executados:** `PurchaseOrderTest` (17) e frontend `order-rules` (13) e `purchase-orders` (23). **Não executado:**
+  `PurchaseOrderIntegrationTest` (PostgreSQL real).
+
+### Decisão que o I5 abriu: `DR-0023` (aberta)
+
+Pedido e nota são hoje duas compras sem ligação. Há risco real de **estoque em dobro** (receber nos dois) e de custo divergente. A
+mitigação provisória é o aviso na tela do pedido aprovado. A decisão do proprietário sobre a ligação bloqueia o I5b.
+
+### Pendência de checkpoint (2026-10-14)
+
+O ambiente de desenvolvimento não conseguiu manter o Docker estável (memória insuficiente), então **nenhuma classe de integração do I3
+(prévia com escolhas), I4 e I5 foi executada contra PostgreSQL**. As migrations `V24` e `V25` foram revisadas por leitura, **não** aplicadas
+em nenhum banco, nem no Supabase. Antes de qualquer merge: executar `mvn test` completo numa máquina com Docker estável e corrigir o que
+aparecer — a ordem de risco é V24 (view, trigger, constraint) → concorrência do recebimento → V25.

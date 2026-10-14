@@ -107,17 +107,34 @@ a antiga deve ser arquivada depois que esta for integrada. Nada na branch antiga
   com `UNIQUE WHERE movement_type='ENTRY'` (uma entrada por item recebido) — `ck_stock_movement_work_order` é preservada.
 - Permissões `PURCHASE_RECEIVE` (`…034`) e `PURCHASE_DIVERGENCE_ACCEPT` (`…035`).
 
-### I5/I6 (desenho posterior, uma migration por incremento)
+#### Como o I4 foi realmente entregue
+
+`V24__purchasing_receipts.sql` (o nome planejado acima era `…_receipts_inventory`). A divergência é `NONE | OVER | SHORT_CLOSED` com
+quantidade esperada e cancelada gravadas; a situação de recebimento é a view `purchasing.purchase_item_receiving` (derivada). O Estoque
+expõe `inventory.PurchaseStockEntry` e continua dono do próprio saldo e custo médio.
+
+### I5 — `V25__purchasing_orders.sql` (implementada; somente aditiva, sem tabela nova)
+
+- `purchasing.purchase`: `version BIGINT` (controle otimista), `updated_at/by`, `approved_at/by` com `CHECK` de par.
+- Trigger `tg_purchase_item_delete_draft_only` substitui o `no_delete` do item: apagar item só com a compra em `DRAFT` (editar rascunho
+  é trocar itens). Compra, documento e parcela continuam sem `DELETE`.
+- `purchase_event.event_type` ganha `ORDER_UPDATED | ORDER_SUBMITTED | ORDER_RETURNED | ORDER_APPROVED`.
+- Permissões `PURCHASE_APPROVE` (`…038`; DONO e GERENTE_ADMINISTRATIVO) e `PURCHASE_APPROVE_OWN` (`…039`; só DONO).
+- Pedido **não** cria `purchase_payable` nem toca `inventory`; a ligação com a NF-e depende da `DR-0023`.
+
+### I5b/I6 (desenho posterior, uma migration por incremento)
 
 `purchase_request(+item)`, `quotation` / `quotation_invitation` / `quotation_proposal(+item)` com justificativa de escolha
-mais cara, `purchase_return` / `supplier_credit`, `supplier_price_history` ampliado, `purchase_approval`.
+mais cara (I5b, bloqueado pela `DR-0023` C4), `purchase_return` / `supplier_credit`, `supplier_price_history` ampliado (I6).
 
 ## 4. Estados e transições
 
 ```text
-purchase:   DRAFT → AWAITING_APPROVAL → APPROVED → PARTIALLY_RECEIVED ⇄ RECEIVED     (CANCELLED a partir de qualquer estado
-            sem recebimento ativo; recebimento ativo exige estorno antes)
-NFE_IMPORT: nasce APPROVED (a nota é o fato comercial); DIRECT: DRAFT → APPROVED (permissão); ORDER: fluxo completo.
+purchase:   DRAFT → AWAITING_APPROVAL → APPROVED            (devolução: AWAITING_APPROVAL → DRAFT, com motivo)
+            CANCELLED a partir de qualquer estado sem recebimento ativo; recebimento ativo exige estorno antes
+NFE_IMPORT: nasce APPROVED (a nota é o fato comercial) e não é editável.
+ORDER / DIRECT: fluxo completo; só o rascunho edita; aprovar exige PURCHASE_APPROVE e, se o aprovador é o autor,
+            PURCHASE_APPROVE_OWN (D8). Toda transição confere a version lida pela tela.
 recebimento (derivado):  NONE | PARTIAL | COMPLETE   — por Σ quantity_received vs Σ quantity, nunca armazenado.
 financeiro  (derivado):  lido do Financeiro por parcela (aberta/parcial/paga/vencida/cancelada).
 ```
@@ -144,7 +161,10 @@ I2  (implementado) GET|POST /suppliers   GET|PUT /suppliers/{id}   POST /supplie
 I3  POST /nfe/preview            (multipart ou JSON, somente leitura, nada é gravado)
     POST /nfe/confirm            (Idempotency-Key; cria fornecedor opcional, vínculos, compra, documento, contas a pagar)
     GET  /purchases   GET /purchases/{id}   POST /purchases/{id}/cancel   POST /documents/{id}/void
-I4  POST /purchases/{id}/receipts (Idempotency-Key)   POST /receipts/{id}/reverse   GET /purchases/{id}/receipts
+I4  (implementado) GET /purchases/{id}/receiving   GET|POST /purchases/{id}/receipts (Idempotency-Key)
+    POST /receipts/{id}/reversal (Idempotency-Key)
+I5  (implementado) POST /orders (Idempotency-Key)   PUT /orders/{id}   POST /orders/{id}/submit|approve|return
+    (cada mudança carrega a version lida; consulta e cancelamento continuam em /purchases)
 ```
 
 Erros com código estável (`PurchasingException`) e `@ControllerAdvice` próprio, como `FinanceExceptionHandler`.
@@ -154,7 +174,8 @@ Erros com código estável (`PurchasingException`) e `@ControllerAdvice` própri
 - Backend autoriza **toda** operação com `@PreAuthorize("@iamAuthorization.hasPermission(authentication, '…')")`.
   Permissões (códigos da branch antiga preservados): `PURCHASE_VIEW`, `PURCHASE_SUPPLIER_MANAGE` (V22, entregues),
   `PURCHASE_ORDER_MANAGE`, `PURCHASE_RECEIVE`, `PURCHASE_DIVERGENCE_ACCEPT`, `PURCHASE_CANCEL`, `PURCHASE_IMPORT_XML`
-  (+ `PURCHASE_APPROVE` em I5 e `PURCHASE_RETURN` em I6). Perfis: `DONO` e `GERENTE_ADMINISTRATIVO` recebem todas;
+  `PURCHASE_APPROVE` e `PURCHASE_APPROVE_OWN` (V25; esta última só para `DONO`, exceção da D8) e, em I6, `PURCHASE_RETURN`.
+  Perfis: `DONO` e `GERENTE_ADMINISTRATIVO` recebem todas as demais;
   `GERENTE_FINANCEIRO` recebe `PURCHASE_VIEW`. Pagar a conta continua exigindo `FINANCE_PAYABLE`.
 - A criação das contas a pagar **derivadas** da compra ocorre dentro do caso de uso de importação, autorizado por
   `PURCHASE_IMPORT_XML`; isso é deliberado (o gerente administrativo não tem `FINANCE_PAYABLE`), fica registrado em
@@ -190,3 +211,7 @@ aceite com o arquivo de referência quando fornecido (hoje apenas XML sintético
 3. Contas a pagar criadas por contrato interno ampliam a superfície de privilégio; mitigação: evento auditável + teste de
    que `GERENTE_ADMINISTRATIVO` não consegue pagar.
 4. Concorrência no recebimento; mitigação: bloqueio de linha + teste.
+5. Pedido e NF-e sem ligação (`DR-0023`): estoque em dobro e custo divergente; mitigação provisória: aviso na tela do pedido
+   aprovado; mitigação definitiva depende da decisão do proprietário.
+6. Testes de integração de I3-prévia/I4/I5 escritos e não executados contra PostgreSQL (Docker indisponível em 2026-10-14);
+   as migrations `V24`/`V25` só foram revisadas por leitura. Executar `mvn test` completo antes de qualquer merge.
