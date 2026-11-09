@@ -153,6 +153,11 @@ if [ "$(grep -c . "${WORK}/counts-origin.txt")" -ge 20 ] \
             <(grep -v '^iam\.spring_session' "${WORK}/counts-restored.txt" 2>/dev/null) >"${WORK}/counts.diff"; then
     ok "contagem exata da cópia restaurada = origem ($(grep -c . "${WORK}/counts-origin.txt") tabelas, row-counts.sql)"
 else fail "contagem da cópia restaurada difere da origem"; head -20 "${WORK}/counts.diff"; fi
+# Ensaio da promoção (o mesmo do pré-voo da produção) sobre este backup: restaura, sobe o backend já construído e prova
+# que nenhuma linha muda. Aqui o banco já está na versão do código (nada pendente), o caso em que o ensaio também precisa passar.
+if REHEARSAL_IMAGE="${PROJECT}-backend" REHEARSAL_PORT=18089 scripts/ops/rehearse-promotion.sh "${BACKUP_FILE}" >"${WORK}/rehearsal.log" 2>&1
+then ok "ensaio da promoção sobre o backup: aprovado, nenhuma linha alterada"
+else fail "ensaio da promoção sobre o backup"; tail -25 "${WORK}/rehearsal.log"; fi
 compose down -v --remove-orphans
 compose up -d postgres --wait --wait-timeout 120
 scripts/ops/restore.sh "${BACKUP_FILE}" --yes >"${WORK}/restore.log" 2>&1 && ok "restore.sh concluiu" || { fail "restore.sh falhou"; tail -20 "${WORK}/restore.log"; }
