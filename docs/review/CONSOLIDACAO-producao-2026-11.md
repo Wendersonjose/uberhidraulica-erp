@@ -73,3 +73,25 @@ consolidação depois de o PR ficar verde e ser integrado.
 Ordem obrigatória: (1) CI verde neste PR → (2) merge na `integration/oficina-consolidada` → (3) homologação manual com o SHA da
 integration → (4) `supabase-readonly-check.sql` = V21 → (5) backup + restauração de prova → (6) fast-forward de
 `release/supabase-cloud` → (7) `cloud-check.sh` e roteiro de tela do §5 do runbook.
+
+## 7. Evidência do CI da PR #6 (`73b04d8`, run 42666949374)
+
+| Job | Resultado |
+| --- | --- |
+| `test` | 471 testes, 0 falhas, 0 erros (inclui as 25 classes de integração em PostgreSQL 18 e `MigrationUpgradeFromProductionIntegrationTest`) |
+| `frontend` | 229/229, `tsc`, lint e build |
+| `dependency-scan` | OSV: nenhuma HIGH/CRITICAL nas 112 dependências Maven de runtime; `npm audit`: 0 |
+| `deploy-smoke` | compose-smoke **217 OK, 0 falhas**: E2E da oficina (IAM, CSRF, cadastros, estoque, OS, orçamento com aprovação parcial pelo link público, execução, caixa, contas a pagar/receber, painel), E2E de Compras (NF-e 21 real, idempotência, recebimento, estorno, pedido com aprovação segregada e DR-0023), reinício, backup/restore, HTTPS; proxy confiável 37/0 |
+| `migrations-immutable` | nenhuma migration existente alterada |
+
+Incorporação verificada por git: `release/homologacao-producao` (PR #3, `e0f4191`), `feature/homologacao-compras-v22-v25` (PR #5,
+`7c60e74`), `release/supabase-cloud`, `integration` e `main` são todas ancestrais de `73b04d8`, com 0 commits de fora. Por conteúdo,
+42 de 44 arquivos da PR #3 são idênticos; os 2 restantes (README, comentário do compose-smoke) só evoluíram depois.
+
+## 8. Pré-voo
+
+Defeito encontrado ao preparar o pré-voo: `verify-backup.sh` procurava `flyway_schema_history` sem schema (no compose ele fica em
+`public`; no Supabase, em `erp_meta`), então um backup **válido** da produção seria declarado inválido; e as contagens eram a
+estimativa do `pg_stat`, que não serve para provar igualdade com a origem. Corrigido (detecção do schema, `--no-privileges` para
+os papéis próprios do Supabase, contagem exata por `scripts/ops/row-counts.sql`), e o compose-smoke passou a provar a comparação
+origem × cópia restaurada. Roteiro: [`PREVOO-producao.md`](../architecture/devops/PREVOO-producao.md).
