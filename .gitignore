@@ -165,7 +165,11 @@ local-storage/
 *.sqlite3
 
 *.dump
+*.dump.sha256
 *.backup
+
+# Saídas do pré-voo da produção (contagens e verificação do banco real; ver docs/architecture/devops/PREVOO-producao.md)
+prevoo/
 
 
 # ------------------------------------------------------------

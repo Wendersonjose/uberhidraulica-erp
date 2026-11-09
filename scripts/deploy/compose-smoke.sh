@@ -142,8 +142,17 @@ BACKUP_FILE="$(ls -1t "${BACKUP_DIR}"/erp-*.dump | head -1)"
 [ -s "${BACKUP_FILE}" ] && ok "backup gerado ($(wc -c < "${BACKUP_FILE}") bytes)" || fail "backup vazio"
 code=0; scripts/ops/backup.sh >/dev/null 2>&1 || code=$?
 [ "${code}" = 3 ] && ok "backup sem cópia externa configurada sai com código 3 (falha fechada)" || fail "backup sem cópia externa saiu com ${code}"
-if scripts/ops/verify-backup.sh "${BACKUP_FILE}" >"${WORK}/verify.log" 2>&1; then ok "verify-backup restaura o backup em um banco descartável"
+# Mesmo procedimento do pré-voo da produção: contagem exata na origem (row-counts.sql, só leitura) x contagem na cópia
+# restaurada pelo verify-backup. Sem tráfego entre o backup e a contagem, só as tabelas de sessão podem variar.
+compose exec -T postgres psql -U uberhidraulica -d uberhidraulica -qtA -F ' ' -v ON_ERROR_STOP=1 \
+    < scripts/ops/row-counts.sql > "${WORK}/counts-origin.txt" || fail "row-counts.sql falhou na origem"
+if COUNTS_OUT="${WORK}/counts-restored.txt" scripts/ops/verify-backup.sh "${BACKUP_FILE}" >"${WORK}/verify.log" 2>&1; then ok "verify-backup restaura o backup em um banco descartável"
 else fail "verify-backup restaura o backup em um banco descartável"; tail -25 "${WORK}/verify.log"; fi
+if [ "$(grep -c . "${WORK}/counts-origin.txt")" -ge 20 ] \
+    && diff <(grep -v '^iam\.spring_session' "${WORK}/counts-origin.txt") \
+            <(grep -v '^iam\.spring_session' "${WORK}/counts-restored.txt" 2>/dev/null) >"${WORK}/counts.diff"; then
+    ok "contagem exata da cópia restaurada = origem ($(grep -c . "${WORK}/counts-origin.txt") tabelas, row-counts.sql)"
+else fail "contagem da cópia restaurada difere da origem"; head -20 "${WORK}/counts.diff"; fi
 compose down -v --remove-orphans
 compose up -d postgres --wait --wait-timeout 120
 scripts/ops/restore.sh "${BACKUP_FILE}" --yes >"${WORK}/restore.log" 2>&1 && ok "restore.sh concluiu" || { fail "restore.sh falhou"; tail -20 "${WORK}/restore.log"; }
