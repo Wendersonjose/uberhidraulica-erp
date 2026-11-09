@@ -98,6 +98,27 @@ nocsrf="$(cx -o /dev/null -w '%{http_code}' -b "$JAR" -H 'Content-Type: applicat
 bad="$(cx -o /dev/null -w '%{http_code}' -b "$JAR" -H "$HEADER: token-invalido" -H 'Content-Type: application/json' -d '{}' "$BASE/api/customers")"
 [ "$bad" = 403 ] && ok "POST com token CSRF inválido → 403" || fail "POST com token CSRF inválido → $bad (esperado 403)"
 
+# Somente leitura: confirma que a versão com Compras subiu, que as migrations V22–V25 foram aplicadas (a API de Compras só
+# responde 200 com o schema novo) e que Estoque, Financeiro, OS e veículos continuam respondendo. Exige um usuário com as
+# permissões do Dono; com perfil menor, um 403 aqui é falta de permissão, não defeito.
+echo "-- Compras, Estoque e Financeiro (somente leitura)"
+for path in /api/purchasing/suppliers /api/purchasing/purchases /api/purchasing/settings /api/inventory/stock \
+            /api/finance/payables /api/finance/receivables /api/work-orders /api/vehicles; do
+    code="$(cx -o /dev/null -w '%{http_code}' -b "$JAR" "$BASE$path")"
+    [ "$code" = 200 ] && ok "GET $path → 200" || fail "GET $path → $code"
+done
+dash="$(cx -o /dev/null -w '%{http_code}' -b "$JAR" "$BASE/api/finance/dashboard?from=$(date +%Y-%m-01)&to=$(date +%Y-%m-%d)")"
+[ "$dash" = 200 ] && ok "GET painel financeiro → 200" || fail "GET painel financeiro → $dash"
+code="$(cx -o /dev/null -w '%{http_code} %{content_type}' "$BASE/compras/notas")"
+case "$code" in 200\ text/html*) ok "refresh em /compras/notas devolve o SPA" ;; *) fail "refresh em /compras/notas → $code" ;; esac
+cx -b "$JAR" "$BASE/api/purchasing/settings" > "$JAR.b" 2>/dev/null
+[ "$(json 'str(d.get("costParametersValidatedByAccountant"))' < "$JAR.b")" = False ] \
+    && ok "configuração de Compras presente, com os parâmetros de custo marcados como não validados pelo contador" \
+    || fail "configuração de Compras não veio no formato esperado"
+[ "$(json 'str(d.get("ownTaxIdConfigured"))' < "$JAR.b")" = True ] \
+    && ok "CNPJ do estabelecimento (OWN_TAX_ID) configurado: a importação de NF-e pode confirmar" \
+    || note "OWN_TAX_ID ainda NÃO configurado: configure em Compras → Configurações antes de importar a primeira NF-e (D9)."
+
 if [ "$CREATE" -eq 1 ]; then
     echo "-- dados de teste identificáveis (ZZ TESTE CLOUD)"
     stamp="$(date +%Y%m%d-%H%M%S)"; suffix="$(printf '%02d' $((RANDOM % 100)))"

@@ -2,7 +2,8 @@
 # Smoke test do stack do piloto com Docker de verdade (compose.yaml):
 #   1. sobe postgres + backend + frontend e espera todos ficarem saudáveis;
 #   2. confere /actuator/health, o proxy /api, os cabeçalhos de segurança e o cookie de sessão;
-#   3. roda o fluxo E2E da oficina (scripts/e2e/workshop_flow.py) pelo nginx;
+#   3. roda o fluxo E2E da oficina (scripts/e2e/workshop_flow.py) e o de Compras (scripts/e2e/purchasing_flow.py: NF-e 21,
+#      recebimento, estoque, financeiro, pedido e aprovação) pelo nginx;
 #   4. confere que o nginx não deixa o cliente forjar o IP gravado na evidência do orçamento público;
 #   5. reinicia os containers e confere que os dados persistem;
 #   6. backup/verificação/restore com os scripts de operação (scripts/ops): backup, restauração em banco descartável,
@@ -104,6 +105,17 @@ else
   fail "E2E completo"
 fi
 
+echo; echo "== 3b. fluxo E2E de Compras (NF-e 21 real redigida, recebimento, estoque, financeiro, pedido)"
+if BASE_URL="${BASE}" E2E_OWNER_EMAIL="${OWNER_EMAIL}" E2E_OWNER_PASSWORD="${OWNER_PASSWORD}" python3 scripts/e2e/purchasing_flow.py; then
+  ok "E2E de Compras completo"
+else
+  fail "E2E de Compras completo"
+fi
+PURCHASES_BEFORE="$(psql_q 'select count(*) from purchasing.purchase')"
+RECEIPT_MOVES_BEFORE="$(psql_q "select count(*) from inventory.stock_movement where source_type = 'PURCHASE'")"
+PAYABLES_LINKED_BEFORE="$(psql_q 'select count(*) from purchasing.purchase_payable')"
+[ "${PURCHASES_BEFORE}" -ge 3 ] && [ "${RECEIPT_MOVES_BEFORE}" -ge 14 ] && [ "${PAYABLES_LINKED_BEFORE}" = 3 ]   && ok "compras, entradas de estoque de compra e 3 parcelas gravadas (${PURCHASES_BEFORE} compras, ${RECEIPT_MOVES_BEFORE} movimentos)"   || fail "Compras gravou dados inesperados (compras=${PURCHASES_BEFORE}, movimentos=${RECEIPT_MOVES_BEFORE}, parcelas=${PAYABLES_LINKED_BEFORE})"
+
 echo; echo "== 4. evidência de IP do orçamento público"
 RECORDED="$(psql_q "select host(ip_address) from workshop.quote_decision_submission where channel='PUBLIC_LINK' order by occurred_at desc limit 1")"
 echo "     IP gravado: ${RECORDED}"
@@ -119,6 +131,9 @@ ORDERS_AFTER="$(psql_q 'select count(*) from workorder.work_order')"
 [ "$(login_status "${OWNER_EMAIL}" "${BOOTSTRAP_PASSWORD}")" = 401 ] && ok "senha de bootstrap não vale mais" || fail "senha de bootstrap ainda vale"
 MIGRATIONS="$(psql_q 'select count(*) from flyway_schema_history where success')"
 echo "     migrations Flyway aplicadas: ${MIGRATIONS}"
+EXPECTED_MIGRATIONS="$(ls -1 src/main/resources/db/migration/V*.sql | wc -l | tr -d ' ')"
+[ "${MIGRATIONS}" = "${EXPECTED_MIGRATIONS}" ] && ok "Flyway aplicou as ${EXPECTED_MIGRATIONS} migrations do repositório (até a V25 de Compras)"   || fail "Flyway aplicou ${MIGRATIONS} de ${EXPECTED_MIGRATIONS} migrations"
+[ "$(psql_q 'select count(*) from purchasing.purchase')" = "${PURCHASES_BEFORE}" ] && ok "compras persistem após reinício" || fail "compras mudaram no reinício"
 
 echo; echo "== 6. backup, verificação e restore (scripts/ops)"
 export COMPOSE_PROJECT_NAME="${PROJECT}" COMPOSE_ENV_FILES="${ENV_FILE}" BACKUP_DIR="${WORK}/backups"
@@ -135,6 +150,8 @@ scripts/ops/restore.sh "${BACKUP_FILE}" --yes >"${WORK}/restore.log" 2>&1 && ok 
 [ "$(psql_q 'select count(*) from workorder.work_order')" = "${ORDERS_AFTER}" ] && ok "restore trouxe as ${ORDERS_AFTER} OS de volta" || fail "restore não trouxe as OS"
 [ "$(login_status "${OWNER_EMAIL}" "${OWNER_PASSWORD}")" = 200 ] && ok "login do Dono depois do restore" || fail "login do Dono depois do restore"
 [ "$(psql_q 'select count(*) from flyway_schema_history where success')" = "${MIGRATIONS}" ] && ok "histórico Flyway íntegro após o restore" || fail "histórico Flyway divergente"
+[ "$(psql_q 'select count(*) from purchasing.purchase')" = "${PURCHASES_BEFORE}" ]   && [ "$(psql_q "select count(*) from inventory.stock_movement where source_type = 'PURCHASE'")" = "${RECEIPT_MOVES_BEFORE}" ]   && [ "$(psql_q 'select count(*) from purchasing.purchase_payable')" = "${PAYABLES_LINKED_BEFORE}" ]   && ok "restore trouxe as compras, as entradas de estoque e as parcelas de volta"   || fail "restore não trouxe os dados de Compras"
+[ "$(psql_q "select count(*) from (select 1 from inventory.stock_movement where source_type = 'PURCHASE' group by purchase_receipt_item_id, movement_type having count(*) > 1) d")" = 0 ]   && ok "nenhuma entrada de estoque duplicada para o mesmo item recebido" || fail "há entrada de estoque duplicada para o mesmo item recebido"
 
 echo; echo "== 7. limite de requisições do login"
 CODES=""
