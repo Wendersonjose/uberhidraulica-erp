@@ -75,11 +75,34 @@ diff <(grep -v '^iam\.spring_session' 2-contagem-producao.txt) <(grep -v '^iam\.
   && echo "CÓPIA RESTAURADA = PRODUÇÃO"
 ```
 
-**GO somente se:** `checksum confere`, `pg_restore concluiu sem erro`, `Flyway (erp_meta): 21 migrations aplicadas (última V21),
-nenhuma com falha`, `há N Dono(s) ativo(s)`, `BACKUP VÁLIDO` e `CÓPIA RESTAURADA = PRODUÇÃO`. Uma diferença só em tabelas que mudam
-com o uso (sessão, auditoria de login) quer dizer que alguém usou o sistema entre os passos 2 e 3: repita os dois.
+**GO somente se:** `checksum confere`, `pg_restore concluiu sem erro`, `Flyway (erp_meta): N migrations aplicadas (última V21),
+nenhuma com falha` (N é 21 ou **22**: quando o próprio Flyway criou o schema `erp_meta`, ele grava uma linha a mais, sem versão),
+`há N Dono(s) ativo(s)`, `BACKUP VÁLIDO` e `CÓPIA RESTAURADA = PRODUÇÃO`. Uma diferença só em tabelas que mudam com o uso (sessão,
+auditoria de login) quer dizer que alguém usou o sistema entre os passos 2 e 3: repita os dois.
 
 Depois: copie `erp-antes-v22-*.dump` **e** o `.sha256` para fora do notebook (nuvem pessoal/HD externo). Nunca para o Git.
+
+## 4b. Ensaio da promoção sobre a cópia (local) e homologação com os dados reais
+
+Aplica V22–V25 com o código que será promovido sobre a cópia restaurada, exatamente como o Render fará no Supabase, e prova linha
+a linha que nada existente mudou. Faça no checkout do SHA a promover (`git checkout <SHA>`).
+
+```bash
+cd .. && scripts/ops/rehearse-promotion.sh prevoo/erp-antes-v22-$STAMP.dump --keep | tee prevoo/4b-ensaio.txt
+```
+
+**GO somente se** terminar em `ENSAIO APROVADO`, com: `Flyway: V21 → V25, nenhuma migration com falha`; `nenhuma das N linhas
+pré-existentes ... foi alterada ou apagada`; linhas novas fora de `purchasing` **só** `9 permissão(ões) PURCHASE_*` e `18
+concessão(ões)`; `tabelas novas só no schema purchasing (14)`.
+
+Com `--keep` a cópia migrada fica no ar em `http://127.0.0.1:8080`. Em outro terminal: `cd frontend && npm run dev` e abra
+`http://localhost:5173` com o **seu e-mail e a sua senha reais de Dono**. Execute o roteiro
+[`HOMOLOGACAO-roteiro.md`](../../review/HOMOLOGACAO-roteiro.md) nessa cópia: é homologação com os dados reais, sem risco para
+a produção. No fim, apague a cópia (ela tem dados reais de clientes):
+
+```bash
+docker rm -f -v erp-rehearsal-backend erp-rehearsal-pg && docker network rm erp-rehearsal
+```
 
 ## 5. Render — variáveis do backend (`uberhidraulica-erp-api` → *Environment*)
 
