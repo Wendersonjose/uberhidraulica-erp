@@ -54,4 +54,7 @@ class WorkOrderProductEntity {
  @Column(nullable=false,precision=15,scale=3) BigDecimal quantity;
  @Column(name="unit_price",nullable=false,precision=15,scale=2) BigDecimal unitPrice;
  @Column(name="added_at",nullable=false) Instant addedAt;
+ @Column(name="customer_decision",length=10) String customerDecision; @Column(name="decided_at") Instant decidedAt;
+ @Column(name="removed_at") Instant removedAt; @Column(name="removed_by") UUID removedBy;
+ @Column(name="removal_reason",length=500) String removalReason;
 }

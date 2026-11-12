@@ -19,7 +19,8 @@ public final class WorkOrderEvents {
     public record ProductLaunched(UUID workOrderId, UUID workOrderItemId, UUID productId, BigDecimal quantity) {}
 
     /**
-     * OS finalizada, com todos os itens físicos que ela registra.
+     * OS finalizada, com os itens físicos que ela consome: os removidos e os rejeitados pelo cliente ficam de fora
+     * (DR-0019).
      *
      * @param billingQuoteId orçamento escolhido como fonte comercial do recebível, ou nulo para a seleção
      *                       automática (DR-0015, F-02). A OS não interpreta este valor: apenas o repassa.
@@ -30,4 +31,12 @@ public final class WorkOrderEvents {
     public record Cancelled(UUID workOrderId) {}
 
     public record ProductLine(UUID workOrderItemId, UUID productId, BigDecimal quantity) {}
+
+    /**
+     * O item físico deixou de ser consumido pela OS: o cliente o rejeitou no orçamento ou ele foi removido da OS
+     * (DR-0019). Quem tiver baixado estoque para ele deve devolver.
+     *
+     * @param reason texto para a trilha do movimento de devolução
+     */
+    public record ProductReleased(UUID workOrderId, UUID workOrderItemId, String reason) {}
 }

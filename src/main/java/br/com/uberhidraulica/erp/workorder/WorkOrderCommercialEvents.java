@@ -31,4 +31,15 @@ public interface WorkOrderCommercialEvents {
      * @param allRejected      todos os itens da apresentação foram decididos e nenhum foi aprovado
      */
     void quoteDecided(UUID workOrderId, boolean anyApproved, boolean allRejected);
+
+    /**
+     * Decisões do cliente sobre itens de orçamento ligados a itens físicos da OS (DR-0019, opção A).
+     *
+     * <p>A OS guarda a decisão no item e, para o rejeitado, publica a liberação para o Estoque devolver a baixa.</p>
+     *
+     * @param approvedByProductItem id do item físico da OS → {@code true} aprovado, {@code false} rejeitado
+     * @return itens <b>aprovados</b> que já foram removidos da OS. Aprovar o que a OS não tem mais faturaria um item
+     *         inexistente; quem chama deve recusar a decisão inteira. Rejeitar item removido é inofensivo.
+     */
+    java.util.Set<UUID> productItemsDecided(UUID workOrderId, java.util.Map<UUID, Boolean> approvedByProductItem);
 }

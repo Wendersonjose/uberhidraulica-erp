@@ -12,6 +12,8 @@ public interface WorkOrderRepositoryPort {
     List<WorkOrder> findByVehicleId(UUID vehicleId);
     WorkOrder.ServiceItem addService(UUID workOrderId,WorkOrder.ServiceItem item);
     WorkOrder.ProductItem addProduct(UUID workOrderId,WorkOrder.ProductItem item);
+    /** Grava a decisão do cliente e a remoção de um item físico já lançado (DR-0019). */
+    WorkOrder.ProductItem saveProductState(WorkOrder.ProductItem item);
 
     void addStatusChange(WorkOrder.StatusChange change);
     List<WorkOrder.StatusChange> statusHistory(UUID workOrderId);

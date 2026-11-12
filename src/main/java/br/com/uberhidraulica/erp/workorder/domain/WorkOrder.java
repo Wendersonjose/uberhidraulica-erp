@@ -164,7 +164,52 @@ public record WorkOrder(UUID id, Long number, UUID customerId, UUID vehicleId, L
      * do catálogo no instante do lançamento: alteração posterior do produto não reescreve a OS.
      */
     public record ProductItem(UUID id, UUID productId, String description, String internalCode, String unit,
-                              BigDecimal quantity, BigDecimal unitPrice, Instant addedAt) {
+                              BigDecimal quantity, BigDecimal unitPrice, Instant addedAt,
+                              CustomerDecision customerDecision, Instant decidedAt, Instant removedAt, UUID removedBy,
+                              String removalReason) {
+
+        /** Última decisão do cliente sobre o item, informada pelo orçamento (DR-0019). Nulo: ainda não decidido. */
+        public enum CustomerDecision { APPROVED, REJECTED }
+
+        /** Item recém-lançado: sem decisão e sem remoção. */
+        public ProductItem(UUID id, UUID productId, String description, String internalCode, String unit,
+                           BigDecimal quantity, BigDecimal unitPrice, Instant addedAt) {
+            this(id, productId, description, internalCode, unit, quantity, unitPrice, addedAt, null, null, null, null, null);
+        }
+
+        public boolean removed() { return removedAt != null; }
+
+        public boolean rejected() { return customerDecision == CustomerDecision.REJECTED; }
+
+        public boolean approved() { return customerDecision == CustomerDecision.APPROVED; }
+
+        /** Entra em baixa de estoque e em totais: nem removido da OS, nem rejeitado pelo cliente. */
+        public boolean consumed() { return !removed() && !rejected(); }
+
+        /** Registra a decisão do cliente. Item removido não muda mais: a decisão chegou tarde. */
+        public ProductItem decided(CustomerDecision decision, Instant now) {
+            if (removed()) return this;
+            return new ProductItem(id, productId, description, internalCode, unit, quantity, unitPrice, addedAt, decision, now,
+                    null, null, null);
+        }
+
+        /**
+         * Remove o item da OS (DR-0019, opção B). Item aprovado pelo cliente não é removido: ele é a base do que será
+         * cobrado; para tirá-lo, o caminho é uma nova revisão do orçamento.
+         */
+        public ProductItem remove(UUID by, String reason, Instant now) {
+            if (removed()) throw new WorkOrderException("WORK_ORDER_PRODUCT_ALREADY_REMOVED", "Este item já foi removido da OS");
+            if (approved())
+                throw new WorkOrderException("WORK_ORDER_PRODUCT_APPROVED",
+                        "Item aprovado pelo cliente não pode ser removido: apresente uma nova revisão do orçamento sem ele");
+            String motive = reason == null ? "" : reason.trim();
+            if (motive.length() < 3 || motive.length() > 500)
+                throw new WorkOrderException("WORK_ORDER_PRODUCT_REMOVAL_REASON_REQUIRED",
+                        "Informe o motivo da remoção (3 a 500 caracteres)");
+            return new ProductItem(id, productId, description, internalCode, unit, quantity, unitPrice, addedAt,
+                    customerDecision, decidedAt, now, by, motive);
+        }
+
         public ProductItem {
             if (id == null || productId == null || addedAt == null) throw invalid("Dados obrigatórios ausentes");
             description = required(description, "Descrição do produto", 200);
