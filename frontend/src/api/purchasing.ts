@@ -208,7 +208,8 @@ export type OrderCreateInput = OrderInput & { origin: Extract<PurchaseOrigin, 'O
 export type PurchaseEvent = {
   id: string; type: string; actorId: string | null; occurredAt: string; reason: string | null; payload: string | null
 }
-export type PurchaseSearch = {
+/** `workOrderId`: só as compras ligadas à OS. */
+export type PurchaseSearch = { workOrderId?: string } & {
   q?: string; supplierId?: string; status?: PurchaseStatus; origin?: PurchaseOrigin
   issuedFrom?: string; issuedTo?: string; page?: number; size?: number
 }

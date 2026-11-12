@@ -16,6 +16,7 @@ import { QueryState } from '../../components/QueryState'
 import { ConfirmAction } from '../../components/controls'
 import { formatBrl, formatDate, formatMileage, vehicleLabel } from '../../utils/format'
 import { AddProductCard, WorkOrderProductsCard } from './WorkOrderProducts'
+import { WorkOrderPurchasesCard } from './WorkOrderPurchases'
 import { productsSubtotal } from './totals'
 
 const stageTone = (stage: Stage): 'success' | 'warning' | 'info' =>
@@ -190,6 +191,7 @@ export function WorkOrderDetailPage() {
         <section className="card" style={{ marginTop: 22 }}>
           <div className="subtotal"><span>Total da OS</span><span data-testid="order-total">{formatBrl(subtotal + productsSubtotal(o.products))}</span></div>
         </section>
+        <WorkOrderPurchasesCard orderId={id} operational={operational} />
         <StatusHistoryCard orderId={id} />
       </div>
       <aside>

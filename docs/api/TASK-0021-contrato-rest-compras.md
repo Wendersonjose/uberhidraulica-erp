@@ -37,7 +37,7 @@ Pagar conta continua exigindo `FINANCE_PAYABLE`; nenhuma permissão de Compras c
 | `POST /nfe/confirm` | `PURCHASE_IMPORT_XML` | `Idempotency-Key` obrigatória; aceita `workOrderId`, e `orderId` + `divergenceJustification` para vincular a um pedido (seção 4b) |
 | `GET /nfe/linkable-orders?supplierId=` | `PURCHASE_IMPORT_XML` | pedidos e compras diretas aprovados do fornecedor, ainda sem nota |
 | `POST /nfe/order-comparison` | `PURCHASE_IMPORT_XML` | `{xml, decisions, orderId}`; somente leitura; devolve as diferenças entre o pedido e a nota |
-| `GET /purchases` | `PURCHASE_VIEW` | filtros `q`, `supplierId`, `status`, `origin`, `issuedFrom`, `issuedTo`, `page`, `size` |
+| `GET /purchases` | `PURCHASE_VIEW` | filtros `q`, `supplierId`, `status`, `origin`, `issuedFrom`, `issuedTo`, `workOrderId` (compras ligadas à OS), `page`, `size` |
 | `GET /purchases/{id}` | `PURCHASE_VIEW` | inclui `version`, `createdBy`, `approvedAt`, `approvedBy`, `receiptStatus` |
 | `GET /purchases/{id}/events` | `PURCHASE_VIEW` | trilha append-only |
 | `POST /purchases/{id}/cancel` | `PURCHASE_CANCEL` | `{reason}`; recusa com recebimento ativo (409) |

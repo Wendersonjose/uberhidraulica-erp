@@ -263,6 +263,49 @@ class OrderInvoiceLinkIntegrationTest {
                 .containsExactly("ITEM_NOT_IN_INVOICE", "ITEM_NOT_IN_ORDER");
     }
 
+    // ================================================================ compras da OS
+
+    @Test
+    void theInvoiceInheritsTheWorkOrderOfTheLinkedOrderAndBothAreListedAsPurchasesOfThatWorkOrder() throws Exception {
+        int n = SEQUENCE.incrementAndGet();
+        String customer = JsonPath.read(api.send(owner, post("/api/customers"),
+                        "{\"personType\":\"PF\",\"name\":\"Cliente vínculo\",\"phone\":\"34999990000\"}")
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
+        String vehicle = JsonPath.read(api.send(owner, post("/api/vehicles"), "{\"customerId\":\"" + customer
+                        + "\",\"plate\":\"LNK" + (n % 10000) + "\",\"manufacturer\":\"Volvo\",\"model\":\"FH\"}")
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
+        String workOrder = JsonPath.read(api.send(owner, post("/api/work-orders"), "{\"customerId\":\"" + customer
+                        + "\",\"vehicleId\":\"" + vehicle + "\",\"complaint\":\"Vazamento\"}")
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
+
+        String issuer = cnpj();
+        UUID supplier = supplier(issuer);
+        UUID product = product();
+        String created = mvc.perform(post("/api/purchasing/orders").cookie(owner.cookie())
+                        .header(owner.csrfHeader(), owner.csrfToken())
+                        .header("Idempotency-Key", UUID.randomUUID().toString()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"origin\":\"ORDER\",\"supplierId\":\"" + supplier + "\",\"workOrderId\":\"" + workOrder
+                                + "\",\"lines\":[{\"productId\":\"" + product + "\",\"quantity\":2,\"unitPrice\":50.00}]}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        UUID order = UUID.fromString(JsonPath.read(created, "$.id"));
+        api.send(owner, post("/api/purchasing/orders/" + order + "/submit"), "{\"version\":0}").andExpect(status().isOk());
+        api.send(owner, post("/api/purchasing/orders/" + order + "/approve"), "{\"version\":1}").andExpect(status().isOk());
+
+        // A importação não informa OS: vale a do pedido.
+        String confirmed = confirm(body(note(issuer, "2.0000", "50.00", "100.00"), product, "\"orderId\":\"" + order + "\""))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        UUID invoice = UUID.fromString(JsonPath.read(confirmed, "$.purchaseId"));
+        assertThat((String) JsonPath.read(detail(invoice), "$.workOrderId")).isEqualTo(workOrder);
+
+        String listed = api.read(owner, "/api/purchasing/purchases?workOrderId=" + workOrder).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertThat((List<String>) JsonPath.read(listed, "$.items[*].id"))
+                .containsExactlyInAnyOrder(order.toString(), invoice.toString());
+        String others = api.read(owner, "/api/purchasing/purchases?workOrderId=" + UUID.randomUUID())
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat((List<?>) JsonPath.read(others, "$.items")).isEmpty();
+    }
+
     // ================================================================ o que não se vincula
 
     @Test

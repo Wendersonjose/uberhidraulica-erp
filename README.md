@@ -2,14 +2,16 @@
 
 ERP em desenvolvimento para digitalizar e integrar a operação da Uber-Hidráulica, centralizando oficina, clientes, veículos, catálogo, estoque, compras, financeiro, comissões, conciliação, fiscal e rentabilidade.
 
-> **Estado em 2026-10-05 — `READY_FOR_HOMOLOGATION` (piloto de uma oficina). Não é `READY_FOR_PRODUCTION`.**
+> **Estado em 2026-11-12 — `READY_FOR_HOMOLOGATION` (piloto de uma oficina). Não é `READY_FOR_PRODUCTION`.**
 >
 > O sistema executável cobre o ciclo da oficina de ponta a ponta — cliente, veículo, serviço, peça, estoque, OS,
 > diagnóstico, orçamento versionado com aprovação parcial pelo cliente (link público), execução, faturamento,
-> recebimento, caixa físico, contas a pagar, fluxo de caixa e painel financeiro — com backend Spring Boot,
-> PostgreSQL, frontend React e deploy por Docker Compose. O que ainda **não** existe (Compras, Comissões,
-> Conciliação, Fiscal/NFS-e) está listado em [Funcionalidades pendentes](#funcionalidades-pendentes) e não deve ser
-> assumido como pronto.
+> recebimento, caixa físico, contas a pagar, fluxo de caixa e painel financeiro — e, desde outubro, **Compras**:
+> fornecedores, importação de NF-e com contas a pagar parceladas, recebimento físico com entrada em estoque, pedido com
+> aprovação segregada e vínculo pedido × nota, com as compras visíveis dentro da OS. Backend Spring Boot, PostgreSQL,
+> frontend React e deploy por Docker Compose ou Supabase + Render. O que ainda **não** existe (compra sem NF-e,
+> Financeiro integrado, Contábil, Comissões, Conciliação, Fiscal/NFS-e) está em
+> [Funcionalidades pendentes](#funcionalidades-pendentes) e não deve ser assumido como pronto.
 >
 > **Produção ainda não está declarada.** O HTTPS (Caddy + Let's Encrypt, ou o balanceador do provedor), o proxy
 > confiável, o backup, o restore, a atualização e o rollback foram exercitados com containers reais, mas faltam as provas
@@ -37,10 +39,11 @@ Legenda: **Entregue** · **Parcial** (existe, com lacuna declarada) · **Planeja
 | Clientes e veículos | Entregue | cliente PF/PJ, veículo, busca, inativação, transferência de propriedade e histórico | 0009, 0010 |
 | Catálogo de serviços | Entregue | serviços, categorias, grupos de veículos, preço por veículo/grupo e sugestão de preço | 0011 |
 | Catálogo de peças e produtos | Parcial | cadastro com tipo, unidade (inclusive galão/balde), custo de referência e preço; **composição de kits/componentes e aplicações por veículo não existem** | 0005 |
-| Ordem de Serviço | Entregue | abertura, serviços e peças com snapshot de preço, diagnóstico, status configuráveis, Kanban, automações, histórico, cancelamento | 0004, 0006, 0012 |
+| Ordem de Serviço | Entregue | abertura, serviços e peças com snapshot de preço, diagnóstico, status configuráveis, Kanban, automações, histórico, cancelamento; remoção de item físico não aprovado com motivo (`DR-0019`); compras ligadas à OS listadas no detalhe, com atalho para importar NF-e ou abrir pedido para a OS | 0004, 0006, 0012, 0021 |
 | Orçamento | Entregue | revisões com versionamento comercial, apresentação, validade de 7 dias, obsolescência derivada, desconto, decisão interna | 0007, 0013 |
 | Aprovação do cliente | Entregue | link público com token de 256 bits (somente o SHA-256 é guardado), decisão parcial item a item, evidências (nome, documento, aceite, IP, User-Agent), idempotência e atomicidade | 0001 → 0008 |
-| Estoque | Parcial | saldo físico, entrada, saída, ajuste, estorno, custo médio ponderado, baixa configurável pela OS, devolução no cancelamento; **reserva, inventário e perdas não existem** | 0014 |
+| Estoque | Parcial | saldo físico, entrada, saída, ajuste, estorno, custo médio ponderado, baixa configurável pela OS, devolução no cancelamento, **devolução automática do item rejeitado pelo cliente** e nova baixa na finalização se ele for reaprovado (`DR-0019`); entrada pelo recebimento de compra; **reserva, inventário e perdas não existem** | 0014, 0021 |
+| Compras e Fornecedores | Parcial | fornecedores PF/PJ (V22); importação de NF-e modelo 55 com prévia, vínculo de itens, conversão de unidade, custo de aquisição e contas a pagar parceladas (V23); recebimento físico total/parcial com divergência e estorno (V24); pedido e compra direta com aprovação segregada (V25); **vínculo pedido × NF-e** com divergência justificada (V26, `DR-0023`). **Só a compra de NF-e dá entrada em estoque e gera conta a pagar** | 0021 |
 | Financeiro | Entregue | recebíveis por OS (só o que o cliente aprovou), recebimento parcial/total com idempotência, ajustes, estorno, contas a pagar, formas de pagamento, categorias, fluxo de caixa | 0015 |
 | Caixa físico | Entregue | sessão de caixa, suprimento, sangria, troco, estorno, fechamento manual/automático às 23:59, conferência | 0016 |
 | Painel financeiro | Parcial | faturamento, recebido, a receber, vencido, custo de peças, despesas, lucro e margem **bruta/operacional**; não é DRE e não custeia mão de obra | 0018 |
@@ -50,7 +53,9 @@ Legenda: **Entregue** · **Parcial** (existe, com lacuna declarada) · **Planeja
 
 | Área | Status | Situação |
 | --- | --- | --- |
-| Compras e Fornecedores | Parcial | [TASK-0021](tasks/backlog/TASK-0021-compras-fornecedores.md): fornecedores (V22), importação de NF-e com contas a pagar parceladas (V23), recebimento físico com entrada em estoque (V24), pedido/compra direta com aprovação segregada (V25). **Hoje só a compra de NF-e dá entrada em estoque**; pedido e compra direta são aprovados mas não recebem. **Faltam:** solicitação/cotação, devolução/crédito e a ligação pedido × NF-e ([DR-0023](decision-requests/DR-0023-conciliacao-pedido-nfe.md), aberta) |
+| Compras — o que falta | Parcial / a decidir | [TASK-0021](tasks/backlog/TASK-0021-compras-fornecedores.md): **compra sem NF-e** (balcão, recibo, cupom — inclusive material de uso e consumo comprado assim) não dá entrada em estoque nem gera conta a pagar pelo módulo: use a entrada manual do Estoque e o lançamento manual em Contas a pagar, até o proprietário decidir a regra. Faltam também devolução/crédito de fornecedor e relatórios (I6); solicitação e cotação ficaram para depois do piloto (`DR-0023` C4-A) |
+| Financeiro integrado a Compras | Planejado | [TASK-0022](tasks/backlog/TASK-0022-financeiro-integrado-compras.md): contas bancárias, centro de custo, visão das parcelas por compra, dados de boleto (linha digitável, nº do documento) na conta a pagar. Hoje o boleto é lançado como conta a pagar comum, com a identificação na descrição/observação |
+| Contábil (fundação) | Planejado | [TASK-0023](tasks/backlog/TASK-0023-contabil-fundacao.md): depende da TASK-0022 e de parâmetros do contador |
 | Comissões | Planejado / Bloqueado | regra descrita no README e em `AG-06`; exige confirmar as regras — DR-0021 |
 | Conciliação bancária (Itaú, Rede, OFX, CSV) | Planejado / Bloqueado | exige layouts reais e credenciais — DR-0021 |
 | Fiscal / NFS-e (Uberlândia/MG) | Planejado / Bloqueado | exige certificado A1, API municipal e ambiente de homologação fiscal (todos externos) — DR-0021 |
@@ -66,9 +71,13 @@ Legenda: **Entregue** · **Parcial** (existe, com lacuna declarada) · **Planeja
 
 | DR | Assunto | Impede a homologação? |
 | --- | --- | --- |
-| [DR-0019](decision-requests/DR-0019-item-fisico-rejeitado-estoque-custo.md) | item físico rejeitado pelo cliente: o que acontece com o estoque e o custo | Não (limitação conhecida do piloto; contorno: estornar a baixa; não bloqueia a produção se o proprietário aceitar o processo) |
-| [DR-0020](decision-requests/DR-0020-politica-autenticacao-bloqueio-delegacao.md) | bloqueio por tentativas de login, política de senha avançada, delegação do perfil Dono (resumo com opções, impacto e recomendação na seção 9) | Não impede a homologação; **o proprietário decide ou aceita o risco antes da produção**. Enquanto isso, não delegue `IAM_*` (o preflight confere) |
-| [DR-0021](decision-requests/DR-0021-escopo-piloto-modulos-especificados.md) | o que "MVP concluído" significa e a ordem dos módulos pendentes | Não |
+| [DR-0020](decision-requests/DR-0020-politica-autenticacao-bloqueio-delegacao.md) itens 2 e 3 | política de senha avançada (recusar senhas comuns?) e quem pode criar/alterar/delegar o perfil Dono | Não impede a homologação; **o proprietário responde ou aceita o mínimo atual antes da produção**. Enquanto isso, não delegue `IAM_*` (o preflight confere) |
+| Compra sem NF-e | como registrar compra de balcão/recibo (estoque, conta a pagar e proteção contra a mesma mercadoria entrar de novo por uma nota) | Não; hoje o contorno é manual |
+
+Decididas em 2026-11-12 e já implementadas: [DR-0019](decision-requests/DR-0019-item-fisico-rejeitado-estoque-custo.md)
+(rejeição devolve o estoque + remoção manual), [DR-0023](decision-requests/DR-0023-conciliacao-pedido-nfe.md) (vínculo
+explícito pedido × NF-e) e, na DR-0020, o item 1 (a conta não é bloqueada por tentativas, por enquanto) e o item 4 (sem
+segundo fator). A [DR-0021](decision-requests/DR-0021-escopo-piloto-modulos-especificados.md) foi decidida em 2026-10-13.
 
 ## Como executar (desenvolvimento)
 
@@ -95,9 +104,11 @@ scripts/deploy/compose-smoke.sh               # stack do piloto com Docker: E2E,
 scripts/deploy/proxy-trust-check.sh <imagem>  # X-Forwarded-For forjado, falha fechada, limite por IP real, token fora do log
 ```
 
-Números de 2026-10-05 (ver [`docs/review/RELEASE-producao.md`](docs/review/RELEASE-producao.md)): backend 276 testes, 0 falhas
-(parte deles sem Docker); frontend 17 arquivos, 137 testes; E2E 107 verificações; navegador (Chromium) 26 passos da jornada
-e 18 caminhos negativos; `proxy-trust-check` 37 verificações. O CI (`.github/workflows/backend-ci.yml`) roda a suíte
+Números de referência: o CI da consolidação de 2026-11-09 rodou 471 testes de backend e 229 de frontend, com o
+`compose-smoke` em 217 verificações (ver [`docs/review/CONSOLIDACAO-producao-2026-11.md`](docs/review/CONSOLIDACAO-producao-2026-11.md));
+as entregas de 2026-11-12 acrescentaram testes de integração para o vínculo pedido × NF-e e para a DR-0019, e o frontend
+está em 25 arquivos de teste. Os números de 2026-10-05 (276 / 137 / E2E 107) estão em
+[`docs/review/RELEASE-producao.md`](docs/review/RELEASE-producao.md). O número que vale é sempre o do CI do PR. O CI (`.github/workflows/backend-ci.yml`) roda a suíte
 backend, o frontend, a varredura de dependências, o smoke de deploy (inclui HTTPS e os scripts de operação) e, em PR, a
 imutabilidade das migrations.
 
@@ -138,10 +149,12 @@ prova: [`docs/architecture/devops/DEPLOY-supabase-render.md`](docs/architecture/
 - O backup só protege se for copiado **para fora do servidor** (`BACKUP_EXTERNAL_CMD`); sem isso `backup.sh` termina com
   erro. A restauração a partir da cópia externa real ainda precisa ser ensaiada.
 - Orçamento, revisão, apresentação e decisão não são aceitos em OS finalizada, entregue ou cancelada (409).
-- Em OS com aprovação parcial, o item físico **rejeitado** continua baixado do estoque e entra no custo de peças do
-  painel até o operador estornar a baixa (`DR-0019`). O recebível fatura só o que o cliente aprovou.
-- Não há bloqueio de conta por tentativas de login; há limite por IP no nginx e senha mínima de 8 caracteres
-  (`DR-0020`). Quem tem `IAM_USERS_MANAGE` pode criar usuário `DONO`: não delegue permissões `IAM_*` a gerentes.
+- Item físico lançado na OS e **nunca orçado** continua baixado do estoque até alguém removê-lo da OS; o rejeitado pelo
+  cliente é devolvido automaticamente (`DR-0019`). O recebível fatura só o que o cliente aprovou.
+- Pedido e compra direta não recebem mercadoria nem geram conta a pagar: a entrada e a obrigação nascem da NF-e
+  importada, à qual o pedido é vinculado (`DR-0023`). Compra sem NF-e é lançada à mão no Estoque e em Contas a pagar.
+- Não há bloqueio de conta por tentativas de login — decisão do proprietário, por enquanto (`DR-0020` item 1); há limite
+  por IP no nginx e senha mínima de 8 caracteres. Quem tem `IAM_USERS_MANAGE` pode criar usuário `DONO`: não delegue permissões `IAM_*` a gerentes.
 - Todo usuário autenticado consulta (GET) os cadastros e as OS; a escrita e o financeiro são protegidos por permissão.
 - O painel financeiro não é DRE e não custeia mão de obra.
 - Erros do framework (rota inexistente, método, tipo de conteúdo) saem no formato padrão do Spring, não em
@@ -150,10 +163,12 @@ prova: [`docs/architecture/devops/DEPLOY-supabase-render.md`](docs/architecture/
 
 ## Próximos passos
 
-1. Proprietário decide `DR-0019`, `DR-0020` e `DR-0021`.
-2. Homologar com a oficina em um servidor real seguindo o checklist de `DEPLOY-piloto.md` e os bloqueadores de
-   `docs/review/RELEASE-producao.md` (HTTPS com certificado real, backup externo restaurado, decisão da DR-0020).
-3. Abrir, pelo fluxo de governança, a Task do próximo módulo definido na `DR-0021` (recomendado: Compras e Fornecedores).
+1. Homologar pela tela a versão com Compras, seguindo [`docs/review/HOMOLOGACAO-roteiro.md`](docs/review/HOMOLOGACAO-roteiro.md),
+   e promover conforme [`PROMOCAO-compras-v22-v25.md`](docs/architecture/devops/PROMOCAO-compras-v22-v25.md) (o roteiro e o
+   runbook foram escritos para V22–V25; as V26 e V27 entram na mesma promoção e precisam ser acrescentadas ao roteiro de tela).
+2. Proprietário responde os itens 2 e 3 da `DR-0020` e decide como tratar a compra sem NF-e.
+3. `TASK-0022` (Financeiro integrado a Compras: contas bancárias, centro de custo, dados de boleto) e, depois, `TASK-0023`
+   (Contábil), pelo fluxo de governança.
 4. Fiscal/NFS-e só depois de haver certificado A1 e ambiente de homologação do município.
 
 ---
@@ -1104,11 +1119,12 @@ Decision Request.
 ```text
 uberhidraulica-erp/
 ├── agents/                 governança multiagente (AG-00 a AG-15)
-├── decision-requests/      DR-0001 a DR-0021 (decisões e pendências)
+├── decision-requests/      DR-0001 a DR-0023 (decisões e pendências)
 ├── docs/                   requisitos, domínio, arquitetura, contratos REST, revisões
-├── tasks/done/             TASK-0001 a TASK-0019
-├── src/main/java/…/erp/    backend: iam, crm, servicecatalog, productcatalog, inventory, workorder, quote, finance
-├── src/main/resources/db/migration/   Flyway V1 a V21 (imutáveis; correção = migration nova)
+├── tasks/done/             TASK-0001 a TASK-0020
+├── tasks/backlog/          TASK-0021 (Compras, em andamento), TASK-0022 e TASK-0023
+├── src/main/java/…/erp/    backend: iam, crm, servicecatalog, productcatalog, inventory, workorder, quote, finance, purchasing
+├── src/main/resources/db/migration/   Flyway V1 a V27 (imutáveis; correção = migration nova)
 ├── src/test/               testes unitários, de arquitetura (Modulith) e de integração (Testcontainers)
 ├── frontend/               React 19 + TypeScript + Vite + TanStack Query
 ├── deploy/nginx/           proxy reverso, limites de requisição e cabeçalhos de segurança

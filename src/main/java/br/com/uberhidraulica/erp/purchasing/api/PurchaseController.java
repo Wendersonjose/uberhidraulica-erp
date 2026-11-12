@@ -59,10 +59,11 @@ class PurchaseController {
                                        @RequestParam(required = false) Purchase.Origin origin,
                                        @RequestParam(required = false) LocalDate issuedFrom,
                                        @RequestParam(required = false) LocalDate issuedTo,
+                                       @RequestParam(required = false) UUID workOrderId,
                                        @RequestParam(defaultValue = "0") int page,
                                        @RequestParam(defaultValue = "20") int size) {
         var result = purchases.search(new PurchaseRepositoryPort.Filter(q, supplierId, status, origin, issuedFrom,
-                issuedTo), page, size);
+                issuedTo, workOrderId), page, size);
         return new PageResponse<>(result.items().stream().map(SummaryResponse::from).toList(), result.totalItems(),
                 result.page(), result.size(), result.totalPages());
     }

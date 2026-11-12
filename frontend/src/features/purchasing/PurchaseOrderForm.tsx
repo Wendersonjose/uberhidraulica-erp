@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   purchaseApi, purchaseKeys, purchasingApi, purchasingKeys,
@@ -47,7 +47,9 @@ function OrderForm({ purchase }: { purchase?: PurchaseDetail }) {
   const editing = Boolean(purchase)
   const [origin, setOrigin] = useState<'ORDER' | 'DIRECT'>('ORDER')
   const [supplierId, setSupplierId] = useState(purchase?.supplierId ?? '')
-  const [workOrderId, setWorkOrderId] = useState(purchase?.workOrderId ?? '')
+  // "Novo pedido para esta OS" chega com ?os=<id>.
+  const [params] = useSearchParams()
+  const [workOrderId, setWorkOrderId] = useState(purchase?.workOrderId ?? params.get('os') ?? '')
   const [notes, setNotes] = useState(purchase?.notes ?? '')
   const [expenses, setExpenses] = useState<ExpenseDraft>({
     freight: text(purchase?.freightTotal), insurance: text(purchase?.insuranceTotal), other: text(purchase?.otherTotal),
