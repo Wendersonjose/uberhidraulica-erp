@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Contexto de build: a raiz do repositório (veja compose.yaml), para alcançar deploy/nginx/.
-FROM node:22-alpine AS build
+FROM node:25-alpine AS build
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
