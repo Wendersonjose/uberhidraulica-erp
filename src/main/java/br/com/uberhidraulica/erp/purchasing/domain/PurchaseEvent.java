@@ -21,7 +21,9 @@ public record PurchaseEvent(UUID id, UUID purchaseId, Type type, UUID actorId, I
         /** Recebimento físico registrado ou estornado (I4); o payload traz o resumo, nunca o XML. */
         RECEIPT_REGISTERED, RECEIPT_REVERSED,
         /** Ciclo do pedido (I5): edição do rascunho, envio para aprovação, devolução e aprovação. */
-        ORDER_UPDATED, ORDER_SUBMITTED, ORDER_RETURNED, ORDER_APPROVED
+        ORDER_UPDATED, ORDER_SUBMITTED, ORDER_RETURNED, ORDER_APPROVED,
+        /** Ligação pedido × NF-e (`DR-0023`): gravada na trilha do pedido e na da compra da nota. */
+        ORDER_LINKED_TO_INVOICE, ORDER_LINK_RELEASED
     }
 
     public static PurchaseEvent of(UUID purchaseId, Type type, UUID actorId, Instant at, String reason, String payload) {

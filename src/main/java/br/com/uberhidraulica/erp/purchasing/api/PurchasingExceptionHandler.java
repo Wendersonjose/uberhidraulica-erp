@@ -26,7 +26,9 @@ public class PurchasingExceptionHandler {
             "PURCHASE_ORDER_NOT_EDITABLE", "PURCHASE_ORDER_VERSION_CONFLICT", "PURCHASE_ORDER_NOT_AWAITING_APPROVAL",
             "PURCHASE_ORDER_STATE_CHANGED",
             // DR-0023: pedido e compra direta não recebem enquanto não houver vínculo de identidade com a NF-e.
-            "PURCHASE_RECEIPT_REQUIRES_INVOICE");
+            "PURCHASE_RECEIPT_REQUIRES_INVOICE",
+            // DR-0023 C1-A: o pedido já tem nota, ou está encerrado por ela.
+            "PURCHASE_ORDER_ALREADY_LINKED", "PURCHASE_ORDER_CLOSED_BY_INVOICE");
     /** Sem a permissão de aceitar divergência a operação é negada, e não apenas inválida. */
     private static final Set<String> FORBIDDEN = Set.of("PURCHASE_DIVERGENCE_NOT_AUTHORIZED",
             "PURCHASE_APPROVAL_SELF_FORBIDDEN");

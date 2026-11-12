@@ -58,6 +58,8 @@ function routes(first: unknown, refined: (decisions: { lineNo: number; productId
   return {
     'GET /api/finance/expense-categories': categories,
     'GET /api/products': catalog,
+    'GET /api/work-orders': [],
+    'GET /api/purchasing/nfe/linkable-orders': [],
     'POST /api/purchasing/nfe/preview': (init: RequestInit | undefined) =>
       json(isRefined(init) ? refined(JSON.parse(String(init?.body)).decisions) : first),
     ...extra,
@@ -269,6 +271,117 @@ test('nota sem duplicata exige o primeiro vencimento e envia as parcelas informa
   await waitFor(() => expect(requestsTo(fetch, 'POST', '/api/purchasing/nfe/confirm')).toHaveLength(1))
   const body = JSON.parse(String(requestsTo(fetch, 'POST', '/api/purchasing/nfe/confirm')[0][1]?.body))
   expect(body.installments).toEqual({ count: 2, firstDueDate: '2026-11-10', intervalDays: 30 })
+})
+
+// ---------------------------------------------------------------- DR-0023: pedido × NF-e e OS
+
+const CONFIRMED = { purchaseId: 'p1', number: 1, supplierId: 's1', status: 'APPROVED', payableTotal: 220, itemCount: 1,
+  installments: [], linkedOrderId: 'order1', replayed: false }
+const linkableOrder = { id: 'order1', number: 7, origin: 'ORDER', payableTotal: 220, workOrderId: 'wo1',
+  createdAt: '2026-11-01T12:00:00Z', approvedAt: '2026-11-02T12:00:00Z', itemCount: 1 }
+const workOrder = { id: 'wo1', number: 31, customerId: 'c1', vehicleId: 'v1', entryMileage: null, openedAt: '2026-11-01T12:00:00Z',
+  status: 'ABERTA', services: [], products: [] }
+const comparison = (differences: unknown[], mayAccept = true) => ({
+  orderId: 'order1', orderNumber: 7, orderTotal: 220, invoiceTotal: 220, differences, mayAccept })
+
+test('pedido que confere com a nota é vinculado sem justificativa e leva a OS do pedido (DR-0023 C1-A)', async () => {
+  const fetch = mockApi(routes(preview(), undefined, {
+    'GET /api/work-orders': [workOrder],
+    'GET /api/purchasing/nfe/linkable-orders': [linkableOrder],
+    'POST /api/purchasing/nfe/order-comparison': () => json(comparison([]), 200),
+    'POST /api/purchasing/nfe/confirm': () => json(CONFIRMED, 200),
+  }), as(IMPORT))
+  renderAt('/compras/notas/importar')
+  await upload()
+
+  const section = within(await screen.findByRole('region', { name: 'Pedido e OS' }))
+  await waitFor(() => expect(section.getByLabelText('Pedido que esta nota atende')).toBeEnabled())
+  await userEvent.selectOptions(section.getByLabelText('Pedido que esta nota atende'), 'order1')
+  expect(await section.findByText(/A nota confere com o pedido #7/)).toBeInTheDocument()
+  // A OS do pedido passa a valer para a nota.
+  expect(section.getByLabelText('OS vinculada')).toHaveValue('wo1')
+
+  await userEvent.selectOptions(screen.getByLabelText('Categoria de despesa'), 'cat1')
+  const confirm = screen.getByRole('button', { name: 'Confirmar importação' })
+  await waitFor(() => expect(confirm).toBeEnabled())
+  await userEvent.click(confirm)
+
+  await waitFor(() => expect(requestsTo(fetch, 'POST', '/api/purchasing/nfe/confirm')).toHaveLength(1))
+  const body = JSON.parse(String(requestsTo(fetch, 'POST', '/api/purchasing/nfe/confirm')[0][1]?.body))
+  expect(body).toMatchObject({ orderId: 'order1', workOrderId: 'wo1', divergenceJustification: null })
+})
+
+test('nota que difere do pedido mostra as diferenças e só confirma com justificativa (DR-0023 C2-A)', async () => {
+  const fetch = mockApi(routes(preview(), undefined, {
+    'GET /api/purchasing/nfe/linkable-orders': [{ ...linkableOrder, workOrderId: null }],
+    'POST /api/purchasing/nfe/order-comparison': () => json(comparison([
+      { kind: 'TOTAL', productId: null, description: 'Total a pagar', orderValue: 200, invoiceValue: 220 },
+      { kind: 'QUANTITY', productId: 'prod-link', description: 'Óleo ATF vinculado', orderValue: 3, invoiceValue: 4 },
+    ]), 200),
+    'POST /api/purchasing/nfe/confirm': () => json(CONFIRMED, 200),
+  }), as(IMPORT))
+  renderAt('/compras/notas/importar')
+  await upload()
+
+  const section = within(await screen.findByRole('region', { name: 'Pedido e OS' }))
+  await waitFor(() => expect(section.getByLabelText('Pedido que esta nota atende')).toBeEnabled())
+  await userEvent.selectOptions(section.getByLabelText('Pedido que esta nota atende'), 'order1')
+  await userEvent.selectOptions(screen.getByLabelText('Categoria de despesa'), 'cat1')
+
+  const differences = within(await section.findByRole('table', { name: 'Diferenças entre o pedido e a nota' }))
+  expect(differences.getByText('Quantidade')).toBeInTheDocument()
+  expect(differences.getByText('Óleo ATF vinculado')).toBeInTheDocument()
+  const confirm = screen.getByRole('button', { name: 'Confirmar importação' })
+  expect(confirm).toBeDisabled()
+
+  await userEvent.type(section.getByLabelText('Justificativa da divergência'), 'Fornecedor mandou uma unidade a mais')
+  await waitFor(() => expect(confirm).toBeEnabled())
+  await userEvent.click(confirm)
+
+  await waitFor(() => expect(requestsTo(fetch, 'POST', '/api/purchasing/nfe/confirm')).toHaveLength(1))
+  const body = JSON.parse(String(requestsTo(fetch, 'POST', '/api/purchasing/nfe/confirm')[0][1]?.body))
+  expect(body).toMatchObject({ orderId: 'order1', divergenceJustification: 'Fornecedor mandou uma unidade a mais' })
+})
+
+test('sem permissão de aceitar divergência a nota divergente não é vinculada ao pedido', async () => {
+  mockApi(routes(preview(), undefined, {
+    'GET /api/purchasing/nfe/linkable-orders': [{ ...linkableOrder, workOrderId: null }],
+    'POST /api/purchasing/nfe/order-comparison': () => json(comparison([
+      { kind: 'UNIT_PRICE', productId: 'prod-link', description: 'Óleo ATF vinculado', orderValue: 50, invoiceValue: 55 },
+    ], false), 200),
+  }), as(IMPORT))
+  renderAt('/compras/notas/importar')
+  await upload()
+
+  const section = within(await screen.findByRole('region', { name: 'Pedido e OS' }))
+  await waitFor(() => expect(section.getByLabelText('Pedido que esta nota atende')).toBeEnabled())
+  await userEvent.selectOptions(section.getByLabelText('Pedido que esta nota atende'), 'order1')
+  await userEvent.selectOptions(screen.getByLabelText('Categoria de despesa'), 'cat1')
+
+  expect(await section.findByText(/não tem permissão para aceitar divergência/)).toBeInTheDocument()
+  expect(section.queryByLabelText('Justificativa da divergência')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Confirmar importação' })).toBeDisabled()
+})
+
+test('chegar pela OS (?os=) já deixa a compra ligada a ela', async () => {
+  const fetch = mockApi(routes(preview(), undefined, {
+    'GET /api/work-orders': [workOrder],
+    'POST /api/purchasing/nfe/confirm': () => json({ ...CONFIRMED, linkedOrderId: null }, 200),
+  }), as(IMPORT))
+  renderAt('/compras/notas/importar?os=wo1')
+  await upload()
+
+  const section = within(await screen.findByRole('region', { name: 'Pedido e OS' }))
+  await waitFor(() => expect(section.getByLabelText('OS vinculada')).toHaveValue('wo1'))
+  await userEvent.selectOptions(screen.getByLabelText('Categoria de despesa'), 'cat1')
+  const confirm = screen.getByRole('button', { name: 'Confirmar importação' })
+  await waitFor(() => expect(confirm).toBeEnabled())
+  await userEvent.click(confirm)
+
+  await waitFor(() => expect(requestsTo(fetch, 'POST', '/api/purchasing/nfe/confirm')).toHaveLength(1))
+  const body = JSON.parse(String(requestsTo(fetch, 'POST', '/api/purchasing/nfe/confirm')[0][1]?.body))
+  expect(body.workOrderId).toBe('wo1')
+  expect(body.orderId).toBeUndefined()
 })
 
 test('a sugestão de unidade do cadastro assistido espelha as equivalências diretas da D7', () => {

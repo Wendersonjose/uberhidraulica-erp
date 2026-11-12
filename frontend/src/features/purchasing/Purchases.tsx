@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   PURCHASE_APPROVE, PURCHASE_APPROVE_OWN, PURCHASE_CANCEL, PURCHASE_IMPORT_XML, PURCHASE_ORDER_MANAGE, purchaseApi,
-  purchaseKeys, type PurchaseDetail, type PurchaseOrigin, type PurchaseStatus, type PurchasingSettings,
+  purchaseKeys, type OrderLink, type PurchaseDetail, type PurchaseOrigin, type PurchaseStatus, type PurchasingSettings,
 } from '../../api/purchasing'
 import { useAuth } from '../../auth/useAuth'
 import { Badge, PageHeader } from '../../components/ui'
@@ -34,6 +34,7 @@ const EVENT_LABEL: Record<string, string> = {
   RECEIPT_REGISTERED: 'Recebimento registrado', RECEIPT_REVERSED: 'Recebimento estornado',
   ORDER_UPDATED: 'Rascunho alterado', ORDER_SUBMITTED: 'Enviado para aprovação',
   ORDER_RETURNED: 'Devolvido para correção', ORDER_APPROVED: 'Aprovado',
+  ORDER_LINKED_TO_INVOICE: 'Pedido vinculado à nota', ORDER_LINK_RELEASED: 'Vínculo com a nota liberado',
 }
 
 // ====================================================================== lista
@@ -140,7 +141,8 @@ function PurchaseView({ purchase }: { purchase: PurchaseDetail }) {
     {purchase.cancelledAt && <div className="notice">
       Cancelada em {formatDate(purchase.cancelledAt)}. Motivo: {purchase.cancellationReason}</div>}
 
-    {purchase.origin !== 'NFE_IMPORT' && <OrderWorkflow purchase={purchase} onChanged={refresh} />}
+    {purchase.origin !== 'NFE_IMPORT' && !purchase.orderLink && <OrderWorkflow purchase={purchase} onChanged={refresh} />}
+    {purchase.orderLink && <OrderLinkCard purchase={purchase} link={purchase.orderLink} />}
 
     <section className="card" aria-label="Totais">
       <h2>Totais</h2>
@@ -333,12 +335,52 @@ function OrderWorkflow({ purchase, onChanged }: { purchase: PurchaseDetail; onCh
         {purchase.approvedBy && purchase.approvedBy === purchase.createdBy &&
           <> Aprovado pelo próprio autor, por exceção do proprietário.</>}</p>
       <div role="note" className="notice">
-        Aprovar autoriza a compra, mas <strong>não dá entrada em estoque</strong>. Ainda não existe ligação entre este
-        pedido e a NF-e do fornecedor (decisão pendente, DR-0023); enquanto isso, o recebimento é feito somente na
-        <strong> compra da nota importada</strong>, para o mesmo material não entrar duas vezes.</div>
+        Aprovar autoriza a compra, mas <strong>não dá entrada em estoque</strong>. Ao importar a NF-e do fornecedor,
+        escolha este pedido em "Pedido que esta nota atende". O recebimento é feito na
+        <strong> compra da nota importada</strong>, para o mesmo material entrar uma única vez, ao custo real.</div>
     </>}
 
     {purchase.status === 'CANCELLED' && <p className="muted">Pedido cancelado: o histórico foi preservado.</p>}
+  </section>
+}
+
+const DIFFERENCE_LABEL: Record<OrderLink['differences'][number]['kind'], string> = {
+  TOTAL: 'Total a pagar',
+  QUANTITY: 'Quantidade',
+  UNIT_PRICE: 'Preço unitário',
+  ITEM_NOT_IN_INVOICE: 'Item do pedido que não veio na nota',
+  ITEM_NOT_IN_ORDER: 'Item da nota que não estava no pedido',
+}
+
+/**
+ * Vínculo pedido × NF-e (DR-0023). No pedido, diz que ele está encerrado pela nota e aponta para ela; na compra da
+ * nota, aponta para o pedido atendido. As diferenças aceitas ficam visíveis nos dois lados.
+ */
+function OrderLinkCard({ purchase, link }: { purchase: PurchaseDetail; link: OrderLink }) {
+  const isOrder = purchase.id === link.orderPurchaseId
+  const money = (kind: string, value: number | null) =>
+    value == null ? '—' : kind === 'TOTAL' || kind === 'UNIT_PRICE' ? formatBrl(value) : String(value)
+  return <section className="card" aria-label="Pedido e nota">
+    <h2>{isOrder ? 'Pedido encerrado pela nota' : 'Pedido atendido por esta nota'}</h2>
+    {isOrder
+      ? <p>Este pedido foi atendido pela <Link to={`/compras/notas/${link.invoicePurchaseId}`}>compra #{link.invoiceNumber}</Link>{' '}
+          em {formatDate(link.linkedAt)}. A mercadoria é recebida na compra da nota; cancelar aquela compra reabre este pedido.</p>
+      : <p>Esta nota atende o <Link to={`/compras/notas/${link.orderPurchaseId}`}>pedido #{link.orderNumber}</Link>,
+          vinculado em {formatDate(link.linkedAt)}.</p>}
+    {link.divergent
+      ? <>
+          <p><Badge tone="warning">Divergência aceita</Badge> Justificativa: {link.divergenceJustification}</p>
+          <div className="table-wrap"><table className="table" aria-label="Diferenças entre o pedido e a nota">
+            <thead><tr><th>Diferença</th><th>Item</th><th>No pedido</th><th>Na nota</th></tr></thead>
+            <tbody>{link.differences.map((difference, index) => <tr key={index}>
+              <td>{DIFFERENCE_LABEL[difference.kind]}</td>
+              <td>{difference.kind === 'TOTAL' ? '—' : difference.description ?? '—'}</td>
+              <td>{money(difference.kind, difference.orderValue)}</td>
+              <td>{money(difference.kind, difference.invoiceValue)}</td>
+            </tr>)}</tbody>
+          </table></div>
+        </>
+      : <p className="muted">A nota conferiu com o pedido: mesmos itens, quantidades, preços e total.</p>}
   </section>
 }
 

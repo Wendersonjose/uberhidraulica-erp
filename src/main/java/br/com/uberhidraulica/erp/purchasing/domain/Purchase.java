@@ -41,9 +41,9 @@ public record Purchase(UUID id, long number, UUID supplierId, Origin origin, Sta
      * <p>Só a compra nascida de NF-e recebe. Ela tem identidade própria: a chave de acesso é única entre os documentos
      * não anulados, a importação e o recebimento são idempotentes e o banco impede duas entradas para o mesmo item.
      * Pedido e compra direta <b>não têm</b> essa identidade nem ligação com a nota que o fornecedor emitirá para a
-     * mesma mercadoria (DR-0023, aberta). Habilitar os dois caminhos sem esse vínculo deixaria o mesmo material entrar
-     * duas vezes no estoque, sem nada no sistema que o impedisse. Por isso fecha-se o caminho sem identidade, e a
-     * trava só sai com a decisão do proprietário.</p>
+     * mesma mercadoria. A `DR-0023` (decidida em 2026-11-12, C1-A) fixou a regra: o pedido é vinculado à nota na
+     * importação e a mercadoria entra <b>sempre pela compra da nota</b>, ao custo real. Receber também no pedido
+     * deixaria o mesmo material entrar duas vezes no estoque.</p>
      */
     public void requireReceivable() {
         if (status != Status.APPROVED) {
@@ -52,8 +52,8 @@ public record Purchase(UUID id, long number, UUID supplierId, Origin origin, Sta
         }
         if (origin != Origin.NFE_IMPORT) {
             throw new PurchasingException("PURCHASE_RECEIPT_REQUIRES_INVOICE",
-                    "Pedido e compra direta ainda não recebem mercadoria: sem ligação com a NF-e (DR-0023) o mesmo "
-                            + "material poderia entrar duas vezes no estoque. Receba na compra da nota importada.");
+                    "Pedido e compra direta não recebem mercadoria: ao importar a NF-e, vincule-a a este pedido e "
+                            + "receba na compra da nota (DR-0023). Assim o material entra uma única vez, ao custo real.");
         }
     }
 

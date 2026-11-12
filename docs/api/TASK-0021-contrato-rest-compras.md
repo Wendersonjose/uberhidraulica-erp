@@ -34,7 +34,9 @@ Pagar conta continua exigindo `FINANCE_PAYABLE`; nenhuma permissão de Compras c
 | Método e caminho | Permissão | Observação |
 | --- | --- | --- |
 | `POST /nfe/preview` | `PURCHASE_IMPORT_XML` | XML (`application/xml`, multipart ou JSON `{xml, decisions}`); somente leitura |
-| `POST /nfe/confirm` | `PURCHASE_IMPORT_XML` | `Idempotency-Key` obrigatória |
+| `POST /nfe/confirm` | `PURCHASE_IMPORT_XML` | `Idempotency-Key` obrigatória; aceita `workOrderId`, e `orderId` + `divergenceJustification` para vincular a um pedido (seção 4b) |
+| `GET /nfe/linkable-orders?supplierId=` | `PURCHASE_IMPORT_XML` | pedidos e compras diretas aprovados do fornecedor, ainda sem nota |
+| `POST /nfe/order-comparison` | `PURCHASE_IMPORT_XML` | `{xml, decisions, orderId}`; somente leitura; devolve as diferenças entre o pedido e a nota |
 | `GET /purchases` | `PURCHASE_VIEW` | filtros `q`, `supplierId`, `status`, `origin`, `issuedFrom`, `issuedTo`, `page`, `size` |
 | `GET /purchases/{id}` | `PURCHASE_VIEW` | inclui `version`, `createdBy`, `approvedAt`, `approvedBy`, `receiptStatus` |
 | `GET /purchases/{id}/events` | `PURCHASE_VIEW` | trilha append-only |
@@ -113,6 +115,11 @@ aprova a versão que viu.
 | 409 | `PURCHASE_ORDER_STATE_CHANGED` | a situação mudou durante a operação |
 | 409 | `PURCHASE_IDEMPOTENCY_KEY_REUSED` | chave de idempotência já usada por outra compra |
 | 409 | `PURCHASE_RECEIPT_REQUIRES_INVOICE` | receber pedido/compra direta (`POST /purchases/{id}/receipts`), DR-0023 |
+| 400 | `PURCHASE_ORDER_LINK_INVALID` | vincular pedido de outro fornecedor, não aprovado, ou compra que não é pedido |
+| 400 | `PURCHASE_ORDER_LINK_JUSTIFICATION_REQUIRED` | a nota difere do pedido e não veio justificativa (3 a 500 caracteres) |
+| 403 | `PURCHASE_DIVERGENCE_NOT_AUTHORIZED` | a nota difere do pedido e o usuário não tem `PURCHASE_DIVERGENCE_ACCEPT` |
+| 409 | `PURCHASE_ORDER_ALREADY_LINKED` | o pedido já tem nota ativa (inclui a segunda de duas importações simultâneas) |
+| 409 | `PURCHASE_ORDER_CLOSED_BY_INVOICE` | cancelar pedido encerrado pela nota; cancele a compra da nota primeiro |
 
 ## 4. Recebimento (I4)
 
@@ -131,8 +138,8 @@ aprova a versão que viu.
 ```
 
 - Só compra `APPROVED` recebe (`409 PURCHASE_NOT_RECEIVABLE`) e **só a compra nascida de NF-e** (`origin = NFE_IMPORT`): pedido e
-  compra direta são recusados com `409 PURCHASE_RECEIPT_REQUIRES_INVOICE` enquanto a `DR-0023` não os ligar à nota. Entra no estoque
-  **apenas** o que foi conferido, ao custo de aquisição do item.
+  compra direta são recusados com `409 PURCHASE_RECEIPT_REQUIRES_INVOICE` (`DR-0023` C1-A: a mercadoria entra sempre pela compra
+  da nota à qual o pedido foi vinculado). Entra no estoque **apenas** o que foi conferido, ao custo de aquisição do item.
 - Receber menos que o pendente **sem** encerrar é recebimento parcial: não é divergência.
 - Receber a mais, ou encerrar o saldo (`closeRemaining`), é divergência: exige `justification` (`400
   PURCHASE_DIVERGENCE_JUSTIFICATION_REQUIRED`) e `PURCHASE_DIVERGENCE_ACCEPT` (`403 PURCHASE_DIVERGENCE_NOT_AUTHORIZED`).
@@ -140,9 +147,32 @@ aprova a versão que viu.
   consumida (`409 PURCHASE_RECEIPT_STOCK_CONSUMED`).
 - Mesma chave com conteúdo diferente: `409 PURCHASE_IDEMPOTENCY_KEY_REUSED`.
 
+## 4b. Pedido × NF-e (I5b, `DR-0023` decidida em 2026-11-12)
+
+`POST /nfe/confirm` aceita, além do que já aceitava:
+
+```json
+{ "orderId": "…", "divergenceJustification": "Fornecedor enviou uma unidade a mais", "workOrderId": null }
+```
+
+- `orderId` é opcional. Informado, o pedido precisa ser `ORDER` ou `DIRECT`, estar `APPROVED`, ser do fornecedor emitente, não ter
+  vínculo ativo e não ter recebimento ativo.
+- `POST /nfe/order-comparison` devolve `{orderId, orderNumber, orderTotal, invoiceTotal, differences[], mayAccept}`. Cada diferença
+  tem `kind` (`TOTAL`, `QUANTITY`, `UNIT_PRICE`, `ITEM_NOT_IN_INVOICE`, `ITEM_NOT_IN_ORDER`), `productId`, `description`,
+  `orderValue` e `invoiceValue`. A confirmação refaz a mesma comparação; nada é confiado ao cliente.
+- Havendo diferença, a confirmação exige `divergenceJustification` e `PURCHASE_DIVERGENCE_ACCEPT`. Recusar o vínculo desfaz a
+  importação inteira (compra, documento e contas a pagar).
+- A resposta da confirmação traz `linkedOrderId`. `GET /purchases/{id}` traz `orderLink` (nulo quando não há vínculo ativo) com
+  `orderPurchaseId`, `orderNumber`, `invoicePurchaseId`, `invoiceNumber`, `linkedAt`, `divergent`, `divergenceJustification` e
+  `differences[]` — o mesmo objeto no pedido e na compra da nota.
+- Sem `workOrderId`, a compra da nota herda a OS do pedido vinculado.
+- Cancelar a compra da nota libera o vínculo: o pedido volta a aparecer em `GET /nfe/linkable-orders`.
+
 ## 5. O que este contrato **não** faz
 
-- Pedido não cria conta a pagar, não movimenta estoque e não tem ligação com a NF-e: ver `DR-0023` (aberta). Pedido e compra
-  direta **não recebem**; o recebimento é só na compra da nota importada.
-- Solicitação, cotação e comparação de fornecedores não existem (`DR-0023` C4).
+- Pedido não cria conta a pagar e não movimenta estoque. Pedido e compra direta **não recebem**; o recebimento é só na compra da
+  nota importada, à qual o pedido é vinculado na importação (`DR-0023` C1-A).
+- Compra sem NF-e (balcão, recibo) não tem fluxo próprio em Compras: use a entrada manual do Estoque e o lançamento manual em
+  Contas a pagar.
+- Solicitação, cotação e comparação de fornecedores não existem (`DR-0023` C4-A: depois do piloto).
 - Não há consulta oficial à SEFAZ: a autorização é a declarada no XML (`officialCheckPerformed: false`).

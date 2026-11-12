@@ -3,11 +3,13 @@ package br.com.uberhidraulica.erp.purchasing.application;
 import br.com.uberhidraulica.erp.finance.PurchasePayableException;
 import br.com.uberhidraulica.erp.finance.PurchasePayables;
 import br.com.uberhidraulica.erp.iam.CurrentUser;
+import br.com.uberhidraulica.erp.iam.IamAuthorization;
 import br.com.uberhidraulica.erp.productcatalog.ProductCatalogQuery;
 import br.com.uberhidraulica.erp.purchasing.domain.AcquisitionCost;
 import br.com.uberhidraulica.erp.purchasing.domain.ExpenseAllocation;
 import br.com.uberhidraulica.erp.purchasing.domain.InstallmentPlan;
 import br.com.uberhidraulica.erp.purchasing.domain.NfeImportPreview;
+import br.com.uberhidraulica.erp.purchasing.domain.OrderInvoiceLink;
 import br.com.uberhidraulica.erp.purchasing.domain.Purchase;
 import br.com.uberhidraulica.erp.purchasing.domain.PurchaseDocument;
 import br.com.uberhidraulica.erp.purchasing.domain.PurchaseEvent;
@@ -23,6 +25,7 @@ import br.com.uberhidraulica.erp.purchasing.domain.UnitConversion;
 import br.com.uberhidraulica.erp.purchasing.domain.nfe.BrazilianTaxId;
 import br.com.uberhidraulica.erp.purchasing.domain.nfe.NfeDocument;
 import br.com.uberhidraulica.erp.purchasing.domain.nfe.NfeXmlParser;
+import br.com.uberhidraulica.erp.purchasing.port.GoodsReceiptRepositoryPort;
 import br.com.uberhidraulica.erp.purchasing.port.PurchaseRepositoryPort;
 import br.com.uberhidraulica.erp.purchasing.port.SupplierRepositoryPort;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,6 +57,7 @@ import java.util.UUID;
 @Service
 public class NfeImportService {
     private static final ZoneId ZONE = ZoneId.of("America/Sao_Paulo");
+    public static final String DIVERGENCE_PERMISSION = GoodsReceiptService.DIVERGENCE_PERMISSION;
 
     private final PurchaseRepositoryPort purchases;
     private final SupplierRepositoryPort suppliers;
@@ -62,20 +66,25 @@ public class NfeImportService {
     private final PurchasePayables payables;
     private final PurchasingSettingsService settings;
     private final NfePreviewService previews;
+    private final GoodsReceiptRepositoryPort receipts;
+    private final IamAuthorization authorization;
     private final CurrentUser currentUser;
     private final Clock clock;
 
     @Autowired
     public NfeImportService(PurchaseRepositoryPort purchases, SupplierRepositoryPort suppliers,
                             SupplierService supplierService, ProductCatalogQuery catalog, PurchasePayables payables,
-                            PurchasingSettingsService settings, NfePreviewService previews, CurrentUser currentUser) {
-        this(purchases, suppliers, supplierService, catalog, payables, settings, previews, currentUser,
-                Clock.systemUTC());
+                            PurchasingSettingsService settings, NfePreviewService previews,
+                            GoodsReceiptRepositoryPort receipts, IamAuthorization authorization,
+                            CurrentUser currentUser) {
+        this(purchases, suppliers, supplierService, catalog, payables, settings, previews, receipts, authorization,
+                currentUser, Clock.systemUTC());
     }
 
     NfeImportService(PurchaseRepositoryPort purchases, SupplierRepositoryPort suppliers,
                      SupplierService supplierService, ProductCatalogQuery catalog, PurchasePayables payables,
-                     PurchasingSettingsService settings, NfePreviewService previews, CurrentUser currentUser,
+                     PurchasingSettingsService settings, NfePreviewService previews,
+                     GoodsReceiptRepositoryPort receipts, IamAuthorization authorization, CurrentUser currentUser,
                      Clock clock) {
         this.purchases = purchases;
         this.suppliers = suppliers;
@@ -84,6 +93,8 @@ public class NfeImportService {
         this.payables = payables;
         this.settings = settings;
         this.previews = previews;
+        this.receipts = receipts;
+        this.authorization = authorization;
         this.currentUser = currentUser;
         this.clock = clock;
     }
@@ -101,7 +112,9 @@ public class NfeImportService {
         //    pior, criaria risco de divergir do que foi gravado na primeira vez.
         Optional<Purchase> replay = purchases.findByIdempotencyKey(key);
         if (replay.isPresent()) {
-            return new Result(replay.get(), purchases.payableLinks(replay.get().id()), true);
+            return new Result(replay.get(), purchases.payableLinks(replay.get().id()),
+                    purchases.activeLinkOfInvoice(replay.get().id()).map(OrderInvoiceLink::orderPurchaseId)
+                            .orElse(null), true);
         }
 
         NfeDocument document = NfeXmlParser.parse(command.xml());
@@ -137,10 +150,17 @@ public class NfeImportService {
         // 5. Fornecedor: o já cadastrado, ou cadastrado agora a partir do emitente com aceite explícito.
         Supplier supplier = resolveSupplier(document, command, actor, now);
 
+        // 5b. DR-0023 C1-A: o pedido que esta nota atende, escolhido pelo operador. É travado antes de qualquer
+        //     gravação, para duas importações simultâneas não encerrarem o mesmo pedido.
+        Purchase order = lockLinkableOrder(command.orderLink(), supplier);
+        UUID workOrderId = command.workOrderId() != null ? command.workOrderId()
+                : order == null ? null : order.workOrderId();
+
         // 6..8. Itens, conversão, custo e totais.
         UUID purchaseId = UUID.randomUUID();
         NfePreviewService.Totals totals = previews.totals(document);
-        List<PurchaseItem> items = buildItems(document, command, supplier, configuration, purchaseId);
+        List<PurchaseItem> items = buildItems(document, command.items(), workOrderId, order, supplier, configuration,
+                purchaseId);
 
         BigDecimal payableTotal = totals.payable();
         PurchaseMoney.requirePositive(payableTotal, "Total da nota");
@@ -152,8 +172,15 @@ public class NfeImportService {
         Purchase purchase = new Purchase(purchaseId, 0L, supplier.id(), Purchase.Origin.NFE_IMPORT,
                 Purchase.Status.APPROVED, totals.goods(), totals.discount(), totals.freight(), totals.insurance(),
                 totals.other(), totals.taxAdded(), payableTotal, command.expenseCategoryId(),
-                commercialSnapshot(supplier), command.workOrderId(), command.notes(), key, now, actor, null, null,
+                commercialSnapshot(supplier), workOrderId, command.notes(), key, now, actor, null, null,
                 null, 0L, null, null, null, null, items);
+
+        // 9b. C2-A/C3-A: a diferença entre pedido e nota é conferida ANTES de gravar; sem justificativa e sem a
+        //     permissão de aceitar divergência, nada é gravado.
+        List<OrderInvoiceLink.Difference> differences = order == null ? List.of()
+                : OrderInvoiceLink.compare(order, purchase);
+        String justification = order == null ? null
+                : requireDivergenceAccepted(differences, command.orderLink().justification(), actor);
 
         // 10. Gravação. A nota importada nasce APPROVED: ela já é o fato comercial.
         purchases.insert(purchase);
@@ -187,11 +214,94 @@ public class NfeImportService {
                         "total", PurchaseMoney.sumCharged(links.stream().map(PurchasePayableLink::amount).toList())
                                 .toPlainString()))));
 
+        // 14. DR-0023: grava o vínculo. A partir daqui o pedido está encerrado pela nota.
+        if (order != null) {
+            purchases.insertOrderLink(new OrderInvoiceLink(UUID.randomUUID(), order.id(), null, purchaseId, null, now,
+                    actor, !differences.isEmpty(), justification, null, null, null, differences));
+            Map<String, String> detail = new LinkedHashMap<>();
+            detail.put("orderPurchaseId", String.valueOf(order.id()));
+            detail.put("invoicePurchaseId", String.valueOf(purchaseId));
+            detail.put("differences", String.valueOf(differences.size()));
+            purchases.insertEvent(PurchaseEvent.of(order.id(), PurchaseEvent.Type.ORDER_LINKED_TO_INVOICE, actor, now,
+                    justification, json(detail)));
+            purchases.insertEvent(PurchaseEvent.of(purchaseId, PurchaseEvent.Type.ORDER_LINKED_TO_INVOICE, actor, now,
+                    justification, json(detail)));
+        }
+
         // Relê a compra: o número sequencial é gerado pelo banco, e devolver o objeto em memória mostraria 0.
-        return new Result(purchases.find(purchaseId).orElse(purchase), links, false);
+        return new Result(purchases.find(purchaseId).orElse(purchase), links, order == null ? null : order.id(),
+                false);
+    }
+
+    /**
+     * Compara a nota com um pedido <b>sem gravar nada</b>, para o operador ver a diferença antes de confirmar
+     * (`DR-0023` C2-A). Usa exatamente a mesma montagem de itens da confirmação, de modo que o que a tela mostra é o
+     * que a confirmação vai exigir justificar.
+     */
+    @Transactional(readOnly = true)
+    public OrderComparison compareWithOrder(byte[] xml, List<ItemDecision> decisions, UUID orderId) {
+        NfeDocument document = NfeXmlParser.parse(xml);
+        PurchasingSettings configuration = settings.current();
+        NfeDocument.Party issuer = document.issuer();
+        Supplier supplier = issuer == null || issuer.taxId() == null ? null
+                : suppliers.findByDocument(BrazilianTaxId.normalize(issuer.taxId())).orElse(null);
+        if (supplier == null) {
+            throw new PurchasingException("PURCHASE_ORDER_LINK_INVALID",
+                    "O emitente da nota ainda não é fornecedor cadastrado: não há pedido dele para vincular");
+        }
+        Purchase order = requireLinkableOrder(purchases.find(orderId), supplier);
+        UUID purchaseId = UUID.randomUUID();
+        NfePreviewService.Totals totals = previews.totals(document);
+        List<PurchaseItem> items = buildItems(document, decisions, order.workOrderId(), order, supplier,
+                configuration, purchaseId);
+        Purchase invoice = new Purchase(purchaseId, 0L, supplier.id(), Purchase.Origin.NFE_IMPORT,
+                Purchase.Status.APPROVED, totals.goods(), totals.discount(), totals.freight(), totals.insurance(),
+                totals.other(), totals.taxAdded(), totals.payable(), null, null, order.workOrderId(), null, "preview",
+                Instant.now(clock), currentUser.requireId(), null, null, null, 0L, null, null, null, null, items);
+        List<OrderInvoiceLink.Difference> differences = OrderInvoiceLink.compare(order, invoice);
+        return new OrderComparison(order.id(), order.number(), order.payableTotal(), totals.payable(), differences,
+                differences.isEmpty() || authorization.hasPermission(currentUser.requireId(), DIVERGENCE_PERMISSION));
+    }
+
+    /** Candidatos ao vínculo: pedidos e compras diretas aprovados do fornecedor, ainda sem nota. */
+    @Transactional(readOnly = true)
+    public List<PurchaseRepositoryPort.LinkableOrder> linkableOrders(UUID supplierId) {
+        return purchases.linkableOrders(supplierId);
     }
 
     // ------------------------------------------------------------------ passos
+
+    private Purchase lockLinkableOrder(OrderLink link, Supplier supplier) {
+        if (link == null || link.orderId() == null) return null;
+        return requireLinkableOrder(purchases.lock(link.orderId()), supplier);
+    }
+
+    private Purchase requireLinkableOrder(Optional<Purchase> found, Supplier supplier) {
+        Purchase order = found.orElseThrow(() -> new PurchasingException("PURCHASE_NOT_FOUND",
+                "Pedido não encontrado"));
+        OrderInvoiceLink.requireLinkable(order, supplier.id());
+        if (purchases.activeLinkOfOrder(order.id()).isPresent()) {
+            throw new PurchasingException("PURCHASE_ORDER_ALREADY_LINKED",
+                    "O pedido " + order.number() + " já está vinculado a uma nota ativa");
+        }
+        // C1-A: só se vincula pedido sem recebimento ativo. Hoje pedido não recebe; a checagem cobre recebimento
+        // registrado antes do bloqueio e continua valendo se a regra mudar.
+        if (receipts.hasActiveReceipt(order.id())) {
+            throw new PurchasingException("PURCHASE_HAS_ACTIVE_RECEIPT",
+                    "O pedido " + order.number() + " tem recebimento ativo: estorne-o antes de vincular à nota");
+        }
+        return order;
+    }
+
+    private String requireDivergenceAccepted(List<OrderInvoiceLink.Difference> differences, String justification,
+                                             UUID actor) {
+        String text = OrderInvoiceLink.requireJustification(differences, justification);
+        if (!differences.isEmpty() && !authorization.hasPermission(actor, DIVERGENCE_PERMISSION)) {
+            throw new PurchasingException("PURCHASE_DIVERGENCE_NOT_AUTHORIZED",
+                    "A nota difere do pedido: vincular exige a permissão " + DIVERGENCE_PERMISSION);
+        }
+        return text;
+    }
 
     private static String requireKey(String requestId) {
         if (requestId == null || requestId.isBlank()) {
@@ -255,10 +365,17 @@ public class NfeImportService {
         return created;
     }
 
-    private List<PurchaseItem> buildItems(NfeDocument document, Command command, Supplier supplier,
-                                          PurchasingSettings configuration, UUID purchaseId) {
+    private List<PurchaseItem> buildItems(NfeDocument document, List<ItemDecision> chosen, UUID workOrderId,
+                                          Purchase order, Supplier supplier, PurchasingSettings configuration,
+                                          UUID purchaseId) {
         Map<Integer, ItemDecision> decisions = new LinkedHashMap<>();
-        if (command.items() != null) command.items().forEach(d -> decisions.put(d.lineNo(), d));
+        if (chosen != null) chosen.forEach(d -> decisions.put(d.lineNo(), d));
+        // O item da nota herda o item da OS que o pedido vinculado apontava para o mesmo produto.
+        Map<UUID, UUID> workOrderItems = new LinkedHashMap<>();
+        if (order != null && workOrderId != null && workOrderId.equals(order.workOrderId())) {
+            order.items().stream().filter(i -> i.workOrderItemId() != null)
+                    .forEach(i -> workOrderItems.putIfAbsent(i.productId(), i.workOrderItemId()));
+        }
 
         List<NfeDocument.Item> source = document.items();
         if (source.isEmpty()) {
@@ -314,7 +431,7 @@ public class NfeImportService {
                     PurchaseMoney.charged(item.discount()),
                     PurchaseMoney.charged(PurchaseMoney.nullToZero(item.grossTotal())
                             .subtract(PurchaseMoney.nullToZero(item.discount()))),
-                    item.ncm(), item.cfop(), item.gtin(), command.workOrderId(), null));
+                    item.ncm(), item.cfop(), item.gtin(), workOrderId, workOrderItems.get(productId)));
         }
         return items;
     }
@@ -439,11 +556,24 @@ public class NfeImportService {
      * @param installments   vencimento e parcelas, obrigatório só quando a nota não tem duplicata (`D11`)
      */
     public record Command(byte[] xml, String requestId, Boolean createSupplier, UUID expenseCategoryId,
-                          List<ItemDecision> items, Installments installments, UUID workOrderId, String notes) {}
+                          List<ItemDecision> items, Installments installments, UUID workOrderId, String notes,
+                          OrderLink orderLink) {}
+
+    /**
+     * Pedido que a nota atende (`DR-0023` C1-A) e a justificativa, obrigatória quando a nota difere dele (C2-A).
+     */
+    public record OrderLink(UUID orderId, String justification) {}
+
+    /**
+     * @param mayAccept falso quando há diferença e o usuário não tem a permissão de aceitar divergência
+     */
+    public record OrderComparison(UUID orderId, long orderNumber, BigDecimal orderTotal, BigDecimal invoiceTotal,
+                                  List<OrderInvoiceLink.Difference> differences, boolean mayAccept) {}
 
     public record ItemDecision(int lineNo, UUID productId, BigDecimal unitConversionFactor, Boolean saveLink) {}
 
     public record Installments(Integer count, LocalDate firstDueDate, Integer intervalDays) {}
 
-    public record Result(Purchase purchase, List<PurchasePayableLink> payables, boolean replayed) {}
+    public record Result(Purchase purchase, List<PurchasePayableLink> payables, UUID linkedOrderId,
+                         boolean replayed) {}
 }

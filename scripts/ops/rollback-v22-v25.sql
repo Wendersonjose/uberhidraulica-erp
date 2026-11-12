@@ -1,4 +1,7 @@
--- ROLLBACK MANUAL DAS MIGRATIONS V22–V25 (Compras e Fornecedores). NÃO é uma migration do Flyway.
+-- ROLLBACK MANUAL DAS MIGRATIONS DE COMPRAS (V22 em diante). NÃO é uma migration do Flyway.
+--
+-- O nome do arquivo guarda "v22-v25" por compatibilidade com os runbooks; o script cobre também as migrations
+-- posteriores que vivem só no schema purchasing (V26: vínculo pedido × NF-e).
 --
 -- Quando usar: SÓ se a promoção deu errado e Compras AINDA NÃO foi usada de verdade. Este script devolve o banco ao
 -- formato da V21. Se já houve uso real, NÃO use: restaure o backup ou corrija para frente (ver o runbook).
@@ -27,7 +30,7 @@ BEGIN
     END IF;
 END $$;
 
--- V22–V25: todo o schema de Compras (tabelas, view, triggers, funções).
+-- V22 em diante: todo o schema de Compras (tabelas, view, triggers, funções), inclusive o vínculo pedido × NF-e da V26.
 DROP SCHEMA IF EXISTS purchasing CASCADE;
 
 -- V24: origem PURCHASE no estoque. Remover a coluna leva junto os dois índices e a restrição ck_stock_movement_purchase.
@@ -45,7 +48,7 @@ DELETE FROM iam.user_permission_exception WHERE permission_id IN (SELECT id FROM
 DELETE FROM iam.profile_permission WHERE permission_id IN (SELECT id FROM iam.permission WHERE code LIKE 'PURCHASE\_%');
 DELETE FROM iam.permission WHERE code LIKE 'PURCHASE\_%';
 
--- O Flyway volta a considerar V22–V25 pendentes.
-DELETE FROM erp_meta.flyway_schema_history WHERE version IN ('22', '23', '24', '25');
+-- O Flyway volta a considerar V22 em diante pendentes.
+DELETE FROM erp_meta.flyway_schema_history WHERE version IS NOT NULL AND version::int >= 22;
 
 COMMIT;

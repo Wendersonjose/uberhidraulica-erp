@@ -36,7 +36,8 @@ fiscal e pagamento (`AG-05` §130).
 | I3 | Prévia e confirmação de NF-e: fornecedor, vínculo de itens, compra, documento, contas a pagar parceladas | `V23` (`V23__purchasing_purchase_nfe.sql`) | **CONCLUÍDO** (21 testes de integração + 7 de aceitação com a NF-e 21 real + 28 unitários; telas entregues, incluindo a prévia com as escolhas do operador) |
 | I4 | Recebimento físico total/parcial, divergência, entrada em estoque com custo, estorno | `V24` (`V24__purchasing_receipts.sql`) | **ENTREGUE** — `GoodsReceiptIntegrationTest` 18/18 contra PostgreSQL 18 no CI; recebe **somente compra de NF-e** (DR-0023) |
 | I5 | Pedido de compra, compra direta, vínculo com OS, aprovação segregada (D8) | `V25` (`V25__purchasing_orders.sql`) | **ENTREGUE** — aprova, devolve e cancela; pedido **não recebe** (DR-0023). Defeito de SQL achado pelo CI e corrigido; reexecução no CI do PR #4 |
-| I5b | Solicitação, cotação multi-fornecedor, comparação, ligação pedido × NF-e | `V26+` | **bloqueado pela `DR-0023`** (aberta) |
+| I5b | Ligação pedido × NF-e (`DR-0023` C1-A/C2-A/C3-A, decidida em 2026-11-12) | `V26` (`V26__purchasing_order_invoice_link.sql`) | **ENTREGUE** — vínculo explícito na importação, divergência com justificativa, pedido encerrado pela nota, liberação no cancelamento; `OrderInvoiceLinkIntegrationTest` e `OrderInvoiceLinkTest` |
+| I5c | Solicitação, cotação multi-fornecedor, comparação | — | **adiado para depois do piloto** (`DR-0023` C4-A) |
 | I6 | Devolução, crédito do fornecedor, histórico de preços, relatórios | `V26+` | pendente |
 
 ## Bloqueios
@@ -202,6 +203,14 @@ Pedido e nota são duas compras sem ligação. O risco de **estoque em dobro** (
 proprietário determinou (2026-10-14) que não se habilitem dois caminhos de recebimento sem controle de identidade e idempotência.
 **Hoje só a compra nascida de NF-e recebe** (`Purchase.requireReceivable()`; `409 PURCHASE_RECEIPT_REQUIRES_INVOICE` para pedido e
 compra direta). A decisão do proprietário sobre a ligação (C1) reabre o recebimento de pedido e bloqueia o I5b.
+
+### Resultado do I5b (2026-11-12) — pedido × NF-e
+
+A `DR-0023` foi decidida (C1-A, C2-A, C3-A, C4-A). Na importação da NF-e o operador escolhe o pedido aprovado do fornecedor que a
+nota atende; a tela mostra a diferença item a item antes de confirmar e exige justificativa quando há divergência. O pedido
+vinculado fica encerrado pela nota e **continua sem receber**: a mercadoria entra uma única vez, pela compra da nota. Cancelar a
+compra da nota libera o pedido. A nota herda a OS do pedido. O teste de promoção (`MigrationUpgradeFromProductionIntegrationTest`)
+e o script de rollback passaram a derivar a versão dos arquivos de migration, e não mais da `V25` fixa.
 
 ### Checkpoint de banco no CI (2026-10-14) — o primeiro contra PostgreSQL 18 real
 

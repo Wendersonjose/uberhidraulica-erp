@@ -30,7 +30,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Promoção de V22–V25 sobre um banco que já está na V21, como o Supabase de produção (TASK-0021).
+ * Promoção das migrations posteriores à V21 (Compras, V22 em diante) sobre um banco que já está na V21, como o
+ * Supabase de produção (TASK-0021). As contagens são derivadas dos arquivos de migration: uma migration nova entra
+ * na prova sem editar este teste.
  *
  * <p>A suíte normal reconstrói o banco do ZERO a cada classe e por isso não responde à pergunta que importa antes de
  * promover: <b>as migrations novas aplicam sobre dados que já existem, sem tocar neles, sem sair do próprio território e sem
@@ -174,8 +176,9 @@ class MigrationUpgradeFromProductionIntegrationTest {
         MigrateResult promoted = flyway("classpath:db/migration").migrate();
 
         assertThat(promoted.success).isTrue();
-        assertThat(promoted.migrationsExecuted).as("só V22, V23, V24 e V25 estavam pendentes").isEqualTo(4);
-        assertThat(promoted.targetSchemaVersion).isEqualTo("25");
+        assertThat(promoted.migrationsExecuted).as("só as migrations posteriores à V21 estavam pendentes")
+                .isEqualTo(pendingAfterV21());
+        assertThat(promoted.targetSchemaVersion).isEqualTo(String.valueOf(latestVersion()));
         // Uma linha por migration; o Flyway pode acrescentar uma linha sem versão quando ele mesmo cria o schema erp_meta.
         assertThat(jdbc().queryForObject("select count(*) from erp_meta.flyway_schema_history where success and version is not null", Long.class))
                 .isEqualTo(Long.valueOf(migrationFiles().size()));
@@ -284,7 +287,7 @@ class MigrationUpgradeFromProductionIntegrationTest {
                 values (?, ?, 'ENTRY', 'IN', 1, 1.0000, 20, 'PURCHASE', ?, now())""", purchaseMovement, product, UUID.randomUUID());
         assertThatThrownBy(() -> jdbc().execute(rollback)).hasMessageContaining("Rollback recusado");
         assertThat(jdbc().queryForObject("select count(*) from information_schema.schemata where schema_name = 'purchasing'", Long.class)).isEqualTo(1L);
-        assertThat(jdbc().queryForObject("select max(version::int) from erp_meta.flyway_schema_history where success", Integer.class)).isEqualTo(25);
+        assertThat(jdbc().queryForObject("select max(version::int) from erp_meta.flyway_schema_history where success", Integer.class)).isEqualTo(latestVersion());
         jdbc().update("delete from inventory.stock_movement where id = ?", purchaseMovement);
 
         // Sem uso real de Compras, o script devolve o banco ao formato da V21 sem tocar nos dados de negócio.
@@ -304,8 +307,24 @@ class MigrationUpgradeFromProductionIntegrationTest {
                 values (?, ?, 'ENTRY', 'IN', 1, 1.0000, 20, 'MANUAL', now())""", UUID.randomUUID(), product);
         MigrateResult again = flyway("classpath:db/migration").migrate();
         assertThat(again.success).isTrue();
-        assertThat(again.migrationsExecuted).isEqualTo(4);
-        assertThat(jdbc().queryForObject("select max(version::int) from erp_meta.flyway_schema_history where success", Integer.class)).isEqualTo(25);
+        assertThat(again.migrationsExecuted).isEqualTo(pendingAfterV21());
+        assertThat(jdbc().queryForObject("select max(version::int) from erp_meta.flyway_schema_history where success", Integer.class)).isEqualTo(latestVersion());
+    }
+
+    /** Maior versão entre os arquivos de migration do repositório. */
+    private static int latestVersion() {
+        return migrationFiles().stream().mapToInt(MigrationUpgradeFromProductionIntegrationTest::versionOf).max().orElseThrow();
+    }
+
+    /** Quantas migrations um banco na V21 ainda tem de aplicar. */
+    private static int pendingAfterV21() {
+        return (int) migrationFiles().stream().filter(file -> versionOf(file) > 21).count();
+    }
+
+    private static int versionOf(Path file) {
+        Matcher matcher = VERSION.matcher(file.getFileName().toString());
+        if (!matcher.matches()) throw new IllegalStateException("Arquivo de migration fora do padrão: " + file);
+        return Integer.parseInt(matcher.group(1));
     }
 
     private static List<Path> migrationFiles() {

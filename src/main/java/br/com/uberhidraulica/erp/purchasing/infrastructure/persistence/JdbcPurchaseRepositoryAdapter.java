@@ -1,6 +1,7 @@
 package br.com.uberhidraulica.erp.purchasing.infrastructure.persistence;
 
 import br.com.uberhidraulica.erp.purchasing.domain.AcquisitionCost;
+import br.com.uberhidraulica.erp.purchasing.domain.OrderInvoiceLink;
 import br.com.uberhidraulica.erp.purchasing.domain.Purchase;
 import br.com.uberhidraulica.erp.purchasing.domain.PurchaseDocument;
 import br.com.uberhidraulica.erp.purchasing.domain.PurchaseEvent;
@@ -238,6 +239,98 @@ class JdbcPurchaseRepositoryAdapter implements PurchaseRepositoryPort {
             throw new PurchasingException("PURCHASE_ORDER_STATE_CHANGED",
                     "A situação da compra mudou enquanto a operação era processada: recarregue e tente de novo");
         }
+    }
+
+    // ================================================================ pedido × NF-e (DR-0023)
+
+    @Override
+    public void insertOrderLink(OrderInvoiceLink l) {
+        try {
+            jdbc.update("""
+                    insert into purchasing.purchase_order_invoice_link (id, order_purchase_id, invoice_purchase_id,
+                        linked_at, linked_by, divergent, divergence_justification)
+                    values (:id, :order, :invoice, :at, :by, :divergent, :justification)
+                    """, new MapSqlParameterSource("id", l.id())
+                    .addValue("order", l.orderPurchaseId()).addValue("invoice", l.invoicePurchaseId())
+                    .addValue("at", Timestamp.from(l.linkedAt())).addValue("by", l.linkedBy())
+                    .addValue("divergent", l.divergent()).addValue("justification", l.divergenceJustification()));
+        } catch (DuplicateKeyException collision) {
+            throw new PurchasingException("PURCHASE_ORDER_ALREADY_LINKED",
+                    "Este pedido já está vinculado a uma nota ativa");
+        }
+        int position = 0;
+        for (OrderInvoiceLink.Difference d : l.differences()) {
+            jdbc.update("""
+                    insert into purchasing.purchase_order_invoice_difference (link_id, position, kind, product_id,
+                        description, order_value, invoice_value)
+                    values (:link, :position, :kind, :product, :description, :orderValue, :invoiceValue)
+                    """, new MapSqlParameterSource("link", l.id()).addValue("position", ++position)
+                    .addValue("kind", d.kind().name()).addValue("product", d.productId())
+                    .addValue("description", d.description()).addValue("orderValue", d.orderValue())
+                    .addValue("invoiceValue", d.invoiceValue()));
+        }
+    }
+
+    @Override
+    public Optional<OrderInvoiceLink> activeLinkOfOrder(UUID orderPurchaseId) {
+        return activeLink("l.order_purchase_id", orderPurchaseId);
+    }
+
+    @Override
+    public Optional<OrderInvoiceLink> activeLinkOfInvoice(UUID invoicePurchaseId) {
+        return activeLink("l.invoice_purchase_id", invoicePurchaseId);
+    }
+
+    /** {@code column} é sempre uma das duas constantes acima, nunca texto vindo de fora. */
+    private Optional<OrderInvoiceLink> activeLink(String column, UUID purchaseId) {
+        return jdbc.query("""
+                select l.*, o.number as order_number, n.number as invoice_number
+                from purchasing.purchase_order_invoice_link l
+                join purchasing.purchase o on o.id = l.order_purchase_id
+                join purchasing.purchase n on n.id = l.invoice_purchase_id
+                where\s""" + column + " = :id and l.released_at is null", Map.of("id", purchaseId), (rs, i) -> {
+            UUID linkId = rs.getObject("id", UUID.class);
+            return new OrderInvoiceLink(linkId, rs.getObject("order_purchase_id", UUID.class),
+                    rs.getLong("order_number"), rs.getObject("invoice_purchase_id", UUID.class),
+                    rs.getLong("invoice_number"), instant(rs, "linked_at"), rs.getObject("linked_by", UUID.class),
+                    rs.getBoolean("divergent"), rs.getString("divergence_justification"),
+                    instant(rs, "released_at"), rs.getObject("released_by", UUID.class),
+                    rs.getString("release_reason"), differences(linkId));
+        }).stream().findFirst();
+    }
+
+    private List<OrderInvoiceLink.Difference> differences(UUID linkId) {
+        return jdbc.query("""
+                select * from purchasing.purchase_order_invoice_difference where link_id = :id order by position
+                """, Map.of("id", linkId), (rs, i) -> new OrderInvoiceLink.Difference(
+                OrderInvoiceLink.Kind.valueOf(rs.getString("kind")), rs.getObject("product_id", UUID.class),
+                rs.getString("description"), rs.getBigDecimal("order_value"), rs.getBigDecimal("invoice_value")));
+    }
+
+    @Override
+    public void releaseOrderLink(UUID linkId, Instant at, UUID by, String reason) {
+        jdbc.update("""
+                update purchasing.purchase_order_invoice_link set released_at = :at, released_by = :by,
+                    release_reason = :reason
+                where id = :id and released_at is null
+                """, new MapSqlParameterSource("id", linkId).addValue("at", Timestamp.from(at))
+                .addValue("by", by).addValue("reason", reason));
+    }
+
+    @Override
+    public List<LinkableOrder> linkableOrders(UUID supplierId) {
+        return jdbc.query("""
+                select p.id, p.number, p.origin, p.payable_total, p.work_order_id, p.created_at, p.approved_at,
+                       (select count(*) from purchasing.purchase_item i where i.purchase_id = p.id) as item_count
+                from purchasing.purchase p
+                where p.supplier_id = :supplier and p.origin in ('ORDER', 'DIRECT') and p.status = 'APPROVED'
+                  and not exists (select 1 from purchasing.purchase_order_invoice_link l
+                                  where l.order_purchase_id = p.id and l.released_at is null)
+                order by p.approved_at desc nulls last, p.number desc
+                """, Map.of("supplier", supplierId), (rs, i) -> new LinkableOrder(rs.getObject("id", UUID.class),
+                rs.getLong("number"), Purchase.Origin.valueOf(rs.getString("origin")),
+                rs.getBigDecimal("payable_total"), rs.getObject("work_order_id", UUID.class),
+                instant(rs, "created_at"), instant(rs, "approved_at"), rs.getInt("item_count")));
     }
 
     // ================================================================ documento fiscal
