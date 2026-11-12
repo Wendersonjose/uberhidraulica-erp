@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Build reprodutível: nenhuma dependência do host além do Docker.
 
-FROM maven:3.9-eclipse-temurin-17 AS build
+FROM maven:3.9-eclipse-temurin-26 AS build
 WORKDIR /build
 COPY pom.xml .
 RUN mvn -q -B dependency:go-offline
