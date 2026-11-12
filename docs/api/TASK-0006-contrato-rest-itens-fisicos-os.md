@@ -69,3 +69,24 @@ Alteração posterior do produto no catálogo — inclusive inativação e mudan
 ## 5. Efeito em estoque
 
 Nenhum. O lançamento não consulta disponibilidade, não reserva e não baixa saldo. O módulo Estoque não existe, e simular reserva aqui criaria uma fonte de verdade falsa sobre o que a oficina realmente possui.
+
+## 6. Atualização de 2026-11-12 — decisão do cliente e remoção (`DR-0019`, V27)
+
+As seções 4 e 5 acima descrevem o contrato da `TASK-0006` como foi entregue e ficam como histórico. O que mudou:
+
+- Cada item de `products` passa a trazer `customerDecision` (`APPROVED`, `REJECTED` ou nulo), `decidedAt`, `removedAt` e
+  `removalReason`. Item removido ou rejeitado continua na lista; quem soma totais deve ignorá-lo.
+- `DELETE /api/work-orders/{id}/products/{itemId}` com `{ "reason": "…" }` (3 a 500 caracteres), permissão
+  `WORKORDER_MANAGE`: remove da OS um item **não aprovado**. Devolve a OS atualizada. O item não é apagado: fica marcado com
+  motivo, autor e instante, e o estoque baixado para ele volta.
+
+| Situação | HTTP | `code` |
+| --- | --- | --- |
+| Motivo ausente ou fora de 3 a 500 caracteres | `400` | `VALIDATION_FAILED` / `WORK_ORDER_PRODUCT_REMOVAL_REASON_REQUIRED` |
+| Item não pertence à OS | `404` | `WORK_ORDER_PRODUCT_NOT_FOUND` |
+| Item já removido | `409` | `WORK_ORDER_PRODUCT_ALREADY_REMOVED` |
+| Item aprovado pelo cliente | `409` | `WORK_ORDER_PRODUCT_APPROVED` |
+| OS finalizada, entregue ou cancelada | `409` | `WORK_ORDER_CLOSED` |
+
+Efeito em estoque (o módulo Estoque existe desde a `TASK-0014`): a rejeição do item pelo cliente e a remoção devolvem a baixa
+ativa do item; a reaprovação em revisão posterior é baixada de novo na finalização da OS.

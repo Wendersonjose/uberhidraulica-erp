@@ -2,6 +2,8 @@ package br.com.uberhidraulica.erp.inventory.application;
 
 import br.com.uberhidraulica.erp.iam.CurrentUser;
 import br.com.uberhidraulica.erp.inventory.InventoryCostQuery;
+import br.com.uberhidraulica.erp.inventory.PurchaseStockEntry;
+import br.com.uberhidraulica.erp.inventory.PurchaseStockException;
 import br.com.uberhidraulica.erp.inventory.domain.InventoryException;
 import br.com.uberhidraulica.erp.inventory.domain.Stock;
 import br.com.uberhidraulica.erp.inventory.domain.StockMovement;
@@ -24,7 +26,7 @@ import java.util.*;
  * médio resultantes e nunca altera um lançamento anterior (DR-0014).</p>
  */
 @Service
-public class InventoryApplicationService implements InventoryCostQuery {
+public class InventoryApplicationService implements InventoryCostQuery, PurchaseStockEntry {
     public static final String WRITE_OFF_SETTING = "WORK_ORDER_WRITE_OFF";
     public static final int MAX_PAGE_SIZE = 100;
 
@@ -109,7 +111,7 @@ public class InventoryApplicationService implements InventoryCostQuery {
         try {
             return apply(original.productId(), StockMovement.Type.REVERSAL, original.quantity(), null,
                     reason == null || reason.isBlank() ? "Estorno de movimentação" : reason, original.source(),
-                    original.workOrderId(), null, original.id(), !original.type().incoming());
+                    original.workOrderId(), null, original.id(), !original.type().incoming(), original.purchaseReceiptItemId());
         } catch (org.springframework.dao.DataIntegrityViolationException alreadyReversed) {
             // O índice único do estorno é a autoridade: duas correções simultâneas não geram duas devoluções.
             throw new InventoryException("MOVEMENT_ALREADY_REVERSED", "Esta movimentação já foi estornada");
@@ -140,7 +142,15 @@ public class InventoryApplicationService implements InventoryCostQuery {
      */
     @Transactional
     public void writeOffForWorkOrder(UUID workOrderId, UUID itemId, UUID productId, BigDecimal quantity) {
-        if (repository.workOrderExitExists(itemId)) return;
+        // Idempotente enquanto houver baixa ATIVA do item. Baixa devolvida (rejeição, DR-0019) não conta: o item
+        // pode ser baixado de novo, em um ciclo novo.
+        if (repository.activeWorkOrderExit(itemId).isPresent()) return;
+        // O bloqueio do saldo serializa as baixas do mesmo produto, e a conferência é refeita DEPOIS dele: a transação
+        // que esperou enxerga a baixa que a outra acabou de confirmar. Sem isso, a segunda gravaria um "ciclo 2" e o
+        // item seria descontado duas vezes — o índice único por ciclo, sozinho, não pega esse caso.
+        requireProduct(productId);
+        repository.lockBalance(productId);
+        if (repository.activeWorkOrderExit(itemId).isPresent()) return;
         try {
             apply(productId, StockMovement.Type.WORK_ORDER_OUT, quantity, null, null, StockMovement.Source.WORK_ORDER, workOrderId, itemId, null);
         } catch (org.springframework.dao.DataIntegrityViolationException concurrent) {
@@ -153,6 +163,26 @@ public class InventoryApplicationService implements InventoryCostQuery {
 
     /** Devolve ao estoque tudo o que a OS baixou e ainda não foi estornado. */
     @Transactional
+    /**
+     * Devolve a baixa ativa de UM item da OS (DR-0019): o cliente rejeitou o item ou ele foi removido da OS. Sem baixa
+     * ativa — item nunca baixado, ou já devolvido — não há nada a fazer.
+     */
+    public void returnWorkOrderItemStock(UUID workOrderId, UUID itemId, String reason) {
+        repository.activeWorkOrderExit(itemId).ifPresent(exit ->
+                apply(exit.productId(), StockMovement.Type.WORK_ORDER_RETURN, exit.quantity(), null, reason,
+                        StockMovement.Source.WORK_ORDER, workOrderId, itemId, exit.id()));
+    }
+
+    /**
+     * Refaz, na finalização, a baixa de item que tinha sido devolvida por rejeição e depois voltou a valer (o cliente
+     * aprovou uma revisão posterior). Item que nunca teve baixa não é tocado: o modo "baixa no lançamento" só baixa
+     * no lançamento. Faltar saldo recusa a finalização, como em qualquer baixa.
+     */
+    public void writeOffAgainIfReturned(UUID workOrderId, UUID itemId, UUID productId, BigDecimal quantity) {
+        if (!repository.workOrderExitExists(itemId)) return;
+        writeOffForWorkOrder(workOrderId, itemId, productId, quantity);
+    }
+
     public void returnWorkOrderStock(UUID workOrderId) {
         for (StockMovement exit : repository.pendingWorkOrderExits(workOrderId))
             apply(exit.productId(), StockMovement.Type.WORK_ORDER_RETURN, exit.quantity(), null,
@@ -166,6 +196,12 @@ public class InventoryApplicationService implements InventoryCostQuery {
 
     private StockMovement apply(UUID productId, StockMovement.Type type, BigDecimal quantity, BigDecimal unitCost, String reason,
                                 StockMovement.Source source, UUID workOrderId, UUID itemId, UUID reverses, boolean incoming) {
+        return apply(productId, type, quantity, unitCost, reason, source, workOrderId, itemId, reverses, incoming, null);
+    }
+
+    private StockMovement apply(UUID productId, StockMovement.Type type, BigDecimal quantity, BigDecimal unitCost, String reason,
+                                StockMovement.Source source, UUID workOrderId, UUID itemId, UUID reverses, boolean incoming,
+                                UUID purchaseReceiptItemId) {
         var product = requireProduct(productId);
         // DR-0016: inativar impede nova compra; saída, ajustes com motivo, estorno e devolução seguem permitidos.
         if (type == StockMovement.Type.ENTRY && !product.active())
@@ -176,8 +212,55 @@ public class InventoryApplicationService implements InventoryCostQuery {
         repository.saveBalance(updated);
         StockMovement movement = new StockMovement(UUID.randomUUID(), productId, type, quantity, unitCost,
                 updated.quantity(), updated.averageCost(), reason, source, workOrderId, itemId, reverses, now,
-                currentUser.id().orElse(null), incoming);
+                currentUser.id().orElse(null), incoming, purchaseReceiptItemId);
         return repository.record(movement);
+    }
+
+    // ------------------------------------------------------------------ integração com Compras (TASK-0021 I4)
+
+    /**
+     * Entrada física de um item recebido. A chave de idempotência é o item do recebimento: a segunda chamada devolve
+     * a primeira entrada, e o índice único {@code uq_stock_movement_purchase_entry} é a autoridade final contra duas
+     * transações simultâneas.
+     */
+    @Override
+    @Transactional
+    public Entry registerEntry(UUID receiptItemId, UUID productId, BigDecimal quantity, BigDecimal unitCost, String reason) {
+        if (receiptItemId == null || productId == null)
+            throw new PurchaseStockException("PURCHASE_STOCK_INVALID", "Item recebido e produto são obrigatórios");
+        Optional<StockMovement> existing = repository.findPurchaseEntry(receiptItemId);
+        if (existing.isPresent()) return entry(existing.get(), true);
+        // Custo nulo significa custo desconhecido, e o custo médio não pode ser alimentado com um palpite.
+        if (unitCost == null)
+            throw new PurchaseStockException("PURCHASE_STOCK_COST_REQUIRED", "Custo de aquisição é obrigatório na entrada de compra");
+        try {
+            requireUnitPrecision(productId, quantity);
+            return entry(apply(productId, StockMovement.Type.ENTRY, quantity, unitCost, reason, StockMovement.Source.PURCHASE,
+                    null, null, null, true, receiptItemId), false);
+        } catch (InventoryException refused) {
+            throw new PurchaseStockException(refused.code(), refused.getMessage());
+        } catch (org.springframework.dao.DataIntegrityViolationException concurrent) {
+            throw new PurchaseStockException("PURCHASE_STOCK_CONFLICT", "Este item recebido já teve entrada de estoque registrada");
+        }
+    }
+
+    @Override
+    @Transactional
+    public Entry reverseEntry(UUID receiptItemId, String reason) {
+        StockMovement entry = repository.findPurchaseEntry(receiptItemId).orElseThrow(() ->
+                new PurchaseStockException("PURCHASE_STOCK_ENTRY_NOT_FOUND", "Não há entrada de estoque para este item recebido"));
+        Optional<StockMovement> already = repository.findReversalOf(entry.id());
+        if (already.isPresent()) return entry(already.get(), true);
+        try {
+            return entry(reverse(entry.id(), reason), false);
+        } catch (InventoryException refused) {
+            throw new PurchaseStockException(refused.code(), refused.getMessage());
+        }
+    }
+
+    private static Entry entry(StockMovement movement, boolean replayed) {
+        return new Entry(movement.id(), movement.productId(), movement.quantity(), movement.balanceAfter(),
+                movement.averageCostAfter(), replayed);
     }
 
     /**

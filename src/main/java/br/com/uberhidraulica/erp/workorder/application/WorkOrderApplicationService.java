@@ -82,7 +82,7 @@ public class WorkOrderApplicationService implements WorkOrderQuery, br.com.uberh
 
     @Override
     @Transactional
-    public void lockForCommercialChange(UUID workOrderId) { locked(workOrderId); }
+    public boolean lockForCommercialChange(UUID workOrderId) { return locked(workOrderId).stage().operational(); }
 
     @Override
     @Transactional
@@ -98,6 +98,35 @@ public class WorkOrderApplicationService implements WorkOrderQuery, br.com.uberh
             automatic(locked(workOrderId), Stage.APROVADA, "Orçamento aprovado pelo cliente");
         else if (allRejected && automationEnabled(AUTOMATION_QUOTE_REJECTED))
             automatic(locked(workOrderId), Stage.REPROVADA, "Orçamento reprovado pelo cliente");
+    }
+
+    /**
+     * DR-0019, opção A. Roda na transação do orçamento, com a OS já bloqueada por {@code lockForCommercialChange}.
+     * O rejeitado é liberado para o Estoque devolver a baixa; o aprovado só tem a marca atualizada — se ele havia
+     * sido devolvido por uma rejeição anterior, a nova baixa acontece na finalização, onde faltar saldo recusa a
+     * finalização e não a decisão do cliente.
+     */
+    @Override
+    @Transactional
+    public Set<UUID> productItemsDecided(UUID workOrderId, Map<UUID, Boolean> approvedByProductItem) {
+        if (approvedByProductItem == null || approvedByProductItem.isEmpty()) return Set.of();
+        Instant now = clock.instant();
+        Set<UUID> approvedButRemoved = new LinkedHashSet<>();
+        for (WorkOrder.ProductItem item : locked(workOrderId).products()) {
+            Boolean approved = approvedByProductItem.get(item.id());
+            if (approved == null) continue;
+            if (item.removed()) {
+                if (approved) approvedButRemoved.add(item.id());
+                continue;
+            }
+            boolean wasRejected = item.rejected();
+            repository.saveProductState(item.decided(approved ? WorkOrder.ProductItem.CustomerDecision.APPROVED
+                    : WorkOrder.ProductItem.CustomerDecision.REJECTED, now));
+            if (!approved && !wasRejected)
+                events.publishEvent(new WorkOrderEvents.ProductReleased(workOrderId, item.id(),
+                        "Devolução: item rejeitado pelo cliente no orçamento"));
+        }
+        return approvedButRemoved;
     }
 
     public static final String AUTOMATION_DIAGNOSIS = "DIAGNOSIS_REGISTERED";
@@ -141,6 +170,7 @@ public class WorkOrderApplicationService implements WorkOrderQuery, br.com.uberh
         UUID by = currentUser.id().orElse(null);
         WorkOrder finished = transition(current, current.finish(defaultStatus(Stage.FINALIZADA), by, now), null, true);
         events.publishEvent(new WorkOrderEvents.Finished(id, finished.products().stream()
+                .filter(WorkOrder.ProductItem::consumed)
                 .map(item -> new WorkOrderEvents.ProductLine(item.id(), item.productId(), item.quantity())).toList(),
                 billingQuoteId, now, by));
         return finished;
@@ -263,6 +293,23 @@ public class WorkOrderApplicationService implements WorkOrderQuery, br.com.uberh
         return get(id);
     }
 
+    /**
+     * Remove da OS um item físico não aprovado (DR-0019, opção B): lançamento por engano ou item que o cliente
+     * recusou. A marca fica no item, com motivo e autor, e o Estoque devolve a baixa na mesma transação.
+     */
+    @Transactional
+    public WorkOrder removeProduct(UUID id, UUID itemId, String reason) {
+        WorkOrder order = locked(id);
+        order.requireOperational();
+        WorkOrder.ProductItem item = order.products().stream().filter(candidate -> candidate.id().equals(itemId)).findFirst()
+                .orElseThrow(() -> new WorkOrderException("WORK_ORDER_PRODUCT_NOT_FOUND", "Item não encontrado nesta OS"));
+        WorkOrder.ProductItem removed = item.remove(currentUser.id().orElse(null), reason, clock.instant());
+        repository.saveProductState(removed);
+        // Item já rejeitado teve a baixa devolvida na rejeição; o Estoque trata a segunda liberação como nada a fazer.
+        events.publishEvent(new WorkOrderEvents.ProductReleased(id, itemId, "Devolução: item removido da OS — " + removed.removalReason()));
+        return get(id);
+    }
+
     // ------------------------------------------------------------------ contrato público
 
     @Override
@@ -282,7 +329,8 @@ public class WorkOrderApplicationService implements WorkOrderQuery, br.com.uberh
     @Override
     @Transactional(readOnly = true)
     public List<ProductItemReference> productItems(UUID workOrderId) {
-        return repository.findById(workOrderId).map(w -> w.products().stream()
+        // Item removido da OS não origina item comercial novo (DR-0019).
+        return repository.findById(workOrderId).map(w -> w.products().stream().filter(i -> !i.removed())
                         .map(i -> new ProductItemReference(i.id(), i.productId(), i.description(), i.unit(), i.quantity(), i.unitPrice())).toList())
                 .orElse(List.of());
     }

@@ -111,3 +111,52 @@ test('catálogo de produtos vazio orienta o operador', async () => {
   expect(await screen.findByText('Nenhum produto cadastrado.')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Adicionar item à OS' })).toBeDisabled()
 })
+
+// ---------------------------------------------------------------- DR-0019: item rejeitado e remoção
+
+const hose = { id: 'pi2', productId: 'p1', description: 'Mangueira de alta', internalCode: null, unit: 'UNIDADE', quantity: 1, unitPrice: 150, addedAt: '2026-09-10T12:00:00Z' }
+
+test('item rejeitado pelo cliente e item removido ficam listados, mas fora dos totais (DR-0019)', async () => {
+  mock({ 'GET /api/work-orders/o1': { ...order, products: [
+    order.products[0],
+    { ...hose, customerDecision: 'REJECTED' },
+    { ...hose, id: 'pi3', description: 'Filtro lançado por engano', removedAt: '2026-09-11T09:00:00Z', removalReason: 'Lançado por engano' },
+  ] } })
+  renderDetail()
+
+  const rejected = await screen.findByTestId('product-item-pi2')
+  expect(rejected).toHaveTextContent('Rejeitado pelo cliente')
+  expect(rejected).toHaveTextContent('estoque baixado para este item foi devolvido')
+  const removed = screen.getByTestId('product-item-pi3')
+  expect(removed).toHaveTextContent('Removido da OS')
+  expect(removed).toHaveTextContent('Motivo: Lançado por engano')
+  // Removido não oferece nova remoção; rejeitado ainda pode ser retirado da OS.
+  expect(removed.querySelector('button')).toBeNull()
+  expect(rejected.querySelector('button')).toHaveTextContent('Remover da OS')
+
+  expect(screen.getByTestId('products-subtotal')).toHaveTextContent('107,25')
+  expect(screen.getByTestId('order-total')).toHaveTextContent('207,25')
+})
+
+test('remover item não aprovado exige motivo e envia DELETE; item aprovado não oferece remoção', async () => {
+  const fetchSpy = mock({
+    'GET /api/work-orders/o1': { ...order, products: [{ ...order.products[0], customerDecision: 'APPROVED' }, hose] },
+    'DELETE /api/work-orders/o1/products/pi2': { ...order, products: [{ ...hose, removedAt: '2026-09-11T09:00:00Z', removalReason: 'Cliente desistiu' }] },
+  })
+  renderDetail()
+
+  const approved = await screen.findByTestId('product-item-pi1')
+  expect(approved).toHaveTextContent('Aprovado pelo cliente')
+  expect(approved.querySelector('button')).toBeNull()
+
+  const pending = screen.getByTestId('product-item-pi2')
+  await userEvent.click(pending.querySelector('button')!)
+  await userEvent.type(screen.getByLabelText('Motivo da remoção de Mangueira de alta'), 'Cliente desistiu')
+  await userEvent.click(screen.getByRole('button', { name: 'Remover item' }))
+
+  await waitFor(() => {
+    const call = fetchSpy.mock.calls.find(([input, init]) => String(input) === '/api/work-orders/o1/products/pi2' && init?.method === 'DELETE')
+    expect(call).toBeDefined()
+    expect(JSON.parse(String(call![1]?.body))).toEqual({ reason: 'Cliente desistiu' })
+  })
+})

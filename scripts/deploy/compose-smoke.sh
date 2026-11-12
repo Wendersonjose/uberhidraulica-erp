@@ -2,11 +2,15 @@
 # Smoke test do stack do piloto com Docker de verdade (compose.yaml):
 #   1. sobe postgres + backend + frontend e espera todos ficarem saudáveis;
 #   2. confere /actuator/health, o proxy /api, os cabeçalhos de segurança e o cookie de sessão;
-#   3. roda o fluxo E2E da oficina (scripts/e2e/workshop_flow.py) pelo nginx;
+#   3. roda o fluxo E2E da oficina (scripts/e2e/workshop_flow.py) e o de Compras (scripts/e2e/purchasing_flow.py: NF-e 21,
+#      recebimento, estoque, financeiro, pedido e aprovação) pelo nginx;
 #   4. confere que o nginx não deixa o cliente forjar o IP gravado na evidência do orçamento público;
 #   5. reinicia os containers e confere que os dados persistem;
-#   6. faz backup (pg_dump), destrói o volume, restaura em um volume novo e confere os dados;
-#   7. confere o limite de requisições do login (429).
+#   6. backup/verificação/restore com os scripts de operação (scripts/ops): backup, restauração em banco descartável,
+#      destruição do volume, restore e conferência dos dados;
+#   7. confere o limite de requisições do login (429);
+#   8. troca a homologação HTTP pela produção HTTPS (compose.https.yaml, Caddy) SOBRE OS MESMOS DADOS: redirect, HSTS,
+#      cookie Secure, nginx sem porta publicada, login com os dados anteriores e o preflight de produção.
 #
 # Uso:  scripts/deploy/compose-smoke.sh        (requer docker compose, curl, python3)
 # Não toca no seu .env: usa um arquivo temporário com segredos aleatórios e o projeto `erp-smoke`.
@@ -27,6 +31,8 @@ OWNER_EMAIL="dono-smoke@example.test"
 
 cat > "${ENV_FILE}" <<EOF
 SPRING_PROFILES_ACTIVE=prod
+# O smoke fala HTTP puro: o cookie sem Secure só é aceito com a homologação declarada de propósito (falha fechada).
+APP_ENVIRONMENT=homologation
 SESSION_COOKIE_SECURE=false
 HTTP_PORT=${HTTP_PORT}
 DB_NAME=uberhidraulica
@@ -37,7 +43,9 @@ IAM_BOOTSTRAP_OWNER_EMAIL=${OWNER_EMAIL}
 IAM_BOOTSTRAP_OWNER_PASSWORD=${BOOTSTRAP_PASSWORD}
 EOF
 
+HTTPS_ENV="${WORK}/https.env"
 compose() { docker compose --env-file "${ENV_FILE}" -p "${PROJECT}" "$@"; }
+compose_https() { docker compose --env-file "${HTTPS_ENV}" -p "${PROJECT}" -f compose.yaml -f compose.https.yaml "$@"; }
 psql_q() { compose exec -T postgres psql -U uberhidraulica -d uberhidraulica -tA -c "$1"; }
 FAILURES=0
 ok()   { echo "  [OK]   $1"; }
@@ -49,6 +57,7 @@ cleanup() {
   if [ "${code}" -ne 0 ] || [ "${FAILURES}" -ne 0 ]; then
     echo; echo "== logs (falha)"; compose logs --no-color --tail 60 backend frontend postgres 2>&1 || true
   fi
+  [ -f "${HTTPS_ENV}" ] && compose_https down -v --remove-orphans >/dev/null 2>&1
   compose down -v --remove-orphans >/dev/null 2>&1 || true
   rm -rf "${WORK}"
 }
@@ -96,6 +105,17 @@ else
   fail "E2E completo"
 fi
 
+echo; echo "== 3b. fluxo E2E de Compras (NF-e 21 real redigida, recebimento, estoque, financeiro, pedido)"
+if BASE_URL="${BASE}" E2E_OWNER_EMAIL="${OWNER_EMAIL}" E2E_OWNER_PASSWORD="${OWNER_PASSWORD}" python3 scripts/e2e/purchasing_flow.py; then
+  ok "E2E de Compras completo"
+else
+  fail "E2E de Compras completo"
+fi
+PURCHASES_BEFORE="$(psql_q 'select count(*) from purchasing.purchase')"
+RECEIPT_MOVES_BEFORE="$(psql_q "select count(*) from inventory.stock_movement where source_type = 'PURCHASE'")"
+PAYABLES_LINKED_BEFORE="$(psql_q 'select count(*) from purchasing.purchase_payable')"
+[ "${PURCHASES_BEFORE}" -ge 3 ] && [ "${RECEIPT_MOVES_BEFORE}" -ge 14 ] && [ "${PAYABLES_LINKED_BEFORE}" = 3 ]   && ok "compras, entradas de estoque de compra e 3 parcelas gravadas (${PURCHASES_BEFORE} compras, ${RECEIPT_MOVES_BEFORE} movimentos)"   || fail "Compras gravou dados inesperados (compras=${PURCHASES_BEFORE}, movimentos=${RECEIPT_MOVES_BEFORE}, parcelas=${PAYABLES_LINKED_BEFORE})"
+
 echo; echo "== 4. evidência de IP do orçamento público"
 RECORDED="$(psql_q "select host(ip_address) from workshop.quote_decision_submission where channel='PUBLIC_LINK' order by occurred_at desc limit 1")"
 echo "     IP gravado: ${RECORDED}"
@@ -111,22 +131,76 @@ ORDERS_AFTER="$(psql_q 'select count(*) from workorder.work_order')"
 [ "$(login_status "${OWNER_EMAIL}" "${BOOTSTRAP_PASSWORD}")" = 401 ] && ok "senha de bootstrap não vale mais" || fail "senha de bootstrap ainda vale"
 MIGRATIONS="$(psql_q 'select count(*) from flyway_schema_history where success')"
 echo "     migrations Flyway aplicadas: ${MIGRATIONS}"
+EXPECTED_MIGRATIONS="$(ls -1 src/main/resources/db/migration/V*.sql | wc -l | tr -d ' ')"
+[ "${MIGRATIONS}" = "${EXPECTED_MIGRATIONS}" ] && ok "Flyway aplicou as ${EXPECTED_MIGRATIONS} migrations do repositório (até a V25 de Compras)"   || fail "Flyway aplicou ${MIGRATIONS} de ${EXPECTED_MIGRATIONS} migrations"
+[ "$(psql_q 'select count(*) from purchasing.purchase')" = "${PURCHASES_BEFORE}" ] && ok "compras persistem após reinício" || fail "compras mudaram no reinício"
 
-echo; echo "== 6. backup e restore em volume novo"
-compose exec -T postgres pg_dump -U uberhidraulica -F c -d uberhidraulica > "${WORK}/backup.dump"
-[ -s "${WORK}/backup.dump" ] && ok "backup gerado ($(wc -c < "${WORK}/backup.dump") bytes)" || fail "backup vazio"
+echo; echo "== 6. backup, verificação e restore (scripts/ops)"
+export COMPOSE_PROJECT_NAME="${PROJECT}" COMPOSE_ENV_FILES="${ENV_FILE}" BACKUP_DIR="${WORK}/backups"
+BACKUP_ALLOW_LOCAL_ONLY=1 scripts/ops/backup.sh >/dev/null && ok "backup.sh gerou e validou o backup" || fail "backup.sh falhou"
+BACKUP_FILE="$(ls -1t "${BACKUP_DIR}"/erp-*.dump | head -1)"
+[ -s "${BACKUP_FILE}" ] && ok "backup gerado ($(wc -c < "${BACKUP_FILE}") bytes)" || fail "backup vazio"
+code=0; scripts/ops/backup.sh >/dev/null 2>&1 || code=$?
+[ "${code}" = 3 ] && ok "backup sem cópia externa configurada sai com código 3 (falha fechada)" || fail "backup sem cópia externa saiu com ${code}"
+# Mesmo procedimento do pré-voo da produção: contagem exata na origem (row-counts.sql, só leitura) x contagem na cópia
+# restaurada pelo verify-backup. Sem tráfego entre o backup e a contagem, só as tabelas de sessão podem variar.
+compose exec -T postgres psql -U uberhidraulica -d uberhidraulica -qtA -F ' ' -v ON_ERROR_STOP=1 \
+    < scripts/ops/row-counts.sql > "${WORK}/counts-origin.txt" || fail "row-counts.sql falhou na origem"
+if COUNTS_OUT="${WORK}/counts-restored.txt" scripts/ops/verify-backup.sh "${BACKUP_FILE}" >"${WORK}/verify.log" 2>&1; then ok "verify-backup restaura o backup em um banco descartável"
+else fail "verify-backup restaura o backup em um banco descartável"; tail -25 "${WORK}/verify.log"; fi
+if [ "$(grep -c . "${WORK}/counts-origin.txt")" -ge 20 ] \
+    && diff <(grep -v '^iam\.spring_session' "${WORK}/counts-origin.txt") \
+            <(grep -v '^iam\.spring_session' "${WORK}/counts-restored.txt" 2>/dev/null) >"${WORK}/counts.diff"; then
+    ok "contagem exata da cópia restaurada = origem ($(grep -c . "${WORK}/counts-origin.txt") tabelas, row-counts.sql)"
+else fail "contagem da cópia restaurada difere da origem"; head -20 "${WORK}/counts.diff"; fi
+# Ensaio da promoção (o mesmo do pré-voo da produção) sobre este backup: restaura, sobe o backend já construído e prova
+# que nenhuma linha muda. Aqui o banco já está na versão do código (nada pendente), o caso em que o ensaio também precisa passar.
+if REHEARSAL_IMAGE="${PROJECT}-backend" REHEARSAL_PORT=18089 scripts/ops/rehearse-promotion.sh "${BACKUP_FILE}" >"${WORK}/rehearsal.log" 2>&1
+then ok "ensaio da promoção sobre o backup: aprovado, nenhuma linha alterada"
+else fail "ensaio da promoção sobre o backup"; tail -25 "${WORK}/rehearsal.log"; fi
 compose down -v --remove-orphans
 compose up -d postgres --wait --wait-timeout 120
-compose exec -T postgres pg_restore -U uberhidraulica -d uberhidraulica --clean --if-exists < "${WORK}/backup.dump"
+scripts/ops/restore.sh "${BACKUP_FILE}" --yes >"${WORK}/restore.log" 2>&1 && ok "restore.sh concluiu" || { fail "restore.sh falhou"; tail -20 "${WORK}/restore.log"; }
 [ "$(psql_q 'select count(*) from workorder.work_order')" = "${ORDERS_AFTER}" ] && ok "restore trouxe as ${ORDERS_AFTER} OS de volta" || fail "restore não trouxe as OS"
-compose up -d --build --wait --wait-timeout 300
 [ "$(login_status "${OWNER_EMAIL}" "${OWNER_PASSWORD}")" = 200 ] && ok "login do Dono depois do restore" || fail "login do Dono depois do restore"
 [ "$(psql_q 'select count(*) from flyway_schema_history where success')" = "${MIGRATIONS}" ] && ok "histórico Flyway íntegro após o restore" || fail "histórico Flyway divergente"
+[ "$(psql_q 'select count(*) from purchasing.purchase')" = "${PURCHASES_BEFORE}" ]   && [ "$(psql_q "select count(*) from inventory.stock_movement where source_type = 'PURCHASE'")" = "${RECEIPT_MOVES_BEFORE}" ]   && [ "$(psql_q 'select count(*) from purchasing.purchase_payable')" = "${PAYABLES_LINKED_BEFORE}" ]   && ok "restore trouxe as compras, as entradas de estoque e as parcelas de volta"   || fail "restore não trouxe os dados de Compras"
+[ "$(psql_q "select count(*) from (select 1 from inventory.stock_movement where source_type = 'PURCHASE' group by purchase_receipt_item_id, movement_type having count(*) > 1) d")" = 0 ]   && ok "nenhuma entrada de estoque duplicada para o mesmo item recebido" || fail "há entrada de estoque duplicada para o mesmo item recebido"
 
 echo; echo "== 7. limite de requisições do login"
 CODES=""
 for _ in $(seq 1 45); do CODES="${CODES} $(login_status "${OWNER_EMAIL}" "senha-errada-$RANDOM")"; done
 printf '%s' "${CODES}" | grep -q 429 && ok "login excedendo o limite responde 429" || fail "login nunca respondeu 429 (${CODES})"
+
+echo; echo "== 8. produção HTTPS (compose.https.yaml) sobre os mesmos dados"
+sed -e 's/^APP_ENVIRONMENT=.*/APP_ENVIRONMENT=production/' -e 's/^SESSION_COOKIE_SECURE=.*/SESSION_COOKIE_SECURE=true/' "${ENV_FILE}" > "${HTTPS_ENV}"
+echo "SITE_ADDRESS=localhost" >> "${HTTPS_ENV}"
+compose down --remove-orphans
+compose_https up -d --wait --wait-timeout 300
+SECURE_BASE="https://localhost"
+for _ in $(seq 1 30); do curl -sk -m 3 "${SECURE_BASE}/actuator/health" | grep -q '"status":"UP"' && break; sleep 2; done
+compose_https cp caddy:/data/caddy/pki/authorities/local/root.crt "${WORK}/caddy-root.crt"
+SCURL="curl -s --cacert ${WORK}/caddy-root.crt"
+check "HTTPS responde com o certificado do Caddy" bash -c "${SCURL} -o /dev/null -w '%{http_code}' ${SECURE_BASE}/ | grep -q 200"
+check "HTTP redireciona para HTTPS" bash -c "${SCURL} -o /dev/null -w '%{http_code} %{redirect_url}' http://localhost/ | grep -Eq '^30[178] https://localhost/'"
+check "HSTS presente" bash -c "${SCURL} -I ${SECURE_BASE}/ | grep -qi '^strict-transport-security:'"
+PUBLISHED="$(compose_https ps frontend --format '{{.Ports}}' 2>/dev/null | grep -- '->' || true)"
+[ -z "${PUBLISHED}" ] && ok "o nginx do ERP não publica porta no host (só o Caddy)" || fail "o nginx do ERP publica porta: ${PUBLISHED}"
+SECURE_JAR="${WORK}/secure-jar"
+CSRF="$(${SCURL} -c "${SECURE_JAR}" "${SECURE_BASE}/api/iam/csrf")"
+TOKEN="$(printf '%s' "${CSRF}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["token"])')"
+HEADER="$(printf '%s' "${CSRF}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["headerName"])')"
+LOGIN_HEADERS="$(${SCURL} -D - -o /dev/null -b "${SECURE_JAR}" -c "${SECURE_JAR}" -H "${HEADER}: ${TOKEN}" -H 'Content-Type: application/json' \
+  -d "{\"email\":\"${OWNER_EMAIL}\",\"password\":\"${OWNER_PASSWORD}\"}" "${SECURE_BASE}/api/iam/auth/login")"
+printf '%s' "${LOGIN_HEADERS}" | head -1 | grep -q ' 200' && ok "login do Dono pelo HTTPS, com os dados da homologação" || fail "login pelo HTTPS falhou"
+for flag in "Secure" "HttpOnly" "SameSite=Lax"; do
+  printf '%s' "${LOGIN_HEADERS}" | grep -i '^set-cookie:' | grep -qi "${flag}" && ok "cookie de sessão com ${flag}" || fail "cookie de sessão sem ${flag}"
+done
+[ "$(${SCURL} -o /dev/null -w '%{http_code}' -b "${SECURE_JAR}" "${SECURE_BASE}/api/customers")" = 200 ] && ok "consulta autenticada pelo HTTPS" || fail "consulta autenticada pelo HTTPS"
+[ "$(psql_q 'select count(*) from workorder.work_order')" = "${ORDERS_AFTER}" ] && ok "as ${ORDERS_AFTER} OS continuam lá depois de ir para HTTPS" || fail "OS mudaram na troca para HTTPS"
+COMPOSE_FILE=compose.yaml:compose.https.yaml COMPOSE_ENV_FILES="${HTTPS_ENV}" PUBLIC_URL="${SECURE_BASE}" \
+  PREFLIGHT_CURL_OPTS="--cacert ${WORK}/caddy-root.crt" scripts/ops/preflight.sh --homologation >"${WORK}/preflight.log" 2>&1 \
+  && ok "preflight (homologação) sem falhas" || { fail "preflight com falhas"; cat "${WORK}/preflight.log"; }
 
 echo
 if [ "${FAILURES}" -eq 0 ]; then echo "SMOKE OK"; else echo "SMOKE COM ${FAILURES} FALHA(S)"; exit 1; fi

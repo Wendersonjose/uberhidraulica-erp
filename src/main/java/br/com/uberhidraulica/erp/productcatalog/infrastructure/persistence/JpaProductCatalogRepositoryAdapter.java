@@ -15,6 +15,9 @@ public class JpaProductCatalogRepositoryAdapter implements ProductCatalogReposit
 
     @Override public CatalogProduct save(CatalogProduct value) { return map(repository.saveAndFlush(entity(value))); }
     @Override public Optional<CatalogProduct> findById(UUID id) { return repository.findById(id).map(this::map); }
+    @Override public Optional<CatalogProduct> findByGtin(String gtin) {
+        return gtin == null || gtin.isBlank() ? Optional.empty() : repository.findByGtin(gtin.trim()).map(this::map);
+    }
     @Override public List<CatalogProduct> findAll() {
         return repository.findAllByOrderByDescriptionAscIdAsc().stream().map(this::map).toList();
     }
@@ -25,11 +28,12 @@ public class JpaProductCatalogRepositoryAdapter implements ProductCatalogReposit
         e.category = value.category(); e.type = value.type(); e.unit = value.unit();
         e.referenceCost = value.referenceCost(); e.salePrice = value.salePrice(); e.minimumStock = value.minimumStock();
         e.active = value.active(); e.createdAt = value.createdAt(); e.updatedAt = value.updatedAt();
+        e.gtin = value.gtin(); e.ncm = value.ncm();
         return e;
     }
 
     private CatalogProduct map(ProductEntity e) {
         return new CatalogProduct(e.id, e.description, e.internalCode, e.category, e.type, e.unit,
-                e.referenceCost, e.salePrice, e.minimumStock, e.active, e.createdAt, e.updatedAt);
+                e.referenceCost, e.salePrice, e.minimumStock, e.active, e.createdAt, e.updatedAt, e.gtin, e.ncm);
     }
 }

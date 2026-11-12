@@ -58,6 +58,15 @@ public class JpaWorkOrderRepositoryAdapter implements WorkOrderRepositoryPort {
         return map(productItems.saveAndFlush(e));
     }
 
+    /** Grava a decisão do cliente e a remoção do item; os dados comerciais do item são snapshot e não mudam. */
+    @Override
+    public WorkOrder.ProductItem saveProductState(WorkOrder.ProductItem i) {
+        WorkOrderProductEntity e = productItems.findById(i.id()).orElseThrow();
+        e.customerDecision = i.customerDecision() == null ? null : i.customerDecision().name();
+        e.decidedAt = i.decidedAt(); e.removedAt = i.removedAt(); e.removedBy = i.removedBy(); e.removalReason = i.removalReason();
+        return map(productItems.saveAndFlush(e));
+    }
+
     @Override
     public void addStatusChange(WorkOrder.StatusChange c) {
         var e = new WorkOrderStatusHistoryEntity();
@@ -124,6 +133,8 @@ public class JpaWorkOrderRepositoryAdapter implements WorkOrderRepositoryPort {
     }
 
     private WorkOrder.ProductItem map(WorkOrderProductEntity e) {
-        return new WorkOrder.ProductItem(e.id, e.productId, e.productDescription, e.productInternalCode, e.unit, e.quantity, e.unitPrice, e.addedAt);
+        return new WorkOrder.ProductItem(e.id, e.productId, e.productDescription, e.productInternalCode, e.unit, e.quantity, e.unitPrice, e.addedAt,
+                e.customerDecision == null ? null : WorkOrder.ProductItem.CustomerDecision.valueOf(e.customerDecision), e.decidedAt,
+                e.removedAt, e.removedBy, e.removalReason);
     }
 }

@@ -726,9 +726,15 @@ o contrato aprovado.
 
 # Estado do projeto
 
-O índice de Tasks concluídas está em `tasks/done/` (TASK-0001 a TASK-0019). O estado funcional, o que está
+O índice de Tasks concluídas está em `tasks/done/` (TASK-0001 a TASK-0020); Compras e Fornecedores (`TASK-0021`) está em
+andamento em `tasks/backlog/`, com as migrations V22 a V27 entregues. O estado funcional, o que está
 pendente e as decisões em aberto estão no `README.md` (seção "Estado atual") e em `decision-requests/`.
-Pendências que dependem do proprietário: DR-0019, DR-0020 e DR-0021.
+Decididas em 2026-11-12: DR-0019 (A + B) e DR-0023 (C1-A a C4-A), ambas implementadas. Pendências que ainda dependem do
+proprietário: DR-0020 itens 2 e 3 (política de senha e delegação do perfil Dono) e o tratamento de compra sem NF-e.
+
+Estado: `READY_FOR_HOMOLOGATION`. `READY_FOR_PRODUCTION` só depois de cumpridos os bloqueadores de
+`docs/review/RELEASE-producao.md` (HTTPS real, backup externo restaurado, homologação em servidor real e a decisão
+do proprietário sobre os itens 2 e 3 da DR-0020; o CI e a varredura de dependências precisam estar verdes no PR que for para `main`).
 
 ---
 

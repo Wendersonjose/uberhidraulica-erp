@@ -62,6 +62,7 @@ public class PublicQuoteService {
 
     @Transactional
     public IssuedAccess issue(Quote quote, UUID revisionId, Instant requestedValidUntil) {
+        lockOpenWorkOrder(quote.workOrderId(), "OS finalizada, entregue ou cancelada não aceita mais link de aprovação");
         QuoteRevision revision = quote.revision(revisionId)
                 .orElseThrow(() -> new QuoteException("QUOTE_REVISION_NOT_FOUND", "Revisão não encontrada"));
         String rawToken = PublicAccessToken.generate();
@@ -119,7 +120,8 @@ public class PublicQuoteService {
         if (previous.isPresent()) return replay(previous.get(), payloadDigest, access, now);
 
         // Serializa com a finalização da OS antes de ler o orçamento (revisão TASK-0015, F1).
-        workOrderEvents.lockForCommercialChange(loadQuote(access).workOrderId());
+        lockOpenWorkOrder(loadQuote(access).workOrderId(),
+                "Esta ordem de serviço já foi encerrada; o orçamento não aceita mais decisão");
         Quote quote = loadQuote(access);
         QuoteRevision revision = quote.revision(access.quoteRevisionId())
                 .orElseThrow(() -> new QuoteException("PUBLIC_QUOTE_NOT_AVAILABLE", "Orçamento indisponível"));
@@ -147,6 +149,7 @@ public class PublicQuoteService {
                     "Um dos itens recebeu decisão durante o envio; recarregue o orçamento");
         }
         notifyWorkOrder(quote, revision);
+        notifyProductDecisions(quote, decisions);
         return new DecisionResult(render(loadQuote(access), access, now), false);
     }
 
@@ -161,7 +164,7 @@ public class PublicQuoteService {
     public Quote registerInternal(Quote quote, UUID revisionId, String contactChannel, String authorizedBy, String notes,
                                   List<ItemDecision> items) {
         // Serializa com a finalização da OS e relê o orçamento depois do bloqueio (revisão TASK-0015, F1).
-        workOrderEvents.lockForCommercialChange(quote.workOrderId());
+        lockOpenWorkOrder(quote.workOrderId(), "OS finalizada, entregue ou cancelada não aceita mais decisão no orçamento");
         quote = quotes.findById(quote.id()).orElseThrow();
         Instant now = Instant.now(clock);
         QuoteRevision revision = quote.revision(revisionId)
@@ -182,6 +185,7 @@ public class PublicQuoteService {
             throw new QuoteException("QUOTE_ITEM_ALREADY_DECIDED", "Um dos itens recebeu decisão durante o registro; recarregue o orçamento");
         }
         notifyWorkOrder(quote, revision);
+        notifyProductDecisions(quote, decisions);
         return quotes.findById(quote.id()).orElseThrow();
     }
 
@@ -196,6 +200,26 @@ public class PublicQuoteService {
         boolean anyApproved = ofRevision.contains(DecisionType.APPROVE);
         boolean allRejected = !ofRevision.isEmpty() && ofRevision.stream().allMatch(type -> type == DecisionType.REJECT);
         workOrderEvents.quoteDecided(quote.workOrderId(), anyApproved, allRejected);
+    }
+
+    /**
+     * DR-0019, opção A: informa a OS da decisão sobre cada item de orçamento ligado a um item físico dela. A OS guarda
+     * a decisão e manda o Estoque devolver a baixa do rejeitado.
+     */
+    private void notifyProductDecisions(Quote quote, List<DecisionSubmission.Decision> decisions) {
+        Map<UUID, Boolean> approvedByProductItem = new java.util.LinkedHashMap<>();
+        for (DecisionSubmission.Decision decision : decisions) {
+            quote.itemRevision(decision.quoteItemRevisionId())
+                    .flatMap(revision -> quote.items().stream().filter(item -> item.id().equals(revision.quoteItemId())).findFirst())
+                    .map(br.com.uberhidraulica.erp.quote.domain.QuoteItem::workOrderProductId)
+                    .ifPresent(productItemId -> approvedByProductItem.put(productItemId,
+                            decision.decisionType() == DecisionType.APPROVE));
+        }
+        // A exceção desfaz a transação inteira, inclusive a decisão já gravada: aprovar item que a OS não tem mais
+        // viraria cobrança de algo que não será entregue.
+        if (!workOrderEvents.productItemsDecided(quote.workOrderId(), approvedByProductItem).isEmpty())
+            throw new QuoteException("QUOTE_ITEM_REMOVED_FROM_WORK_ORDER",
+                    "Um dos itens aprovados foi removido da ordem de serviço. Peça à oficina um orçamento atualizado");
     }
 
     // ----- apoio -----
@@ -311,5 +335,11 @@ public class PublicQuoteService {
 
     private static QuoteException notAvailable() {
         return new QuoteException("PUBLIC_QUOTE_NOT_AVAILABLE", "Orçamento indisponível");
+    }
+
+    /** Bloqueia a OS e recusa a operação se ela já foi finalizada, entregue ou cancelada (ver QuoteApplicationService). */
+    private void lockOpenWorkOrder(UUID workOrderId, String message) {
+        if (!workOrderEvents.lockForCommercialChange(workOrderId))
+            throw new QuoteException("WORK_ORDER_CLOSED", message);
     }
 }

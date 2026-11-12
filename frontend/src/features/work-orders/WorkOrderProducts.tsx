@@ -4,25 +4,53 @@ import { productsApi, workOrdersApi } from '../../api/resources'
 import { queryKeys } from '../../api/queryKeys'
 import { PRODUCT_UNIT_LABELS, type ProductUnit, type WorkOrderProduct } from '../../api/types'
 import { QueryState } from '../../components/QueryState'
+import { Badge } from '../../components/ui'
+import { ConfirmAction } from '../../components/controls'
 import { formatBrl, formatQuantity, quantityFitsUnit, quantityRuleHint, quantityStep } from '../../utils/format'
-import { productsSubtotal } from './totals'
+import { isConsumed, productsSubtotal } from './totals'
 
 const unitLabel = (unit: string) => PRODUCT_UNIT_LABELS[unit as ProductUnit] ?? unit
 
-export function WorkOrderProductsCard({ products }: { products: WorkOrderProduct[] }) {
+/**
+ * Itens físicos da OS. Item removido ou rejeitado pelo cliente continua listado, como histórico, mas fora do subtotal
+ * (DR-0019). `orderId` habilita a remoção de item não aprovado; sem ele o cartão é só leitura.
+ */
+export function WorkOrderProductsCard({ products, orderId }: { products: WorkOrderProduct[]; orderId?: string }) {
+  const client = useQueryClient()
+  const [reasons, setReasons] = useState<Record<string, string>>({})
+  const remove = async (itemId: string) => {
+    await workOrdersApi.removeProduct(orderId!, itemId, (reasons[itemId] ?? '').trim())
+    await client.invalidateQueries({ queryKey: ['work-orders', orderId] })
+    await client.invalidateQueries({ queryKey: queryKeys.workOrders })
+  }
   return <section className="card" style={{ marginTop: 22 }}>
     <h2>Itens físicos da OS</h2>
     {products.length === 0
       ? <div className="state">Nenhum item físico lançado.</div>
-      : products.map(item => <div className="service-row" key={item.id}>
+      : products.map(item => <div className="service-row" key={item.id} data-testid={`product-item-${item.id}`}>
         <div>
-          <strong>{item.description}</strong>
+          <strong style={isConsumed(item) ? undefined : { textDecoration: 'line-through' }}>{item.description}</strong>
+          {item.removedAt && <> <Badge tone="warning">Removido da OS</Badge></>}
+          {!item.removedAt && item.customerDecision === 'REJECTED' && <> <Badge tone="warning">Rejeitado pelo cliente</Badge></>}
+          {!item.removedAt && item.customerDecision === 'APPROVED' && <> <Badge>Aprovado pelo cliente</Badge></>}
           <div className="muted">
             {[item.internalCode, unitLabel(item.unit)].filter(Boolean).join(' • ')}
             {' · '}{formatQuantity(Number(item.quantity), item.unit)} × {formatBrl(Number(item.unitPrice))}
           </div>
+          {item.removedAt && <div className="muted">Motivo: {item.removalReason}. O estoque baixado para este item foi devolvido.</div>}
+          {!item.removedAt && item.customerDecision === 'REJECTED' &&
+            <div className="muted">O estoque baixado para este item foi devolvido e ele não entra na cobrança.</div>}
+          {orderId && !item.removedAt && item.customerDecision !== 'APPROVED' &&
+            <ConfirmAction label="Remover da OS" confirmLabel="Remover item"
+              question={`Remover "${item.description}" da OS? O estoque baixado para ele volta.`}
+              onConfirm={() => remove(item.id)}>
+              <label className="field"><span>Motivo da remoção *</span>
+                <input className="input" maxLength={500} aria-label={`Motivo da remoção de ${item.description}`}
+                  value={reasons[item.id] ?? ''}
+                  onChange={event => setReasons(current => ({ ...current, [item.id]: event.target.value }))} /></label>
+            </ConfirmAction>}
         </div>
-        <strong>{formatBrl(Number(item.quantity) * Number(item.unitPrice))}</strong>
+        <strong>{isConsumed(item) ? formatBrl(Number(item.quantity) * Number(item.unitPrice)) : '—'}</strong>
       </div>)}
     <div className="subtotal">
       <span>Subtotal de itens</span>

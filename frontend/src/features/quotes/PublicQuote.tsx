@@ -79,18 +79,18 @@ export function PublicQuotePage() {
     {apiError && <div role="alert" className="notice error">{apiError}</div>}
 
     <section className="card table-wrap">
-      <table className="table">
+      <table className="table table-cards">
         <thead><tr>
           <th>Item</th><th>Qtd.</th><th>Valor unitário</th><th>Total</th><th>Situação</th><th>Sua decisão</th>
         </tr></thead>
         <tbody>{data.items.map(item => <tr key={item.itemReference}>
-          <td><strong>{item.description}</strong></td>
-          <td>{Number(item.quantity)}</td>
-          <td>{formatBrl(Number(item.unitPrice))}</td>
-          <td>{formatBrl(Number(item.totalPrice))}
+          <td data-label="Item"><strong>{item.description}</strong></td>
+          <td data-label="Qtd.">{Number(item.quantity)}</td>
+          <td data-label="Valor unitário">{formatBrl(Number(item.unitPrice))}</td>
+          <td data-label="Total">{formatBrl(Number(item.totalPrice))}
             {Number(item.discountAmount ?? 0) > 0 && <div className="muted">desconto de {formatBrl(Number(item.discountAmount))}</div>}</td>
-          <td><Badge tone={statusTone(item)}>{PUBLIC_STATUS_LABELS[item.decisionStatus]}</Badge></td>
-          <td>{item.decisionAvailability === 'DECIDABLE'
+          <td data-label="Situação"><Badge tone={statusTone(item)}>{PUBLIC_STATUS_LABELS[item.decisionStatus]}</Badge></td>
+          <td data-label="Sua decisão">{item.decisionAvailability === 'DECIDABLE'
             ? <select className="select" aria-label={`Decisão para ${item.description}`}
               value={choices[item.itemReference] ?? 'PENDING'}
               onChange={event => setChoices({ ...choices, [item.itemReference]: event.target.value as Choice })}>

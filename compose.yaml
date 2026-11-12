@@ -28,7 +28,9 @@ services:
       # /var/lib/postgresql: montar em /var/lib/postgresql/data faz o container abortar na subida.
       - postgres_data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      # -h 127.0.0.1: durante o initdb um servidor temporário atende só no socket unix; só o definitivo escuta em TCP,
+      # que é por onde o backend conecta. Sem isso o container ficaria "healthy" cedo demais.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -46,6 +48,9 @@ services:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
       # Somente homologação em HTTP puro pode usar `false`; em produção o valor tem de ser `true`.
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
+      # `production` (padrão) ou `homologation`. Só `homologation` permite SESSION_COOKIE_SECURE=false (HTTP temporário).
+      # Em qualquer um, o perfil prod recusa subir com senha do banco ausente/fraca (falha fechada).
+      APP_ENVIRONMENT: ${APP_ENVIRONMENT:-production}
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${DB_NAME:?defina DB_NAME no .env}
@@ -77,6 +82,11 @@ services:
       dockerfile: frontend/Dockerfile
     restart: unless-stopped
     logging: *logging
+    environment:
+      # Endereços (CIDR, separados por vírgula) dos proxies confiáveis na frente deste nginx: o balanceador do
+      # provedor ou o Caddy do compose.https.yaml. Vazio = ninguém é confiável: X-Forwarded-* do cliente é ignorado.
+      # Falha fechada: /0 a /7 (qualquer origem) ou valor inválido impedem o container de subir.
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
     ports:
       - "${HTTP_PORT:-80}:80"
     depends_on:

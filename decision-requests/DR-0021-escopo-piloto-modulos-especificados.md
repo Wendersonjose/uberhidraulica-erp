@@ -6,10 +6,10 @@
 ID: DR-0021
 Título: Fronteira do MVP/piloto e sequência dos módulos Compras, Comissões, Conciliação, Fiscal e Rentabilidade
 Tipo: SCOPE
-Status: OPEN
+Status: DECIDED (2026-10-13) — ver §8
 Criado em: 2026-10-05
 Criado por: AG-00 — Orquestrador (TASK-0019)
-Última atualização: 2026-10-05
+Última atualização: 2026-10-13
 ```
 
 ## 2. Task relacionada
@@ -75,5 +75,25 @@ de arquivos; exigem Task própria de segredos operacionais (AG-14) antes de qual
 
 ```text
 Responsável pela decisão final: Proprietário do produto
-Decisão final: PENDENTE
+Decisão final: DECIDIDA em 2026-10-13 — a Opção A permanece como definição de "MVP do piloto"; o proprietário
+autoriza, além dela, a abertura imediata das Tasks de Compras e Fornecedores, evolução do Financeiro integrado a
+Compras e fundação do Contábil, nesta ordem.
 ```
+
+## 9. Decisão registrada (2026-10-13)
+
+Origem: briefing do proprietário "Implementar Compras, Financeiro e Contábil no SaaS da Oficina", respondido em chat
+(escolha "escopo completo"). Esta decisão libera, **respeitado o fluxo de governança do `AGENTS.md`** (Task →
+requisito → domínio → arquitetura → segurança → dados → backend → frontend → QA → revisão):
+
+| Módulo | Liberado | Task | Limites registrados |
+| --- | --- | --- | --- |
+| Compras e Fornecedores (inclui importação de NF-e modelo 55 como documento de **compra**) | SIM | `TASK-0021` | Importar XML não é receber nem pagar. A situação fiscal declarada no XML não substitui consulta oficial. |
+| Financeiro integrado a Compras (parcelas, contas bancárias, centros de custo, fluxo previsto/realizado) | SIM | `TASK-0022` | Preserva os fluxos de `TASK-0015`/`0016`; evolui por migrations versionadas. |
+| Contábil (competência, plano de contas parametrizável, partidas dobradas, razão, balancete, fechamento) | SIM, como **fundação** | `TASK-0023` | Classificação tributária e contabilização fiscal definitiva dependem do regime e do contador: ficam parametrizáveis e exigem validação antes de produção. |
+| Conciliação bancária (OFX/CSV) integrada ao Contábil | SIM, como fundação | `TASK-0023` | Layouts reais de extrato ainda não foram fornecidos (premissa original do DR); só o formato OFX genérico é coberto. |
+| Fiscal / NFS-e (emissão) | **NÃO** | — | Continua dependente de certificado A1 e homologação municipal (`AG-08`); não faz parte desta decisão. |
+| Comissões, Rentabilidade/Precificação | **NÃO** | — | Fora desta decisão. |
+| Multi-tenant / SaaS persistido | **NÃO** | — | O banco segue single-installation (ver `V21`); nenhum `tenant_id` é criado por esta decisão. Exige DR própria. |
+
+Decisões de domínio de Compras que o `AG-05` §163 manda tratar por Decision Request estão em `DR-0022`.

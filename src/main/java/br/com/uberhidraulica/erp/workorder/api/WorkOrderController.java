@@ -98,6 +98,15 @@ public class WorkOrderController {
         return ResponseEntity.status(HttpStatus.CREATED).body(Response.from(application.addProduct(id, r.productId(), r.quantity())));
     }
 
+    /** Remove um item físico não aprovado, com motivo; o estoque baixado para ele volta (DR-0019, opção B). */
+    @org.springframework.web.bind.annotation.DeleteMapping("/{id}/products/{itemId}")
+    @org.springframework.security.access.prepost.PreAuthorize("@iamAuthorization.hasPermission(authentication, 'WORKORDER_MANAGE')")
+    Response removeProduct(@PathVariable UUID id, @PathVariable UUID itemId, @Valid @RequestBody RemoveProductRequest r) {
+        return Response.from(application.removeProduct(id, itemId, r.reason()));
+    }
+
+    public record RemoveProductRequest(@NotBlank @Size(min = 3, max = 500) String reason) {}
+
     public record OpenRequest(@NotNull UUID customerId, @NotNull UUID vehicleId, @PositiveOrZero Long entryMileage,
                               @NotBlank @Size(max = 2000) String complaint, @Size(max = 2000) String notes) {}
     public record UpdateRequest(@PositiveOrZero Long entryMileage, @NotBlank @Size(max = 2000) String complaint, @Size(max = 2000) String notes) {}
@@ -135,9 +144,15 @@ public class WorkOrderController {
         }
     }
 
-    public record ProductResponse(UUID id, UUID productId, String description, String internalCode, String unit, BigDecimal quantity, BigDecimal unitPrice, Instant addedAt) {
+    /**
+     * @param customerDecision {@code APPROVED}, {@code REJECTED} ou nulo (ainda não decidido pelo cliente)
+     * @param removedAt        preenchido quando o item foi removido da OS; ele continua listado, como histórico
+     */
+    public record ProductResponse(UUID id, UUID productId, String description, String internalCode, String unit, BigDecimal quantity, BigDecimal unitPrice, Instant addedAt,
+                                  String customerDecision, Instant decidedAt, Instant removedAt, String removalReason) {
         static ProductResponse from(WorkOrder.ProductItem i) {
-            return new ProductResponse(i.id(), i.productId(), i.description(), i.internalCode(), i.unit(), i.quantity(), i.unitPrice(), i.addedAt());
+            return new ProductResponse(i.id(), i.productId(), i.description(), i.internalCode(), i.unit(), i.quantity(), i.unitPrice(), i.addedAt(),
+                    i.customerDecision() == null ? null : i.customerDecision().name(), i.decidedAt(), i.removedAt(), i.removalReason());
         }
     }
 

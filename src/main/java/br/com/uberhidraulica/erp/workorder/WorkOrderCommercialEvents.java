@@ -15,8 +15,12 @@ public interface WorkOrderCommercialEvents {
      * <p>Apresentação e decisão chamam isto antes de ler o orçamento. A finalização também começa bloqueando a
      * OS, então as duas disputam os bloqueios na mesma ordem (OS, depois orçamento) — sem deadlock — e a
      * base comercial do recebível nunca é lida no meio de uma alteração comercial (revisão TASK-0015, F1).</p>
+     *
+     * @return {@code true} se a OS ainda está em atendimento e aceita mudança comercial; {@code false} se está
+     *         finalizada, entregue ou cancelada, quando criar, apresentar ou decidir orçamento já não faz sentido
+     *         (DR-0012 item 9: OS encerrada não aceita alterações). Quem chama decide como recusar.
      */
-    void lockForCommercialChange(UUID workOrderId);
+    boolean lockForCommercialChange(UUID workOrderId);
 
     void quotePresented(UUID workOrderId);
 
@@ -27,4 +31,15 @@ public interface WorkOrderCommercialEvents {
      * @param allRejected      todos os itens da apresentação foram decididos e nenhum foi aprovado
      */
     void quoteDecided(UUID workOrderId, boolean anyApproved, boolean allRejected);
+
+    /**
+     * Decisões do cliente sobre itens de orçamento ligados a itens físicos da OS (DR-0019, opção A).
+     *
+     * <p>A OS guarda a decisão no item e, para o rejeitado, publica a liberação para o Estoque devolver a baixa.</p>
+     *
+     * @param approvedByProductItem id do item físico da OS → {@code true} aprovado, {@code false} rejeitado
+     * @return itens <b>aprovados</b> que já foram removidos da OS. Aprovar o que a OS não tem mais faturaria um item
+     *         inexistente; quem chama deve recusar a decisão inteira. Rejeitar item removido é inofensivo.
+     */
+    java.util.Set<UUID> productItemsDecided(UUID workOrderId, java.util.Map<UUID, Boolean> approvedByProductItem);
 }

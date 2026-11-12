@@ -51,7 +51,9 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
       throw error
     }
   }
-  if (options.body) headers.set('Content-Type', 'application/json')
+  // JSON é o padrão, mas não sobrescreve um tipo já definido por quem chamou: a importação de NF-e envia o
+  // XML cru, e forçar application/json aqui faria o backend recusar o corpo.
+  if (options.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
     const response = await fetch('/api/iam/csrf', { credentials: 'include', signal: options.signal })
     await checkResponse(response)

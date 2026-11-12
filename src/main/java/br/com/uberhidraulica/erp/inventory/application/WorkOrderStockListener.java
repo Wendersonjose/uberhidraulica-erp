@@ -28,9 +28,22 @@ class WorkOrderStockListener {
     @EventListener
     @Transactional(propagation = Propagation.MANDATORY)
     void onFinished(WorkOrderEvents.Finished event) {
-        if (inventory.writeOffMode() != InventoryApplicationService.WriteOffMode.WORK_ORDER_FINISH) return;
-        for (WorkOrderEvents.ProductLine line : event.products())
-            inventory.writeOffForWorkOrder(event.workOrderId(), line.workOrderItemId(), line.productId(), line.quantity());
+        InventoryApplicationService.WriteOffMode mode = inventory.writeOffMode();
+        if (mode == InventoryApplicationService.WriteOffMode.WORK_ORDER_FINISH) {
+            for (WorkOrderEvents.ProductLine line : event.products())
+                inventory.writeOffForWorkOrder(event.workOrderId(), line.workOrderItemId(), line.productId(), line.quantity());
+        } else if (mode == InventoryApplicationService.WriteOffMode.ITEM_LAUNCH) {
+            // DR-0019: item rejeitado (baixa devolvida) e depois aprovado em revisão posterior volta a ser baixado aqui.
+            for (WorkOrderEvents.ProductLine line : event.products())
+                inventory.writeOffAgainIfReturned(event.workOrderId(), line.workOrderItemId(), line.productId(), line.quantity());
+        }
+    }
+
+    /** DR-0019: item rejeitado pelo cliente ou removido da OS devolve a baixa que tiver, em qualquer modo. */
+    @EventListener
+    @Transactional(propagation = Propagation.MANDATORY)
+    void onProductReleased(WorkOrderEvents.ProductReleased event) {
+        inventory.returnWorkOrderItemStock(event.workOrderId(), event.workOrderItemId(), event.reason());
     }
 
     @EventListener
