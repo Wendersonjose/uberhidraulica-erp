@@ -7,7 +7,7 @@ RUN npm ci
 COPY frontend/ .
 RUN npm run build
 
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.31-alpine AS runtime
 COPY --from=build /build/dist /usr/share/nginx/html
 COPY deploy/nginx/nginx.conf /etc/nginx/conf.d/default.conf
 COPY deploy/nginx/proxy_headers.conf /etc/nginx/proxy_headers.conf
