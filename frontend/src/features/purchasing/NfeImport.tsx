@@ -1,12 +1,13 @@
 import { useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   PRODUCT_MANAGE, PURCHASE_IMPORT_XML, purchaseApi, purchaseKeys,
   type ItemDecision, type NfePreview, type PreviewItem, type PreviewSelection,
+  type OrderDifferenceKind,
 } from '../../api/purchasing'
 import { financeApi, financeKeys, newIdempotencyKey } from '../../api/finance'
-import { productsApi } from '../../api/resources'
+import { productsApi, workOrdersApi } from '../../api/resources'
 import { queryKeys } from '../../api/queryKeys'
 import { PRODUCT_TYPE_LABELS, PRODUCT_UNIT_LABELS, type Product, type ProductType, type ProductUnit } from '../../api/types'
 import { Badge, PageHeader } from '../../components/ui'
@@ -31,6 +32,18 @@ const RECIPIENT_LABEL: Record<NfePreview['recipientCheck'], string> = {
   RECIPIENT_MISMATCH: 'Nota destinada a outro CNPJ',
   RECIPIENT_MISSING: 'Nota sem CNPJ de destinatário legível',
 }
+
+/** Rótulo de cada diferença entre o pedido e a nota (DR-0023 C2-A/C3-A). */
+const DIFFERENCE_LABEL: Record<OrderDifferenceKind, string> = {
+  TOTAL: 'Total a pagar',
+  QUANTITY: 'Quantidade',
+  UNIT_PRICE: 'Preço unitário',
+  ITEM_NOT_IN_INVOICE: 'Item do pedido que não veio na nota',
+  ITEM_NOT_IN_ORDER: 'Item da nota que não estava no pedido',
+}
+
+const differenceValue = (kind: OrderDifferenceKind, value: number | null) =>
+  value == null ? '—' : kind === 'TOTAL' || kind === 'UNIT_PRICE' ? formatBrl(value) : String(value)
 
 const parseFactor = (text: string) => {
   const value = Number(text.trim().replace(',', '.'))
@@ -64,6 +77,8 @@ export function NfeImportPage() {
   const navigate = useNavigate()
   const client = useQueryClient()
   const canImport = useCan(PURCHASE_IMPORT_XML)
+  // "Comprar para esta OS" chega com ?os=<id>: a compra já nasce ligada à OS.
+  const [params] = useSearchParams()
 
   const [xml, setXml] = useState('')
   const [fileName, setFileName] = useState('')
@@ -78,6 +93,10 @@ export function NfeImportPage() {
   const [firstDueDate, setFirstDueDate] = useState('')
   const [interval, setInterval] = useState('30')
   const [error, setError] = useState('')
+  const [workOrderId, setWorkOrderId] = useState(params.get('os') ?? '')
+  // DR-0023: pedido aprovado que esta nota atende, e a justificativa quando a nota difere dele.
+  const [orderId, setOrderId] = useState('')
+  const [justification, setJustification] = useState('')
   // A mesma intenção de confirmar usa a mesma chave, inclusive depois de uma falha de rede: é isso que impede um
   // retry de criar duas compras e duas vezes as contas a pagar. A chave só muda com um arquivo novo ou após o sucesso.
   const confirmKey = useRef(newIdempotencyKey())
@@ -100,6 +119,30 @@ export function NfeImportPage() {
   })
   const preview = settledKey === '[]' ? initial : (refined.data ?? initial)
   const stale = selectionKey !== settledKey || refined.isFetching
+
+  const workOrders = useQuery({ queryKey: queryKeys.workOrders, queryFn: () => workOrdersApi.list(), enabled: initial != null })
+  const supplierId = initial?.supplier.supplierId ?? null
+  const linkable = useQuery({
+    queryKey: purchaseKeys.linkableOrders(supplierId ?? ''),
+    queryFn: () => purchaseApi.linkableOrders(supplierId as string),
+    enabled: supplierId != null,
+  })
+  // A comparação só faz sentido com todos os itens resolvidos: é com eles que o servidor monta a compra da nota.
+  const resolved = useMemo(() => (preview?.items ?? []).map(item => {
+    const decision = decisions[item.lineNo]
+    const factor = decision ? parseFactor(decision.factor) : undefined
+    return { lineNo: item.lineNo, productId: decision?.productId ?? '', ...(factor === undefined ? {} : { unitConversionFactor: factor }) }
+  }), [preview, decisions])
+  const allResolved = resolved.length > 0 && resolved.every(line => line.productId)
+    && (preview?.items ?? []).every(item => !item.needsFactor || Boolean(decisions[item.lineNo]?.factor.trim()))
+  const resolvedKey = useDebouncedValue(JSON.stringify(resolved), 350)
+  const comparison = useQuery({
+    queryKey: [...purchaseKeys.purchases, 'order-comparison', initial?.xmlSha256, orderId, resolvedKey],
+    queryFn: () => purchaseApi.orderComparison(xml, JSON.parse(resolvedKey) as PreviewSelection[], orderId),
+    enabled: Boolean(orderId) && allResolved && !stale,
+    retry: false,
+  })
+  const differences = comparison.data?.differences ?? []
 
   const previewMutation = useMutation({
     mutationFn: (content: string) => purchaseApi.preview(content),
@@ -139,6 +182,8 @@ export function NfeImportPage() {
           installments: { count: Number(count) || 1, firstDueDate, intervalDays: Number(interval) || 30 },
         }),
         notes: notes.trim() || null,
+        workOrderId: workOrderId || null,
+        ...(orderId ? { orderId, divergenceJustification: justification.trim() || null } : {}),
       }, confirmKey.current)
     },
     onSuccess: result => {
@@ -175,6 +220,9 @@ export function NfeImportPage() {
     || preview.alreadyImportedPurchaseId != null
     || preview.issues.some(issue => issue.severity === 'BLOCKING')
     || serverBlockers.length > 0 || unresolved.length > 0 || !categoryId || missingTerms
+    // DR-0023 C2-A: com pedido escolhido, a diferença precisa ter sido vista e justificada antes de confirmar.
+    || (Boolean(orderId) && (!comparison.data || comparison.isFetching
+      || (differences.length > 0 && (!comparison.data.mayAccept || justification.trim().length < 3))))
 
   if (!canImport) {
     return <>
@@ -257,6 +305,63 @@ export function NfeImportPage() {
               onChange={next => setDecisions(current => ({ ...current, [item.lineNo]: next }))} />)}
           </tbody>
         </table></div>
+      </section>
+
+      <section className="card" aria-label="Pedido e OS">
+        <h2>Pedido e ordem de serviço</h2>
+        <div className="form-grid">
+          <label className="field"><span>OS vinculada (opcional)</span>
+            <select className="select" aria-label="OS vinculada" value={workOrderId} onChange={e => setWorkOrderId(e.target.value)}>
+              <option value="">Nenhuma — compra para estoque ou uso e consumo</option>
+              {(workOrders.data ?? []).map(order => <option key={order.id} value={order.id}>OS #{order.number}</option>)}
+            </select>
+          </label>
+          <label className="field"><span>Pedido que esta nota atende (opcional)</span>
+            <select className="select" aria-label="Pedido que esta nota atende" value={orderId}
+                    disabled={!supplierId || (linkable.data ?? []).length === 0}
+                    onChange={e => {
+                      const next = e.target.value
+                      setOrderId(next); setJustification('')
+                      // A OS do pedido vale para a nota, a menos que o operador já tenha escolhido outra.
+                      const chosen = (linkable.data ?? []).find(order => order.id === next)
+                      if (chosen?.workOrderId && !workOrderId) setWorkOrderId(chosen.workOrderId)
+                    }}>
+              <option value="">Nenhum</option>
+              {(linkable.data ?? []).map(order => <option key={order.id} value={order.id}>
+                {order.origin === 'DIRECT' ? 'Compra direta' : 'Pedido'} #{order.number} — {formatBrl(order.payableTotal)} ({order.itemCount} item(ns))
+              </option>)}
+            </select>
+          </label>
+        </div>
+        {!supplierId && <p className="muted">O emitente ainda não é fornecedor cadastrado: não há pedido dele para vincular.</p>}
+        {supplierId && linkable.data?.length === 0 &&
+          <p className="muted">Este fornecedor não tem pedido aprovado aguardando nota.</p>}
+        {orderId && <>
+          <p className="muted">Ao confirmar, o pedido fica <strong>encerrado por esta nota</strong>: a mercadoria entra
+            uma única vez, pelo recebimento da compra da nota, ao custo real.</p>
+          {!allResolved && <p className="muted">Escolha o produto de todos os itens para comparar a nota com o pedido.</p>}
+          {comparison.error && <p className="error" role="alert">{(comparison.error as Error).message}</p>}
+          {comparison.data && differences.length === 0 &&
+            <p role="status">A nota confere com o pedido #{comparison.data.orderNumber}: mesmos itens, quantidades, preços e total.</p>}
+          {comparison.data && differences.length > 0 && <>
+            <p className="error" role="alert">A nota difere do pedido #{comparison.data.orderNumber} em {differences.length} ponto(s).
+              Vincular exige justificativa.</p>
+            <div className="table-wrap"><table className="table" aria-label="Diferenças entre o pedido e a nota">
+              <thead><tr><th>Diferença</th><th>Item</th><th>No pedido</th><th>Na nota</th></tr></thead>
+              <tbody>{differences.map((difference, index) => <tr key={index}>
+                <td>{DIFFERENCE_LABEL[difference.kind]}</td>
+                <td>{difference.kind === 'TOTAL' ? '—' : difference.description ?? '—'}</td>
+                <td>{differenceValue(difference.kind, difference.orderValue)}</td>
+                <td>{differenceValue(difference.kind, difference.invoiceValue)}</td>
+              </tr>)}</tbody>
+            </table></div>
+            {comparison.data.mayAccept
+              ? <label className="field full"><span>Justificativa da divergência *</span>
+                  <input className="input" maxLength={500} aria-label="Justificativa da divergência" value={justification}
+                         onChange={e => setJustification(e.target.value)} /></label>
+              : <p className="error" role="alert">Você não tem permissão para aceitar divergência entre pedido e nota.</p>}
+          </>}
+        </>}
       </section>
 
       <section className="card" aria-label="Parcelas">

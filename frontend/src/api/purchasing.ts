@@ -134,13 +134,37 @@ export type ConfirmInput = {
   xml: string; createSupplier?: boolean; expenseCategoryId: string; decisions: ItemDecision[]
   installments?: { count: number; firstDueDate: string; intervalDays: number }
   workOrderId?: string | null; notes?: string | null
+  /** DR-0023: pedido aprovado que esta nota atende, e a justificativa quando a nota difere dele. */
+  orderId?: string | null; divergenceJustification?: string | null
+}
+/** Pedido ou compra direta aprovado do fornecedor, ainda sem nota: candidato ao vínculo (DR-0023). */
+export type LinkableOrder = {
+  id: string; number: number; origin: Extract<PurchaseOrigin, 'ORDER' | 'DIRECT'>; payableTotal: number
+  workOrderId: string | null; createdAt: string; approvedAt: string | null; itemCount: number
+}
+export type OrderDifferenceKind = 'TOTAL' | 'QUANTITY' | 'UNIT_PRICE' | 'ITEM_NOT_IN_INVOICE' | 'ITEM_NOT_IN_ORDER'
+export type OrderDifference = {
+  kind: OrderDifferenceKind; productId: string | null; description: string | null
+  orderValue: number | null; invoiceValue: number | null
+}
+export type OrderComparison = {
+  orderId: string; orderNumber: number; orderTotal: number; invoiceTotal: number
+  differences: OrderDifference[]
+  /** Falso quando há diferença e o usuário não pode aceitar divergência. */
+  mayAccept: boolean
+}
+/** Vínculo pedido × NF-e ativo. No pedido significa "encerrado pela nota". */
+export type OrderLink = {
+  orderPurchaseId: string; orderNumber: number | null; invoicePurchaseId: string; invoiceNumber: number | null
+  linkedAt: string; linkedBy: string; divergent: boolean; divergenceJustification: string | null
+  differences: OrderDifference[]
 }
 export type PurchaseInstallment = {
   payableId: string; installmentNo: number; dueDate: string; amount: number; invoiceReference: string | null
 }
 export type ConfirmResult = {
   purchaseId: string; number: number; supplierId: string; status: PurchaseStatus; payableTotal: number
-  itemCount: number; installments: PurchaseInstallment[]; replayed: boolean
+  itemCount: number; installments: PurchaseInstallment[]; linkedOrderId: string | null; replayed: boolean
 }
 export type PurchaseSummary = {
   id: string; number: number; supplierId: string; supplierName: string; origin: PurchaseOrigin
@@ -169,6 +193,7 @@ export type PurchaseDetail = {
   items: PurchaseItem[]; documents: PurchaseDocument[]; installments: PurchaseInstallment[]; receiptStatus: ReceiptStatus
   /** Controle otimista do pedido: toda alteração e toda aprovação carregam a versão que a tela leu. */
   version: number; createdBy: string; updatedAt: string | null; approvedAt: string | null; approvedBy: string | null
+  orderLink: OrderLink | null
 }
 
 /** Linha do pedido como o operador a informa; a unidade é a do catálogo e o custo é calculado pelo servidor. */
@@ -229,6 +254,8 @@ export const purchaseKeys = {
   receiving: (id: string) => ['purchasing', 'purchases', id, 'receiving'] as const,
   receipts: (id: string) => ['purchasing', 'purchases', id, 'receipts'] as const,
   links: (supplierId: string) => ['purchasing', 'links', supplierId] as const,
+  linkableOrders: (supplierId: string) => ['purchasing', 'purchases', 'linkable', supplierId] as const,
+  workOrderPurchases: (workOrderId: string) => ['purchasing', 'purchases', 'work-order', workOrderId] as const,
 }
 
 const PURCHASING = '/api/purchasing'
@@ -249,6 +276,12 @@ export const purchaseApi = {
    */
   confirm: (body: ConfirmInput, idempotencyKey: string) => api<ConfirmResult>(`${PURCHASING}/nfe/confirm`,
     { method: 'POST', body: JSON.stringify(body), headers: { 'Idempotency-Key': idempotencyKey } }),
+  /** Pedidos aprovados do fornecedor que ainda não têm nota (DR-0023). */
+  linkableOrders: (supplierId: string) =>
+    api<LinkableOrder[]>(`${PURCHASING}/nfe/linkable-orders${query({ supplierId })}`),
+  /** Compara a nota com o pedido sem gravar nada: é o que a confirmação vai exigir justificar. */
+  orderComparison: (xml: string, decisions: PreviewSelection[], orderId: string) =>
+    api<OrderComparison>(`${PURCHASING}/nfe/order-comparison`, json('POST', { xml, decisions, orderId })),
   purchases: (params: PurchaseSearch) => api<Page<PurchaseSummary>>(`${PURCHASING}/purchases${query(params)}`),
   purchase: (id: string) => api<PurchaseDetail>(`${PURCHASING}/purchases/${id}`),
   purchaseEvents: (id: string, page: number) =>

@@ -67,6 +67,28 @@ public interface PurchaseRepositoryPort {
      */
     void transition(UUID purchaseId, Purchase.Status from, Purchase.Status to, java.time.Instant at, UUID by);
 
+    // ---------------------------------------------------------------- pedido × NF-e (DR-0023)
+
+    /**
+     * Grava o vínculo e as diferenças vistas no instante da ligação.
+     *
+     * @throws br.com.uberhidraulica.erp.purchasing.domain.PurchasingException {@code PURCHASE_ORDER_ALREADY_LINKED}
+     *         quando o pedido (ou a nota) já tem vínculo ativo — é o índice único parcial que decide a corrida
+     */
+    void insertOrderLink(br.com.uberhidraulica.erp.purchasing.domain.OrderInvoiceLink link);
+
+    /** Vínculo ativo em que a compra é o <b>pedido</b>: existindo, o pedido está encerrado pela nota. */
+    Optional<br.com.uberhidraulica.erp.purchasing.domain.OrderInvoiceLink> activeLinkOfOrder(UUID orderPurchaseId);
+
+    /** Vínculo ativo em que a compra é a <b>nota</b>. */
+    Optional<br.com.uberhidraulica.erp.purchasing.domain.OrderInvoiceLink> activeLinkOfInvoice(UUID invoicePurchaseId);
+
+    /** Libera o vínculo (a compra da nota foi cancelada). A linha permanece como histórico. */
+    void releaseOrderLink(UUID linkId, java.time.Instant at, UUID by, String reason);
+
+    /** Pedidos e compras diretas aprovados do fornecedor, sem vínculo ativo: os candidatos da importação. */
+    List<LinkableOrder> linkableOrders(UUID supplierId);
+
     // ---------------------------------------------------------------- documento fiscal
 
     void insertDocument(PurchaseDocument document);
@@ -132,6 +154,9 @@ public interface PurchaseRepositoryPort {
                            Purchase.Status status, BigDecimal payableTotal, String accessKey, Long invoiceNumber,
                            LocalDate issuedOn, java.time.Instant createdAt, int installmentCount,
                            br.com.uberhidraulica.erp.purchasing.domain.GoodsReceipt.Status receiptStatus) {}
+
+    record LinkableOrder(UUID id, long number, Purchase.Origin origin, BigDecimal payableTotal, UUID workOrderId,
+                         java.time.Instant createdAt, java.time.Instant approvedAt, int itemCount) {}
 
     record PriceHistoryEntry(UUID id, UUID supplierId, UUID productId, BigDecimal unitPrice, BigDecimal quantity,
                              String sourceType, UUID sourceId, LocalDate occurredOn) {}

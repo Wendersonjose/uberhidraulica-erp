@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -85,8 +86,27 @@ class NfeImportController {
                 request.expenseCategoryId(), request.decisions(), request.installments() == null ? null
                 : new NfeImportService.Installments(request.installments().count(),
                         request.installments().firstDueDate(), request.installments().intervalDays()),
-                request.workOrderId(), request.notes()));
+                request.workOrderId(), request.notes(), request.orderId() == null ? null
+                : new NfeImportService.OrderLink(request.orderId(), request.divergenceJustification())));
         return ConfirmResponse.from(result);
+    }
+
+    /**
+     * Compara a nota com um pedido aprovado do emitente, sem gravar nada (`DR-0023` C2-A): é o que o operador vê
+     * antes de vincular, e o que a confirmação vai exigir justificar.
+     */
+    @PostMapping(path = "/order-comparison", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'PURCHASE_IMPORT_XML')")
+    NfeImportService.OrderComparison compareWithOrder(@Valid @RequestBody ComparisonRequest request) {
+        return imports.compareWithOrder(request.xml().getBytes(StandardCharsets.UTF_8), request.decisions(),
+                request.orderId());
+    }
+
+    /** Pedidos e compras diretas aprovados do fornecedor que ainda não têm nota: os candidatos ao vínculo. */
+    @GetMapping("/linkable-orders")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'PURCHASE_IMPORT_XML')")
+    List<LinkableOrderResponse> linkableOrders(@RequestParam UUID supplierId) {
+        return imports.linkableOrders(supplierId).stream().map(LinkableOrderResponse::from).toList();
     }
 
     private static byte[] bytes(MultipartFile file) {
@@ -107,17 +127,32 @@ class NfeImportController {
     /** {@code createSupplier} e {@code saveLink} são opcionais: ausente significa {@code false}. */
     record ConfirmRequest(@NotBlank String xml, Boolean createSupplier, UUID expenseCategoryId,
                           List<NfeImportService.ItemDecision> decisions, InstallmentsPayload installments,
-                          UUID workOrderId, @Size(max = 1000) String notes) {}
+                          UUID workOrderId, @Size(max = 1000) String notes, UUID orderId,
+                          @Size(max = 500) String divergenceJustification) {}
+
+    record ComparisonRequest(@NotBlank String xml, List<NfeImportService.ItemDecision> decisions,
+                             @jakarta.validation.constraints.NotNull UUID orderId) {}
+
+    record LinkableOrderResponse(UUID id, long number, String origin, BigDecimal payableTotal, UUID workOrderId,
+                                 java.time.Instant createdAt, java.time.Instant approvedAt, int itemCount) {
+        static LinkableOrderResponse from(
+                br.com.uberhidraulica.erp.purchasing.port.PurchaseRepositoryPort.LinkableOrder order) {
+            return new LinkableOrderResponse(order.id(), order.number(), order.origin().name(), order.payableTotal(),
+                    order.workOrderId(), order.createdAt(), order.approvedAt(), order.itemCount());
+        }
+    }
 
     record InstallmentsPayload(Integer count, LocalDate firstDueDate, Integer intervalDays) {}
 
     record ConfirmResponse(UUID purchaseId, long number, UUID supplierId, String status, BigDecimal payableTotal,
-                           int itemCount, List<InstallmentResponse> installments, boolean replayed) {
+                           int itemCount, List<InstallmentResponse> installments, UUID linkedOrderId,
+                           boolean replayed) {
         static ConfirmResponse from(NfeImportService.Result result) {
             return new ConfirmResponse(result.purchase().id(), result.purchase().number(),
                     result.purchase().supplierId(), result.purchase().status().name(),
                     result.purchase().payableTotal(), result.purchase().items().size(),
-                    result.payables().stream().map(InstallmentResponse::new).toList(), result.replayed());
+                    result.payables().stream().map(InstallmentResponse::new).toList(), result.linkedOrderId(),
+                    result.replayed());
         }
     }
 

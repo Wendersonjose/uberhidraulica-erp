@@ -129,8 +129,8 @@ export function ReceivingSection({ purchase }: { purchase: PurchaseDetail }) {
 
     {!open && purchase.status === 'APPROVED' && !hasIdentity && <div role="note" className="notice">
       {purchase.origin === 'ORDER' ? 'Pedido' : 'Compra direta'} ainda não recebe mercadoria: sem ligação com a NF-e do
-      fornecedor (decisão pendente, DR-0023) o mesmo material poderia entrar duas vezes no estoque.
-      Receba na <strong>compra da nota importada</strong>.</div>}
+      fornecedor o mesmo material poderia entrar duas vezes no estoque. Ao importar a NF-e, vincule-a a este pedido
+      e receba na <strong>compra da nota importada</strong>.</div>}
     {!open && purchase.status !== 'APPROVED' && <p className="notice">Compra {purchase.status === 'CANCELLED' ? 'cancelada' : 'não aprovada'}: não recebe mercadoria.</p>}
 
     {open && canReceive && lines.length > 0 && <>

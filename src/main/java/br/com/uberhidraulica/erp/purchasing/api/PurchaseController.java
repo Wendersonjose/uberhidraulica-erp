@@ -161,7 +161,7 @@ class PurchaseController {
                           Instant cancelledAt, String cancellationReason, List<ItemResponse> items,
                           List<DocumentResponse> documents, List<InstallmentResponse> installments,
                           String receiptStatus, long version, UUID createdBy, Instant updatedAt, Instant approvedAt,
-                          UUID approvedBy) {
+                          UUID approvedBy, OrderLinkResponse orderLink) {
         static DetailResponse from(PurchaseService.Detail d) {
             Purchase p = d.purchase();
             return new DetailResponse(p.id(), p.number(), p.supplierId(), p.origin().name(), p.status().name(),
@@ -171,7 +171,27 @@ class PurchaseController {
                     p.items().stream().map(ItemResponse::from).toList(),
                     d.documents().stream().map(DocumentResponse::from).toList(),
                     d.payables().stream().map(InstallmentResponse::from).toList(), d.receiptStatus().name(),
-                    p.version(), p.createdBy(), p.updatedAt(), p.approvedAt(), p.approvedBy());
+                    p.version(), p.createdBy(), p.updatedAt(), p.approvedAt(), p.approvedBy(),
+                    OrderLinkResponse.from(d.orderLink()));
+        }
+    }
+
+    /** Vínculo pedido × NF-e (`DR-0023`): quem encerrou quem, e as diferenças aceitas com justificativa. */
+    record OrderLinkResponse(UUID orderPurchaseId, Long orderNumber, UUID invoicePurchaseId, Long invoiceNumber,
+                             Instant linkedAt, UUID linkedBy, boolean divergent, String divergenceJustification,
+                             List<DifferenceResponse> differences) {
+        static OrderLinkResponse from(br.com.uberhidraulica.erp.purchasing.domain.OrderInvoiceLink l) {
+            return l == null ? null : new OrderLinkResponse(l.orderPurchaseId(), l.orderNumber(),
+                    l.invoicePurchaseId(), l.invoiceNumber(), l.linkedAt(), l.linkedBy(), l.divergent(),
+                    l.divergenceJustification(), l.differences().stream().map(DifferenceResponse::from).toList());
+        }
+    }
+
+    record DifferenceResponse(String kind, UUID productId, String description, BigDecimal orderValue,
+                              BigDecimal invoiceValue) {
+        static DifferenceResponse from(br.com.uberhidraulica.erp.purchasing.domain.OrderInvoiceLink.Difference d) {
+            return new DifferenceResponse(d.kind().name(), d.productId(), d.description(), d.orderValue(),
+                    d.invoiceValue());
         }
     }
 

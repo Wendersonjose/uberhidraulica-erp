@@ -2,8 +2,9 @@
 
 ## Status
 
-`OPEN` — **proposta, sem decisão do proprietário.** As opções C1–C4 abaixo não estão implementadas. O que existe hoje é um
-**bloqueio de segurança** (fail closed), descrito em "Estado atual": só a compra nascida de NF-e recebe mercadoria.
+`DECIDED` (2026-11-12) — **C1-A, C2-A, C3-A e C4-A**, a recomendação técnica, escolhida pelo proprietário. Implementada na
+`V26` (ver "Decisão final"). As seções "Contexto", "Estado atual" e "Decisões pendentes" abaixo ficam como registro histórico
+do que valia antes da decisão.
 
 - Criada em: 2026-10-14
 - Task: `TASK-0021` (I5 entregue; esta decisão bloqueia o I5b — ligação pedido × nota — e o I6)
@@ -111,4 +112,27 @@ recebimento de pedido/compra direta é necessária a C1 (vínculo de identidade 
 
 ## Decisão final
 
-Pendente. Registrar aqui a decisão do proprietário, a data e eventuais condições.
+**Decidida pelo proprietário em 2026-11-12** (resposta em chat à pergunta "Como ligar pedido e nota?": "Vínculo explícito"):
+C1-A, C2-A, C3-A e C4-A.
+
+O que a decisão vira no sistema (`V26__purchasing_order_invoice_link.sql`, `TASK-0021` I5b):
+
+| Decisão | Implementação |
+| --- | --- |
+| C1-A — vínculo explícito | Na importação da NF-e o operador escolhe um pedido (ou compra direta) **aprovado do mesmo fornecedor** ainda sem nota (`GET /nfe/linkable-orders`, campo `orderId` em `POST /nfe/confirm`). O vínculo fica em `purchasing.purchase_order_invoice_link`; um pedido tem no máximo uma nota ativa e uma nota encerra no máximo um pedido (índices únicos parciais). O pedido vinculado está **encerrado pela nota**: não recebe (continua `409 PURCHASE_RECEIPT_REQUIRES_INVOICE`), não é editado e não é cancelado sozinho (`409 PURCHASE_ORDER_CLOSED_BY_INVOICE`). O estoque entra sempre pelo recebimento da compra da nota, ao custo real da D1. Só se vincula pedido sem recebimento ativo. |
+| C2-A — divergência | `POST /nfe/order-comparison` mostra, sem gravar, a diferença item a item (total, quantidade, preço unitário). Qualquer diferença exige `divergenceJustification` (3 a 500 caracteres) **e** `PURCHASE_DIVERGENCE_ACCEPT`; sem tolerância automática. As diferenças ficam gravadas em `purchase_order_invoice_difference`. |
+| C3-A — substituição | Item substituído aparece como duas diferenças (`ITEM_NOT_IN_INVOICE` e `ITEM_NOT_IN_ORDER`), com a mesma justificativa; o histórico guarda o original e o substituto. |
+| C4-A — cotação | Solicitação e cotação multi-fornecedor ficam para depois do piloto. |
+
+Regras complementares adotadas na implementação (consequência direta da C1-A, registradas para revisão):
+
+- o estado "encerrado pela nota" é **derivado** do vínculo ativo, não uma coluna na compra;
+- cancelar a compra da nota **libera** o vínculo (a linha permanece, com `released_at`) e o pedido volta a poder ser ligado
+  a outra nota ou cancelado;
+- a nota herda a OS do pedido quando o operador não informa outra, e cada item herda o item da OS que o pedido apontava
+  para o mesmo produto;
+- a trilha (`ORDER_LINKED_TO_INVOICE`, `ORDER_LINK_RELEASED`) é gravada no pedido e na compra da nota.
+
+**O que continua em aberto depois desta decisão:** compra **sem NF-e** (balcão, recibo, cupom) segue sem dar entrada pelo
+módulo Compras e sem gerar conta a pagar; o contorno é a entrada manual do Estoque e o lançamento manual em Contas a pagar.
+Tratar esse caso é decisão nova do proprietário, fora da C1–C4.

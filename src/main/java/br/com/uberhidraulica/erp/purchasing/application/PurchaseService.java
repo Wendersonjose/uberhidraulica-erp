@@ -3,6 +3,7 @@ package br.com.uberhidraulica.erp.purchasing.application;
 import br.com.uberhidraulica.erp.finance.PurchasePayableException;
 import br.com.uberhidraulica.erp.finance.PurchasePayables;
 import br.com.uberhidraulica.erp.iam.CurrentUser;
+import br.com.uberhidraulica.erp.purchasing.domain.OrderInvoiceLink;
 import br.com.uberhidraulica.erp.purchasing.domain.Purchase;
 import br.com.uberhidraulica.erp.purchasing.domain.PurchaseDocument;
 import br.com.uberhidraulica.erp.purchasing.domain.PurchaseEvent;
@@ -67,8 +68,11 @@ public class PurchaseService {
     @Transactional(readOnly = true)
     public Detail detail(UUID id) {
         Purchase purchase = get(id);
+        // DR-0023: o vínculo ativo, visto do lado do pedido ou do lado da nota.
+        OrderInvoiceLink link = (purchase.needsApproval() ? repository.activeLinkOfOrder(id)
+                : repository.activeLinkOfInvoice(id)).orElse(null);
         return new Detail(purchase, repository.documents(id), repository.payableLinks(id),
-                ReceivingLine.statusOf(receipts.receiving(id)));
+                ReceivingLine.statusOf(receipts.receiving(id)), link);
     }
 
     @Transactional(readOnly = true)
@@ -122,8 +126,26 @@ public class PurchaseService {
                     "A compra tem recebimento ativo: estorne o recebimento antes de cancelar a compra");
         }
 
+        // DR-0023 C1-A: pedido encerrado pela nota não é cancelado sozinho — a aquisição existe na compra da nota.
+        repository.activeLinkOfOrder(id).ifPresent(link -> {
+            throw new PurchasingException("PURCHASE_ORDER_CLOSED_BY_INVOICE",
+                    "O pedido está encerrado pela compra " + link.invoiceNumber()
+                            + " (nota importada): cancele a compra da nota para reabri-lo");
+        });
+
         UUID actor = currentUser.requireId();
         Instant now = Instant.now(clock);
+
+        // Cancelar a compra da nota libera o pedido vinculado, que volta a poder ser ligado a outra nota.
+        repository.activeLinkOfInvoice(id).ifPresent(link -> {
+            repository.releaseOrderLink(link.id(), now, actor, "Compra da nota cancelada: " + motive);
+            String payload = PurchaseJson.of(java.util.Map.of("orderPurchaseId",
+                    String.valueOf(link.orderPurchaseId()), "invoicePurchaseId", String.valueOf(id)));
+            repository.insertEvent(PurchaseEvent.of(link.orderPurchaseId(), PurchaseEvent.Type.ORDER_LINK_RELEASED,
+                    actor, now, motive, payload));
+            repository.insertEvent(PurchaseEvent.of(id, PurchaseEvent.Type.ORDER_LINK_RELEASED, actor, now, motive,
+                    payload));
+        });
 
         List<PurchasePayableLink> links = repository.payableLinks(id);
         if (!links.isEmpty()) {
@@ -180,6 +202,9 @@ public class PurchaseService {
         return reason.trim();
     }
 
+    /**
+     * @param orderLink vínculo pedido × NF-e ativo (`DR-0023`), ou nulo. No pedido, significa "encerrado pela nota".
+     */
     public record Detail(Purchase purchase, List<PurchaseDocument> documents, List<PurchasePayableLink> payables,
-                         GoodsReceipt.Status receiptStatus) {}
+                         GoodsReceipt.Status receiptStatus, OrderInvoiceLink orderLink) {}
 }
