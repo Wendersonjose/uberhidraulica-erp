@@ -53,7 +53,7 @@ Legenda: **Entregue** · **Parcial** (existe, com lacuna declarada) · **Planeja
 
 | Área | Status | Situação |
 | --- | --- | --- |
-| Compras — o que falta | Parcial / a decidir | [TASK-0021](tasks/backlog/TASK-0021-compras-fornecedores.md): **compra sem NF-e** (balcão, recibo, cupom — inclusive material de uso e consumo comprado assim) não dá entrada em estoque nem gera conta a pagar pelo módulo: use a entrada manual do Estoque e o lançamento manual em Contas a pagar, até o proprietário decidir a regra. Faltam também devolução/crédito de fornecedor e relatórios (I6); solicitação e cotação ficaram para depois do piloto (`DR-0023` C4-A) |
+| Compras — o que falta | Parcial | [TASK-0021](tasks/backlog/TASK-0021-compras-fornecedores.md): **compra sem NF-e** (balcão, recibo, cupom — inclusive material de uso e consumo comprado assim) não dá entrada em estoque nem gera conta a pagar pelo módulo, **por decisão do proprietário (2026-11-12: manter manual)**: use a entrada manual do Estoque e o lançamento manual em Contas a pagar. Faltam também devolução/crédito de fornecedor e relatórios (I6); solicitação e cotação ficaram para depois do piloto (`DR-0023` C4-A) |
 | Financeiro integrado a Compras | Planejado | [TASK-0022](tasks/backlog/TASK-0022-financeiro-integrado-compras.md): contas bancárias, centro de custo, visão das parcelas por compra, dados de boleto (linha digitável, nº do documento) na conta a pagar. Hoje o boleto é lançado como conta a pagar comum, com a identificação na descrição/observação |
 | Contábil (fundação) | Planejado | [TASK-0023](tasks/backlog/TASK-0023-contabil-fundacao.md): depende da TASK-0022 e de parâmetros do contador |
 | Comissões | Planejado / Bloqueado | regra descrita no README e em `AG-06`; exige confirmar as regras — DR-0021 |
@@ -72,11 +72,10 @@ Legenda: **Entregue** · **Parcial** (existe, com lacuna declarada) · **Planeja
 | DR | Assunto | Impede a homologação? |
 | --- | --- | --- |
 | [DR-0020](decision-requests/DR-0020-politica-autenticacao-bloqueio-delegacao.md) itens 2 e 3 | política de senha avançada (recusar senhas comuns?) e quem pode criar/alterar/delegar o perfil Dono | Não impede a homologação; **o proprietário responde ou aceita o mínimo atual antes da produção**. Enquanto isso, não delegue `IAM_*` (o preflight confere) |
-| Compra sem NF-e | como registrar compra de balcão/recibo (estoque, conta a pagar e proteção contra a mesma mercadoria entrar de novo por uma nota) | Não; hoje o contorno é manual |
 
 Decididas em 2026-11-12 e já implementadas: [DR-0019](decision-requests/DR-0019-item-fisico-rejeitado-estoque-custo.md)
 (rejeição devolve o estoque + remoção manual), [DR-0023](decision-requests/DR-0023-conciliacao-pedido-nfe.md) (vínculo
-explícito pedido × NF-e) e, na DR-0020, o item 1 (a conta não é bloqueada por tentativas, por enquanto) e o item 4 (sem
+explícito pedido × NF-e; compra sem NF-e fica manual) e, na DR-0020, o item 1 (a conta não é bloqueada por tentativas, por enquanto) e o item 4 (sem
 segundo fator). A [DR-0021](decision-requests/DR-0021-escopo-piloto-modulos-especificados.md) foi decidida em 2026-10-13.
 
 ## Como executar (desenvolvimento)
@@ -166,7 +165,7 @@ prova: [`docs/architecture/devops/DEPLOY-supabase-render.md`](docs/architecture/
 1. Homologar pela tela a versão com Compras, seguindo [`docs/review/HOMOLOGACAO-roteiro.md`](docs/review/HOMOLOGACAO-roteiro.md),
    e promover conforme [`PROMOCAO-compras-v22-v25.md`](docs/architecture/devops/PROMOCAO-compras-v22-v25.md) (o roteiro e o
    runbook foram escritos para V22–V25; as V26 e V27 entram na mesma promoção e precisam ser acrescentadas ao roteiro de tela).
-2. Proprietário responde os itens 2 e 3 da `DR-0020` e decide como tratar a compra sem NF-e.
+2. Proprietário responde os itens 2 e 3 da `DR-0020`.
 3. `TASK-0022` (Financeiro integrado a Compras: contas bancárias, centro de custo, dados de boleto) e, depois, `TASK-0023`
    (Contábil), pelo fluxo de governança.
 4. Fiscal/NFS-e só depois de haver certificado A1 e ambiente de homologação do município.
