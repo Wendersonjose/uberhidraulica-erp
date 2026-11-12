@@ -6,10 +6,10 @@
 ID: DR-0020
 Título: Política de autenticação além do mínimo implementado na TASK-0019
 Tipo: SECURITY
-Status: OPEN
+Status: PARTIALLY_DECIDED (2026-11-12) — itens 1 e 4 decididos; itens 2 e 3 seguem abertos (ver seção 7)
 Criado em: 2026-10-05
 Criado por: AG-09 — Segurança & Auditoria (auditoria de fechamento do MVP, TASK-0019)
-Última atualização: 2026-10-05
+Última atualização: 2026-11-12
 ```
 
 ## 2. Task relacionada
@@ -79,8 +79,21 @@ Testes: concorrência de tentativas, bloqueio/atraso, matriz de permissão de de
 
 ```text
 Responsável pela decisão final: Proprietário do produto
-Decisão final: PENDENTE
+Decisão final: PARCIAL, em 2026-11-12.
 ```
+
+Resposta do proprietário em chat, à pergunta "qual política você decide?": **"por enquanto não trava, não precisa confirmação
+por dois fatores"**.
+
+| Item | Decisão | Efeito |
+| --- | --- | --- |
+| 1 — bloqueio por tentativas de login | **Opção C, por enquanto**: a conta não é travada. Fica o limite por IP do nginx. | O risco residual de força bruta lenta ou distribuída está **aceito pelo proprietário** para a fase atual. Nada foi implementado. A expressão "por enquanto" indica que o item pode ser reaberto. |
+| 4 — segundo fator para o Dono | **Fora do MVP.** | Nada foi implementado. |
+| 2 — política de senha avançada | **Sem resposta.** | Vale o mínimo atual (8 a 72 caracteres). Recomendação técnica mantida: opção B (recusar senhas comuns). |
+| 3 — quem cria/altera/delega o perfil `DONO` | **Sem resposta.** | Vale o controle operacional: não delegar `IAM_*` a gerentes; `scripts/ops/preflight.sh` falha se encontrar. Recomendação técnica mantida: opção A (invariante no backend). |
+
+Leitura para a produção (bloqueador B5 de `docs/review/RELEASE-producao.md`): com o item 1 aceito e o item 3 coberto pelo
+controle do preflight, o que resta do B5 é o proprietário responder o item 2 (ou aceitar o mínimo atual) e o item 3.
 
 ## 8. Mitigação vigente
 

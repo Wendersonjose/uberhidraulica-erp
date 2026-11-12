@@ -155,6 +155,7 @@ class JdbcPurchaseRepositoryAdapter implements PurchaseRepositoryPort {
         if (filter.supplierId() != null) { where.append(" and p.supplier_id = :supplier"); p.addValue("supplier", filter.supplierId()); }
         if (filter.status() != null) { where.append(" and p.status = :status"); p.addValue("status", filter.status().name()); }
         if (filter.origin() != null) { where.append(" and p.origin = :origin"); p.addValue("origin", filter.origin().name()); }
+        if (filter.workOrderId() != null) { where.append(" and p.work_order_id = :workOrder"); p.addValue("workOrder", filter.workOrderId()); }
         if (filter.issuedFrom() != null) { where.append(" and d.issued_at >= :from"); p.addValue("from", filter.issuedFrom()); }
         if (filter.issuedTo() != null) { where.append(" and d.issued_at < :to"); p.addValue("to", filter.issuedTo().plusDays(1)); }
         if (filter.text() != null && !filter.text().isBlank()) {

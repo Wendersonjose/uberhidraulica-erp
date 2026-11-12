@@ -143,8 +143,9 @@ public interface PurchaseRepositoryPort {
 
     // ---------------------------------------------------------------- contratos de consulta
 
+    /** @param workOrderId só as compras ligadas a esta OS (cabeçalho da compra), ou nulo para todas */
     record Filter(String text, UUID supplierId, Purchase.Status status, Purchase.Origin origin,
-                  LocalDate issuedFrom, LocalDate issuedTo) {}
+                  LocalDate issuedFrom, LocalDate issuedTo, UUID workOrderId) {}
 
     /**
      * Resumo de compra para listagem. {@code receivedStatus} é derivado no I4; enquanto o recebimento não

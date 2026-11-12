@@ -1,4 +1,4 @@
-# Roteiro de homologação pela tela — ERP da oficina com Compras (V25)
+# Roteiro de homologação pela tela — ERP da oficina com Compras (V25; V26 e V27 na seção 7)
 
 Onde rodar: na **cópia migrada da produção** do passo 4b de
 [`PREVOO-producao.md`](../architecture/devops/PREVOO-producao.md) (`rehearse-promotion.sh --keep` + `npm run dev`), com o seu login
@@ -76,6 +76,18 @@ Registre cada item como `OK` ou `FALHA: <o que viu>`. Uma falha em item marcado 
 | 6.3 | *Contas a receber*: receber o título da OS de 3.6 | Baixa; entra no caixa se for dinheiro |
 | 6.4 | *Caixa físico*: abrir (se fechado), lançar, conferir e fechar | Saldo conferido bate; diferença registrada se houver |
 | 6.5 | *Resumo financeiro* e *Fluxo de caixa* | Refletem 6.2–6.4 |
+
+## 7. Entregas de 2026-11-12 (V26 e V27)
+
+| # | Ação | Esperado |
+| --- | --- | --- |
+| 7.1 **(bloqueia)** | Com um pedido aprovado (4.13), importar a NF-e do mesmo fornecedor e escolher o pedido em "Pedido que esta nota atende" | A tela compara nota e pedido; se conferem, confirma sem justificativa. O pedido passa a mostrar "Pedido encerrado pela nota" |
+| 7.2 | Repetir com uma nota de quantidade ou preço diferente do pedido | Lista as diferenças e só confirma com justificativa; a divergência fica visível no pedido e na compra da nota |
+| 7.3 | Cancelar a compra da nota vinculada (sem recebimento) | O pedido volta a aparecer como candidato na próxima importação |
+| 7.4 | Na OS, cartão "Compras desta OS": usar "Importar NF-e para esta OS" | A importação abre com a OS preenchida; depois de confirmar, a compra aparece na OS |
+| 7.5 **(bloqueia)** | OS com 2 peças em estoque no orçamento; no link público, aprovar uma e rejeitar a outra | A peça rejeitada volta ao estoque na hora (movimento de devolução) e aparece na OS como "Rejeitado pelo cliente"; o subtotal da OS não a soma |
+| 7.6 | Lançar uma peça por engano na OS e usar "Remover da OS" com motivo | A peça fica riscada, com o motivo; o estoque volta |
+| 7.7 | Tentar remover uma peça que o cliente aprovou | Não há botão de remover |
 
 ## Resultado
 
