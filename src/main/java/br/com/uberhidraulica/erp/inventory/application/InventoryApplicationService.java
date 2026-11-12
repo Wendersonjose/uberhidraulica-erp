@@ -142,7 +142,15 @@ public class InventoryApplicationService implements InventoryCostQuery, Purchase
      */
     @Transactional
     public void writeOffForWorkOrder(UUID workOrderId, UUID itemId, UUID productId, BigDecimal quantity) {
-        if (repository.workOrderExitExists(itemId)) return;
+        // Idempotente enquanto houver baixa ATIVA do item. Baixa devolvida (rejeição, DR-0019) não conta: o item
+        // pode ser baixado de novo, em um ciclo novo.
+        if (repository.activeWorkOrderExit(itemId).isPresent()) return;
+        // O bloqueio do saldo serializa as baixas do mesmo produto, e a conferência é refeita DEPOIS dele: a transação
+        // que esperou enxerga a baixa que a outra acabou de confirmar. Sem isso, a segunda gravaria um "ciclo 2" e o
+        // item seria descontado duas vezes — o índice único por ciclo, sozinho, não pega esse caso.
+        requireProduct(productId);
+        repository.lockBalance(productId);
+        if (repository.activeWorkOrderExit(itemId).isPresent()) return;
         try {
             apply(productId, StockMovement.Type.WORK_ORDER_OUT, quantity, null, null, StockMovement.Source.WORK_ORDER, workOrderId, itemId, null);
         } catch (org.springframework.dao.DataIntegrityViolationException concurrent) {
@@ -155,6 +163,26 @@ public class InventoryApplicationService implements InventoryCostQuery, Purchase
 
     /** Devolve ao estoque tudo o que a OS baixou e ainda não foi estornado. */
     @Transactional
+    /**
+     * Devolve a baixa ativa de UM item da OS (DR-0019): o cliente rejeitou o item ou ele foi removido da OS. Sem baixa
+     * ativa — item nunca baixado, ou já devolvido — não há nada a fazer.
+     */
+    public void returnWorkOrderItemStock(UUID workOrderId, UUID itemId, String reason) {
+        repository.activeWorkOrderExit(itemId).ifPresent(exit ->
+                apply(exit.productId(), StockMovement.Type.WORK_ORDER_RETURN, exit.quantity(), null, reason,
+                        StockMovement.Source.WORK_ORDER, workOrderId, itemId, exit.id()));
+    }
+
+    /**
+     * Refaz, na finalização, a baixa de item que tinha sido devolvida por rejeição e depois voltou a valer (o cliente
+     * aprovou uma revisão posterior). Item que nunca teve baixa não é tocado: o modo "baixa no lançamento" só baixa
+     * no lançamento. Faltar saldo recusa a finalização, como em qualquer baixa.
+     */
+    public void writeOffAgainIfReturned(UUID workOrderId, UUID itemId, UUID productId, BigDecimal quantity) {
+        if (!repository.workOrderExitExists(itemId)) return;
+        writeOffForWorkOrder(workOrderId, itemId, productId, quantity);
+    }
+
     public void returnWorkOrderStock(UUID workOrderId) {
         for (StockMovement exit : repository.pendingWorkOrderExits(workOrderId))
             apply(exit.productId(), StockMovement.Type.WORK_ORDER_RETURN, exit.quantity(), null,

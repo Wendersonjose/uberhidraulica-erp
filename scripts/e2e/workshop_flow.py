@@ -464,11 +464,9 @@ def main():
               str(delta("revenue")))
         check("recebido nesta execução = R$ 950,00", delta("received") == Decimal("950.00"), str(delta("received")))
         check("despesa paga nesta execução = R$ 200,00", delta("expensesPaid") == Decimal("200.00"), str(delta("expensesPaid")))
-        check("custo de peças inclui ao menos as 2 bombas aprovadas (2 x R$ 150,00)", delta("partsCost") >= Decimal("300.00"),
-              str(delta("partsCost")))
-        if delta("partsCost") != Decimal("300.00"):
-            note(f"custo de peças desta OS = {delta('partsCost')}: inclui o kit de reparo REJEITADO pelo cliente "
-                 "(baixado no lançamento e nunca devolvido) — lacuna F5, ver DR-0019.")
+        # DR-0019 (decidida em 2026-11-12): a rejeição do kit devolveu a baixa dele; só as bombas aprovadas custam.
+        check("custo de peças = só as 2 bombas aprovadas (2 x R$ 150,00); o kit rejeitado voltou ao estoque (DR-0019)",
+              delta("partsCost") == Decimal("300.00"), str(delta("partsCost")))
         check("lucro bruto = faturamento - custo de peças", delta("grossProfit") == delta("revenue") - delta("partsCost"),
               f"{delta('grossProfit')} vs {delta('revenue') - delta('partsCost')}")
     check("Gerente Administrativo enxerga o painel (FINANCE_VIEW) mas não lança despesa (403)",

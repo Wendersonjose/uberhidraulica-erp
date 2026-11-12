@@ -149,6 +149,7 @@ public class PublicQuoteService {
                     "Um dos itens recebeu decisão durante o envio; recarregue o orçamento");
         }
         notifyWorkOrder(quote, revision);
+        notifyProductDecisions(quote, decisions);
         return new DecisionResult(render(loadQuote(access), access, now), false);
     }
 
@@ -184,6 +185,7 @@ public class PublicQuoteService {
             throw new QuoteException("QUOTE_ITEM_ALREADY_DECIDED", "Um dos itens recebeu decisão durante o registro; recarregue o orçamento");
         }
         notifyWorkOrder(quote, revision);
+        notifyProductDecisions(quote, decisions);
         return quotes.findById(quote.id()).orElseThrow();
     }
 
@@ -198,6 +200,26 @@ public class PublicQuoteService {
         boolean anyApproved = ofRevision.contains(DecisionType.APPROVE);
         boolean allRejected = !ofRevision.isEmpty() && ofRevision.stream().allMatch(type -> type == DecisionType.REJECT);
         workOrderEvents.quoteDecided(quote.workOrderId(), anyApproved, allRejected);
+    }
+
+    /**
+     * DR-0019, opção A: informa a OS da decisão sobre cada item de orçamento ligado a um item físico dela. A OS guarda
+     * a decisão e manda o Estoque devolver a baixa do rejeitado.
+     */
+    private void notifyProductDecisions(Quote quote, List<DecisionSubmission.Decision> decisions) {
+        Map<UUID, Boolean> approvedByProductItem = new java.util.LinkedHashMap<>();
+        for (DecisionSubmission.Decision decision : decisions) {
+            quote.itemRevision(decision.quoteItemRevisionId())
+                    .flatMap(revision -> quote.items().stream().filter(item -> item.id().equals(revision.quoteItemId())).findFirst())
+                    .map(br.com.uberhidraulica.erp.quote.domain.QuoteItem::workOrderProductId)
+                    .ifPresent(productItemId -> approvedByProductItem.put(productItemId,
+                            decision.decisionType() == DecisionType.APPROVE));
+        }
+        // A exceção desfaz a transação inteira, inclusive a decisão já gravada: aprovar item que a OS não tem mais
+        // viraria cobrança de algo que não será entregue.
+        if (!workOrderEvents.productItemsDecided(quote.workOrderId(), approvedByProductItem).isEmpty())
+            throw new QuoteException("QUOTE_ITEM_REMOVED_FROM_WORK_ORDER",
+                    "Um dos itens aprovados foi removido da ordem de serviço. Peça à oficina um orçamento atualizado");
     }
 
     // ----- apoio -----

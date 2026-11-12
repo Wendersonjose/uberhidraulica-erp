@@ -18,6 +18,10 @@ export const PRODUCT_UNIT_LABELS: Record<ProductUnit, string> = {
 export type WorkOrderProduct = {
   id: string; productId: string; description: string; internalCode: string | null
   unit: string; quantity: number; unitPrice: number; addedAt: string
+  /** Última decisão do cliente no orçamento (DR-0019); ausente ou nulo: ainda não decidido. */
+  customerDecision?: 'APPROVED' | 'REJECTED' | null
+  /** Preenchido quando o item foi removido da OS: continua listado como histórico, fora dos totais. */
+  removedAt?: string | null; removalReason?: string | null
 }
 export type DecisionAvailability = 'AVAILABLE' | 'SUPERSEDED' | 'EXPIRED' | 'NOT_PRESENTED'
 export type QuoteItemRevision = {

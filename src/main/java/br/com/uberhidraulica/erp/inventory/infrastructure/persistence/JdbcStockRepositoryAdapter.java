@@ -63,9 +63,15 @@ class JdbcStockRepositoryAdapter implements StockRepositoryPort {
         jdbc.update("""
                 insert into inventory.stock_movement (id, product_id, movement_type, direction, quantity, unit_cost, balance_after,
                     average_cost_after, reason, source_type, work_order_id, work_order_item_id, reverses_movement_id, occurred_at, recorded_by,
-                    purchase_receipt_item_id)
+                    purchase_receipt_item_id, work_order_cycle)
                 values (:id, :productId, :type, :direction, :quantity, :unitCost, :balanceAfter, :averageCostAfter, :reason, :source,
-                    :workOrderId, :workOrderItemId, :reverses, :occurredAt, :recordedBy, :purchaseReceiptItemId)""",
+                    :workOrderId, :workOrderItemId, :reverses, :occurredAt, :recordedBy, :purchaseReceiptItemId,
+                    -- DR-0019: cada baixa do mesmo item da OS é um ciclo. Duas transações simultâneas calculam o mesmo
+                    -- ciclo e o índice único recusa a segunda.
+                    case when :type = 'WORK_ORDER_OUT'
+                         then (select count(*) + 1 from inventory.stock_movement x
+                               where x.work_order_item_id = cast(:workOrderItemId as uuid) and x.movement_type = 'WORK_ORDER_OUT')
+                         else 1 end)""",
                 new MapSqlParameterSource().addValue("id", m.id()).addValue("productId", m.productId())
                         .addValue("type", m.type().name()).addValue("direction", m.incoming() ? "IN" : "OUT")
                         .addValue("quantity", m.quantity()).addValue("unitCost", m.unitCost())
@@ -109,6 +115,16 @@ class JdbcStockRepositoryAdapter implements StockRepositoryPort {
         return Boolean.TRUE.equals(jdbc.queryForObject(
                 "select exists (select 1 from inventory.stock_movement where work_order_item_id = :id and movement_type = 'WORK_ORDER_OUT')",
                 Map.of("id", workOrderItemId), Boolean.class));
+    }
+
+    @Override
+    public Optional<StockMovement> activeWorkOrderExit(UUID workOrderItemId) {
+        if (workOrderItemId == null) return Optional.empty();
+        return jdbc.query("""
+                select m.* from inventory.stock_movement m
+                where m.work_order_item_id = :id and m.movement_type = 'WORK_ORDER_OUT'
+                  and not exists (select 1 from inventory.stock_movement r where r.reverses_movement_id = m.id)
+                order by m.occurred_at desc, m.id""", Map.of("id", workOrderItemId), MOVEMENT).stream().findFirst();
     }
 
     @Override

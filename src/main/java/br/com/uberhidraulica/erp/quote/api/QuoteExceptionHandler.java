@@ -23,7 +23,9 @@ public class QuoteExceptionHandler {
             "PUBLIC_QUOTE_ACCESS_ALREADY_REVOKED",
             "QUOTE_REVISION_NOT_PRESENTED",
             "QUOTE_ITEM_PRODUCT_ALREADY_LINKED",
-            "WORK_ORDER_CLOSED");
+            "WORK_ORDER_CLOSED",
+            // DR-0019: aprovar item que a oficina já removeu da OS.
+            "QUOTE_ITEM_REMOVED_FROM_WORK_ORDER");
 
     /** Link inexistente e link revogado respondem igual: confirmar a diferença entregaria informação. */
     private static final Set<String> NOT_FOUND = Set.of(

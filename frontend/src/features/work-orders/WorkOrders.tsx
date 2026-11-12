@@ -186,7 +186,7 @@ export function WorkOrderDetailPage() {
           </div>)}
           <div className="subtotal"><span>Subtotal de serviços</span><span data-testid="subtotal">{formatBrl(subtotal)}</span></div>
         </section>
-        <WorkOrderProductsCard products={o.products} />
+        <WorkOrderProductsCard products={o.products} orderId={operational ? id : undefined} />
         <section className="card" style={{ marginTop: 22 }}>
           <div className="subtotal"><span>Total da OS</span><span data-testid="order-total">{formatBrl(subtotal + productsSubtotal(o.products))}</span></div>
         </section>

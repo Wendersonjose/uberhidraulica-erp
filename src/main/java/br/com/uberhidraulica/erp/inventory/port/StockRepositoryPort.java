@@ -35,6 +35,9 @@ public interface StockRepositoryPort {
      */
     boolean workOrderExitExists(UUID workOrderItemId);
 
+    /** Baixa do item que ainda não foi devolvida nem estornada (DR-0019): no máximo uma por item. */
+    Optional<StockMovement> activeWorkOrderExit(UUID workOrderItemId);
+
     /** Entrada gerada pelo recebimento de compra para este item recebido: é a chave de idempotência da entrada. */
     Optional<StockMovement> findPurchaseEntry(UUID receiptItemId);
 

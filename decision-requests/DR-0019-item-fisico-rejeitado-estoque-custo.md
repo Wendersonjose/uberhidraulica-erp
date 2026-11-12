@@ -6,10 +6,10 @@
 ID: DR-0019
 Título: Item físico lançado na OS e rejeitado pelo cliente — estoque, custo e remoção
 Tipo: BUSINESS / FINANCIAL
-Status: OPEN
+Status: DECIDED (2026-11-12) — opções A + B; implementada na V27 (ver seções 10 e 12)
 Criado em: 2026-10-05
 Criado por: AG-00 — Orquestrador (auditoria de fechamento do MVP, TASK-0019)
-Última atualização: 2026-10-05
+Última atualização: 2026-11-12
 ```
 
 ## 2. Task relacionada
@@ -126,11 +126,25 @@ Testes: E2E parcial (aprova 2, rejeita 1) com devolução; concorrência entre d
 
 ```text
 Responsável pela decisão final: Proprietário do produto
-Decisão final: PENDENTE
-Data: -
+Decisão final: OPÇÕES A + B (a recomendação técnica), escolhida pelo proprietário em chat
+               ("Automático + remoção manual").
+Data: 2026-11-12
 ```
 
-## 11. Limitação vigente até a decisão (para a homologação)
+## 12. O que a decisão virou no sistema (V27)
+
+| Regra | Implementação |
+| --- | --- |
+| A — rejeição devolve o estoque | A decisão `REJECT` (link público ou registro interno) sobre item de orçamento ligado a um item físico da OS grava `customer_decision = REJECTED` no item e o Estoque registra `WORK_ORDER_RETURN` referenciando a baixa original. Vale nos dois modos de baixa; sem baixa ativa não há o que devolver. |
+| A — reaprovação | Se uma revisão posterior do mesmo item for aprovada, a marca vira `APPROVED` e a baixa é refeita **na finalização da OS**, como um novo ciclo (`work_order_cycle`). A decisão do cliente nunca é recusada por falta de saldo; quem recusa, se faltar, é a finalização. |
+| A — finalização | A OS finalizada só informa ao Estoque os itens consumidos: removidos e rejeitados ficam de fora, inclusive no modo de baixa na finalização. |
+| B — remoção manual | `DELETE /api/work-orders/{id}/products/{itemId}` com `{reason}` (3 a 500 caracteres), permissão `WORKORDER_MANAGE`, só em OS em atendimento e para item **não aprovado**. O item fica marcado (`removed_at`, `removed_by`, `removal_reason`), continua listado como histórico, sai dos totais e o estoque volta. |
+| Proteção | Item aprovado não é removido (`409 WORK_ORDER_PRODUCT_APPROVED`). Aprovar item que já foi removido recusa a decisão inteira (`409 QUOTE_ITEM_REMOVED_FROM_WORK_ORDER`): não se cobra o que a OS não tem mais. Item removido não origina item de orçamento novo. |
+
+Fora desta decisão, como registrado na opção A: item físico lançado e **nunca orçado** continua baixado até alguém removê-lo
+(opção B). A opção C (reserva formal) segue sem prioridade.
+
+## 11. Limitação vigente até a decisão (histórico — superada pela seção 12)
 
 Em OS com aprovação parcial, o operador deve **estornar a baixa do item rejeitado**
 (`POST /api/inventory/movements/{id}/reverse`, permissão `INVENTORY_ADJUST`, motivo obrigatório): o saldo
