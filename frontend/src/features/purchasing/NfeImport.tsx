@@ -135,11 +135,16 @@ export function NfeImportPage() {
   }), [preview, decisions])
   const allResolved = resolved.length > 0 && resolved.every(line => line.productId)
     && (preview?.items ?? []).every(item => !item.needsFactor || Boolean(decisions[item.lineNo]?.factor.trim()))
-  const resolvedKey = useDebouncedValue(JSON.stringify(resolved), 350)
+  const resolvedNow = JSON.stringify(resolved)
+  const resolvedKey = useDebouncedValue(resolvedNow, 350)
+  // Só compara quando as escolhas assentaram, e mantém a comparação anterior na tela enquanto a nova chega: sem isso
+  // a consulta era refeita com uma chave defasada e o campo de justificativa era remontado, perdendo o que o operador
+  // já tinha digitado.
   const comparison = useQuery({
     queryKey: [...purchaseKeys.purchases, 'order-comparison', initial?.xmlSha256, orderId, resolvedKey],
     queryFn: () => purchaseApi.orderComparison(xml, JSON.parse(resolvedKey) as PreviewSelection[], orderId),
-    enabled: Boolean(orderId) && allResolved && !stale,
+    enabled: Boolean(orderId) && allResolved && !stale && resolvedKey === resolvedNow,
+    placeholderData: keepPreviousData,
     retry: false,
   })
   const differences = comparison.data?.differences ?? []
@@ -221,7 +226,8 @@ export function NfeImportPage() {
     || preview.issues.some(issue => issue.severity === 'BLOCKING')
     || serverBlockers.length > 0 || unresolved.length > 0 || !categoryId || missingTerms
     // DR-0023 C2-A: com pedido escolhido, a diferença precisa ter sido vista e justificada antes de confirmar.
-    || (Boolean(orderId) && (!comparison.data || comparison.isFetching
+    || (Boolean(orderId) && (!comparison.data || comparison.isFetching || comparison.isPlaceholderData
+      || comparison.data.orderId !== orderId || resolvedKey !== resolvedNow
       || (differences.length > 0 && (!comparison.data.mayAccept || justification.trim().length < 3))))
 
   if (!canImport) {
