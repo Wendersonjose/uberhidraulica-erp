@@ -35,6 +35,7 @@ public class UserAdminService {
 
     @Transactional
     public CreatedUser create(UUID actor, String name, String email, ProfileCode profile) {
+        if (profile == ProfileCode.DONO) requireOwner(actor, "USER_CREATED", "USER", email, "profile=DONO");
         String temporary = generator.generate();
         IamUser created = users.create(name, email, profile, UserState.ACTIVE, encoder.encode(temporary), true);
         audit.record(actor, "USER_CREATED", "USER", created.id().toString(), "SUCCESS", null, "state=ACTIVE;profile=" + profile);
@@ -44,6 +45,8 @@ public class UserAdminService {
     @Transactional
     public IamUser changeState(UUID actor, UUID userId, UserState next) {
         IamUser current = get(userId);
+        if (current.profileCode() == ProfileCode.DONO)
+            requireOwner(actor, "USER_STATE_CHANGED", "USER", userId.toString(), next.name());
         if (current.state() == next) return current;
         if (current.profileCode() == ProfileCode.DONO && next == UserState.INACTIVE) {
             concurrency.lockActiveOwnerTransition();
@@ -78,13 +81,37 @@ public class UserAdminService {
     public Map<String, PermissionResolution> exceptions(UUID userId) { get(userId); return authorizations.userExceptions(userId); }
 
     @Transactional public void addProfilePermission(UUID actor, ProfileCode profile, String code) {
+        if (profile == ProfileCode.DONO || iam(code)) requireOwner(actor, "PROFILE_PERMISSION_ADDED", "PROFILE", profile.name(), code);
         authorizations.addProfilePermission(profile, code); audit.record(actor, "PROFILE_PERMISSION_ADDED", "PROFILE", profile.name(), "SUCCESS", null, code);
     }
     @Transactional public void removeProfilePermission(UUID actor, ProfileCode profile, String code) {
+        if (profile == ProfileCode.DONO || iam(code)) requireOwner(actor, "PROFILE_PERMISSION_REMOVED", "PROFILE", profile.name(), code);
         authorizations.removeProfilePermission(profile, code); audit.record(actor, "PROFILE_PERMISSION_REMOVED", "PROFILE", profile.name(), "SUCCESS", code, null);
     }
     @Transactional public void setException(UUID actor, UUID userId, String code, PermissionResolution resolution) {
+        if (iam(code) || get(userId).profileCode() == ProfileCode.DONO)
+            requireOwner(actor, "USER_PERMISSION_EXCEPTION_CHANGED", "USER", userId.toString(), code + ":" + resolution);
         authorizations.setUserException(userId, code, resolution); audit.record(actor, "USER_PERMISSION_EXCEPTION_CHANGED", "USER", userId.toString(), "SUCCESS", null, code + ":" + resolution);
+    }
+
+    private static boolean iam(String permissionCode) {
+        return permissionCode != null && permissionCode.toUpperCase(Locale.ROOT).startsWith("IAM_");
+    }
+
+    /**
+     * DR-0020 item 3, opção A (decidida em 2026-11-12): criar ou inativar/reativar um usuário Dono, alterar as
+     * permissões do perfil Dono e conceder, retirar ou excepcionar qualquer permissão {@code IAM_*} são atos
+     * exclusivos de quem É Dono. As permissões {@code IAM_*} continuam delegáveis para o resto (criar gerente, ler
+     * usuários), mas não servem mais de escada: quem as recebe não consegue se promover a Dono nem ampliar o próprio
+     * alcance no IAM. A recusa é auditada em transação própria, para sobreviver ao rollback.
+     */
+    private void requireOwner(UUID actor, String action, String targetType, String targetId, String attempted) {
+        boolean owner = actor != null && users.findById(actor)
+                .map(user -> user.profileCode() == ProfileCode.DONO && user.state() == UserState.ACTIVE).orElse(false);
+        if (owner) return;
+        audit.recordIndependent(actor, action, targetType, targetId, "DENIED", null, attempted);
+        throw new IamException("OWNER_ONLY_OPERATION",
+                "Somente um usuário com perfil Dono pode alterar um Dono, o perfil Dono ou permissões de administração (IAM)");
     }
 
     private static IamException notFound() { return new IamException("USER_NOT_FOUND", "Usuário não encontrado"); }

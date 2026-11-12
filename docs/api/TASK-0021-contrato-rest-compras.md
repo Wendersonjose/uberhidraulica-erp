@@ -172,7 +172,7 @@ aprova a versão que viu.
 
 - Pedido não cria conta a pagar e não movimenta estoque. Pedido e compra direta **não recebem**; o recebimento é só na compra da
   nota importada, à qual o pedido é vinculado na importação (`DR-0023` C1-A).
-- Compra sem NF-e (balcão, recibo) não tem fluxo próprio em Compras: use a entrada manual do Estoque e o lançamento manual em
+- Compra sem NF-e (balcão, recibo) não tem fluxo próprio em Compras, por decisão do proprietário (2026-11-12, manter manual): use a entrada manual do Estoque e o lançamento manual em
   Contas a pagar.
 - Solicitação, cotação e comparação de fornecedores não existem (`DR-0023` C4-A: depois do piloto).
 - Não há consulta oficial à SEFAZ: a autorização é a declarada no XML (`officialCheckPerformed: false`).
