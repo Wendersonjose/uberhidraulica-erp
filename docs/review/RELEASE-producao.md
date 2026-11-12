@@ -40,7 +40,7 @@ Cada item só some quando a evidência pedida existir. Nenhum se resolve com mai
 | B2 | Backup **externo** real e restore a partir dele | o script e o gancho funcionam; o destino externo é do operador e nunca foi exercitado de verdade | `BACKUP_EXTERNAL_CMD` configurado, agendado e `verify-backup.sh` rodado sobre a cópia **baixada de volta** |
 | B3 | Homologação operacional em servidor real | tudo foi validado em um host de laboratório | deploy real com `scripts/ops/update.sh`, E2E contra o servidor, um ciclo de restart e um de rollback |
 | ~~B4~~ | ~~CI verde no PR final e varredura de dependências Maven~~ — **resolvido** em `d64bcb9` | a varredura achou 8 HIGH/CRITICAL (Tomcat e Jackson); corrigidos por override de versão | `dependency-scan` e os demais jobs verdes. Volta a ser bloqueio se um aviso novo aparecer (o job roda a cada PR) |
-| B5 | **DR-0020** — decisão do proprietário | força bruta lenta e senha fraca não têm controle no backend; só o proprietário aceita o risco ou manda resolver | decisão registrada, ou aceite do risco residual por escrito |
+| ~~B5~~ | ~~**DR-0020** — decisão do proprietário~~ — **resolvido em 2026-11-12**: itens 2 e 3 implementados, item 1 aceito como risco residual, item 4 fora do MVP (ver a DR) | força bruta lenta e senha fraca não têm controle no backend; só o proprietário aceita o risco ou manda resolver | decisão registrada, ou aceite do risco residual por escrito |
 
 Itens que dependem do proprietário e **não bloqueiam se aceitos**: `DR-0019` (estorno manual de estoque, seção 3).
 

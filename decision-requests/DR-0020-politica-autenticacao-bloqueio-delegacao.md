@@ -6,7 +6,7 @@
 ID: DR-0020
 Título: Política de autenticação além do mínimo implementado na TASK-0019
 Tipo: SECURITY
-Status: PARTIALLY_DECIDED (2026-11-12) — itens 1 e 4 decididos; itens 2 e 3 seguem abertos (ver seção 7)
+Status: DECIDED (2026-11-12) — os quatro itens decididos; itens 2 e 3 implementados (ver seção 7)
 Criado em: 2026-10-05
 Criado por: AG-09 — Segurança & Auditoria (auditoria de fechamento do MVP, TASK-0019)
 Última atualização: 2026-11-12
@@ -89,11 +89,16 @@ por dois fatores"**.
 | --- | --- | --- |
 | 1 — bloqueio por tentativas de login | **Opção C, por enquanto**: a conta não é travada. Fica o limite por IP do nginx. | O risco residual de força bruta lenta ou distribuída está **aceito pelo proprietário** para a fase atual. Nada foi implementado. A expressão "por enquanto" indica que o item pode ser reaberto. |
 | 4 — segundo fator para o Dono | **Fora do MVP.** | Nada foi implementado. |
-| 2 — política de senha avançada | **Sem resposta.** | Vale o mínimo atual (8 a 72 caracteres). Recomendação técnica mantida: opção B (recusar senhas comuns). |
-| 3 — quem cria/altera/delega o perfil `DONO` | **Sem resposta.** | Vale o controle operacional: não delegar `IAM_*` a gerentes; `scripts/ops/preflight.sh` falha se encontrar. Recomendação técnica mantida: opção A (invariante no backend). |
+| 2 — política de senha avançada | **Opção B** (recomendação técnica). | **Implementado.** `PasswordPolicy` recusa as senhas comuns (lista embarcada, em português e inglês), as de um caractere só e as sequências numéricas, alfabéticas e de teclado, na troca de senha e no bootstrap do Dono (`400 PASSWORD_POLICY_VIOLATION`, sem ecoar a senha). Sem composição obrigatória e sem expiração. Senhas já cadastradas não são reavaliadas: a regra vale na próxima troca. |
+| 3 — quem cria/altera/delega o perfil `DONO` | **Opção A** (recomendação técnica). | **Implementado.** Só um usuário Dono ativo pode: criar usuário `DONO`; ativar/inativar um `DONO`; incluir ou retirar permissão do perfil `DONO`; incluir ou retirar qualquer permissão `IAM_*` de qualquer perfil; e alterar exceção de permissão `IAM_*` ou de um usuário `DONO`. Os demais recebem `403 OWNER_ONLY_OPERATION`, e a recusa é auditada (`DENIED`). As permissões `IAM_*` continuam delegáveis para administrar gerentes. |
 
-Leitura para a produção (bloqueador B5 de `docs/review/RELEASE-producao.md`): com o item 1 aceito e o item 3 coberto pelo
-controle do preflight, o que resta do B5 é o proprietário responder o item 2 (ou aceitar o mínimo atual) e o item 3.
+Os itens 2 e 3 foram decididos no mesmo dia, depois dos itens 1 e 4: perguntado se a recomendação técnica deveria ser adotada
+e implementada, o proprietário respondeu **"Sim, implemente"**.
+
+Leitura para a produção (bloqueador B5 de `docs/review/RELEASE-producao.md`): **a DR-0020 deixou de bloquear.** O item 1 fica
+como risco residual aceito pelo proprietário ("por enquanto"). O controle do `scripts/ops/preflight.sh` sobre `IAM_*` fora do
+perfil Dono continua em vigor como aviso de configuração — delegar IAM deixou de permitir escalada, mas segue sendo algo que o
+Dono deve fazer de propósito.
 
 ## 8. Mitigação vigente
 

@@ -16,7 +16,7 @@ ERP em desenvolvimento para digitalizar e integrar a operação da Uber-Hidrául
 > **Produção ainda não está declarada.** O HTTPS (Caddy + Let's Encrypt, ou o balanceador do provedor), o proxy
 > confiável, o backup, o restore, a atualização e o rollback foram exercitados com containers reais, mas faltam as provas
 > que só um servidor real e o proprietário dão: certificado emitido, backup copiado para fora do servidor e restaurado,
-> homologação operacional e a decisão da `DR-0020`. O CI do PR está verde, inclusive a varredura de dependências. A lista exata (bloqueadores, pendências de homologação e
+> homologação operacional (a `DR-0020` foi decidida em 2026-11-12). O CI do PR está verde, inclusive a varredura de dependências. A lista exata (bloqueadores, pendências de homologação e
 > pós-MVP) está em [`docs/review/RELEASE-producao.md`](docs/review/RELEASE-producao.md). O estado só vira
 > `READY_FOR_PRODUCTION` quando cada bloqueador de lá tiver evidência.
 >
@@ -71,12 +71,14 @@ Legenda: **Entregue** · **Parcial** (existe, com lacuna declarada) · **Planeja
 
 | DR | Assunto | Impede a homologação? |
 | --- | --- | --- |
-| [DR-0020](decision-requests/DR-0020-politica-autenticacao-bloqueio-delegacao.md) itens 2 e 3 | política de senha avançada (recusar senhas comuns?) e quem pode criar/alterar/delegar o perfil Dono | Não impede a homologação; **o proprietário responde ou aceita o mínimo atual antes da produção**. Enquanto isso, não delegue `IAM_*` (o preflight confere) |
+| — | Nenhuma Decision Request aberta em 2026-11-12 | — |
 
 Decididas em 2026-11-12 e já implementadas: [DR-0019](decision-requests/DR-0019-item-fisico-rejeitado-estoque-custo.md)
 (rejeição devolve o estoque + remoção manual), [DR-0023](decision-requests/DR-0023-conciliacao-pedido-nfe.md) (vínculo
-explícito pedido × NF-e; compra sem NF-e fica manual) e, na DR-0020, o item 1 (a conta não é bloqueada por tentativas, por enquanto) e o item 4 (sem
-segundo fator). A [DR-0021](decision-requests/DR-0021-escopo-piloto-modulos-especificados.md) foi decidida em 2026-10-13.
+explícito pedido × NF-e; compra sem NF-e fica manual) e a
+[DR-0020](decision-requests/DR-0020-politica-autenticacao-bloqueio-delegacao.md) inteira: a conta não é bloqueada por
+tentativas, por enquanto (item 1); senhas comuns são recusadas (item 2); só o Dono cria ou altera um Dono, o perfil Dono e
+permissões `IAM_*` (item 3); sem segundo fator (item 4). A [DR-0021](decision-requests/DR-0021-escopo-piloto-modulos-especificados.md) foi decidida em 2026-10-13.
 
 ## Como executar (desenvolvimento)
 
@@ -153,7 +155,8 @@ prova: [`docs/architecture/devops/DEPLOY-supabase-render.md`](docs/architecture/
 - Pedido e compra direta não recebem mercadoria nem geram conta a pagar: a entrada e a obrigação nascem da NF-e
   importada, à qual o pedido é vinculado (`DR-0023`). Compra sem NF-e é lançada à mão no Estoque e em Contas a pagar.
 - Não há bloqueio de conta por tentativas de login — decisão do proprietário, por enquanto (`DR-0020` item 1); há limite
-  por IP no nginx e senha mínima de 8 caracteres. Quem tem `IAM_USERS_MANAGE` pode criar usuário `DONO`: não delegue permissões `IAM_*` a gerentes.
+  por IP no nginx, senha mínima de 8 caracteres e recusa de senhas comuns. Senha comum cadastrada **antes** desta regra
+  continua valendo até a próxima troca. Quem recebe `IAM_USERS_MANAGE` por delegação administra gerentes, mas não cria nem altera um `DONO` (`DR-0020` item 3).
 - Todo usuário autenticado consulta (GET) os cadastros e as OS; a escrita e o financeiro são protegidos por permissão.
 - O painel financeiro não é DRE e não custeia mão de obra.
 - Erros do framework (rota inexistente, método, tipo de conteúdo) saem no formato padrão do Spring, não em
@@ -165,7 +168,8 @@ prova: [`docs/architecture/devops/DEPLOY-supabase-render.md`](docs/architecture/
 1. Homologar pela tela a versão com Compras, seguindo [`docs/review/HOMOLOGACAO-roteiro.md`](docs/review/HOMOLOGACAO-roteiro.md),
    e promover conforme [`PROMOCAO-compras-v22-v25.md`](docs/architecture/devops/PROMOCAO-compras-v22-v25.md) (o roteiro e o
    runbook foram escritos para V22–V25; as V26 e V27 entram na mesma promoção e precisam ser acrescentadas ao roteiro de tela).
-2. Proprietário responde os itens 2 e 3 da `DR-0020`.
+2. Cumprir os bloqueadores de produção que restam em `docs/review/RELEASE-producao.md` (B1 HTTPS real, B2 backup externo
+   restaurado, B3 homologação em servidor real); o B5 (DR-0020) foi resolvido.
 3. `TASK-0022` (Financeiro integrado a Compras: contas bancárias, centro de custo, dados de boleto) e, depois, `TASK-0023`
    (Contábil), pelo fluxo de governança.
 4. Fiscal/NFS-e só depois de haver certificado A1 e ambiente de homologação do município.
