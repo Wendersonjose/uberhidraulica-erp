@@ -31,7 +31,8 @@ export type WorkOrderResultLine = {
 }
 export type WorkOrderResults = { from: string; to: string; netRevenue: number; partsCost: number; result: number; workOrders: WorkOrderResultLine[] }
 export type IncomeStatement = {
-  from: string; to: string; grossRevenue: number; discounts: number; surcharges: number; netRevenue: number
+  from: string; to: string; grossRevenue: number; otherRevenue?: number; discounts: number; surcharges: number; netRevenue: number
+  financialExpenses?: number
   partsCost: number; grossProfit: number; expenses: ExpensesByCategory['categories']; totalExpenses: number
   operatingResult: number; operatingMargin: number; cashReceived: number; cashPaid: number; cashResult: number
 }

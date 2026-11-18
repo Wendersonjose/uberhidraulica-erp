@@ -51,6 +51,7 @@ function IncomeStatementReport({ from, to }: { from: string; to: string }) {
         <h2>Competência (OS faturadas e despesas cadastradas no período)</h2>
         <table className="table"><tbody>
           <Row label="Receita bruta das OS" value={formatBrl(q.data.grossRevenue)} testId="is-gross" />
+          {(q.data.otherRevenue ?? 0) > 0 && <Row label="(+) Outras receitas (avulsas)" value={formatBrl(q.data.otherRevenue ?? 0)} testId="is-other" />}
           <Row label="(−) Descontos financeiros" value={formatBrl(q.data.discounts)} />
           <Row label="(+) Acréscimos" value={formatBrl(q.data.surcharges)} />
           <Row label="Receita líquida" value={formatBrl(q.data.netRevenue)} strong testId="is-net" />
@@ -58,6 +59,7 @@ function IncomeStatementReport({ from, to }: { from: string; to: string }) {
           <Row label="Lucro bruto" value={formatBrl(q.data.grossProfit)} strong testId="is-gross-profit" />
           {q.data.expenses.map(e => <Row key={e.categoryId} label={`(−) ${e.categoryName}`} value={formatBrl(e.registered)} />)}
           <Row label="Total de despesas" value={formatBrl(q.data.totalExpenses)} />
+          {(q.data.financialExpenses ?? 0) > 0 && <Row label="(−) Despesas financeiras (taxas de cartão)" value={formatBrl(q.data.financialExpenses ?? 0)} testId="is-financial" />}
           <Row label="Resultado operacional" value={formatBrl(q.data.operatingResult)} strong testId="is-operating" />
           <Row label="Margem operacional" value={formatPercent(q.data.operatingMargin)} />
         </tbody></table>

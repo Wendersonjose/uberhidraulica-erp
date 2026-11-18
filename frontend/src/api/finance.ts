@@ -8,6 +8,9 @@ export const FINANCE_ADJUST = 'FINANCE_ADJUST'
 export const FINANCE_PAYABLE = 'FINANCE_PAYABLE'
 export const FINANCE_CONFIG = 'FINANCE_CONFIG'
 export const FINANCE_BILL = 'FINANCE_BILL'
+export const FINANCE_RECEIVABLE_MANUAL = 'FINANCE_RECEIVABLE_MANUAL'
+export const FINANCE_PAYABLE_APPROVE = 'FINANCE_PAYABLE_APPROVE'
+export const FINANCE_RECONCILE = 'FINANCE_RECONCILE'
 export const CASH_SESSION_OPEN = 'CASH_SESSION_OPEN'
 export const CASH_SESSION_CLOSE = 'CASH_SESSION_CLOSE'
 export const CASH_SUPPLY = 'CASH_SUPPLY'
@@ -24,36 +27,71 @@ export const PAYABLE_STATUS_LABELS: Record<FinancialStatus, string> = {
 export const statusTone = (status: FinancialStatus) =>
   status === 'QUITADO' ? 'success' : status === 'VENCIDO' || status === 'CANCELADO' ? 'warning' : 'info'
 
+export type CardFee = { installments: number; feePercent: number; feeAmount: number; expectedSettlementOn: string }
 export type Settlement = {
   id: string; ownerId: string; amount: number; paymentMethodId: string; paymentMethodName: string; effectiveOn: string
   notes: string | null; recordedAt: string; recordedBy: string; reversed: boolean
   reversal: { id: string; reason: string; reversedAt: string; reversedBy: string } | null
+  cardFee?: CardFee | null; netAmount?: number
 }
+export type ReceivableOrigin = 'WORK_ORDER' | 'MANUAL'
+export type Installment = { number: number; amount: number; dueDate: string; openAmount: number; status: FinancialStatus }
+export type InstallmentPlan = { version: number; reason: string | null; createdAt: string | null; editable: boolean; installments: Installment[] }
 export type ReceivableLine = {
   id: string; quoteItemRevisionId: string; description: string; quantity: number; unitPrice: number
   discountAmount: number; totalAmount: number; displayOrder: number
 }
 export type Receivable = {
-  id: string; workOrderId: string; workOrderNumber: number; customerId: string; customerName: string | null; billingQuoteId: string
+  id: string; origin?: ReceivableOrigin; workOrderId: string | null; workOrderNumber: number | null; customerId: string
+  customerName: string | null; billingQuoteId: string | null
+  description?: string | null; revenueCategoryId?: string | null; revenueCategoryName?: string | null; notes?: string | null
+  principalOutstanding?: number; surchargeOutstanding?: number; installmentPlan?: InstallmentPlan
   originalAmount: number; discountAmount: number; surchargeAmount: number; adjustedAmount: number; receivedAmount: number
   outstandingBalance: number; issuedOn: string; dueDate: string; status: FinancialStatus; createdAt: string
   cancelledAt: string | null; cancellationReason: string | null; lines: ReceivableLine[]
   adjustments: {
-    id: string; type: 'DISCOUNT' | 'SURCHARGE'; amount: number; reason: string; recordedAt: string; reversed: boolean
+    id: string; type: 'DISCOUNT' | 'SURCHARGE'; origin?: 'MANUAL' | 'LATE_CHARGE'; amount: number; reason: string; recordedAt: string; reversed: boolean
     reversal: { id: string; reason: string; reversedAt: string } | null
   }[]
-  dueDateChanges: { id: string; previousDueDate: string; newDueDate: string; reason: string; changedAt: string }[]
+  dueDateChanges: { id: string; installmentNumber?: number | null; previousDueDate: string; newDueDate: string; reason: string; changedAt: string }[]
   receipts: Settlement[]
 }
 export type ReceivableSummary = Pick<Receivable, 'id' | 'workOrderId' | 'workOrderNumber' | 'customerId' | 'customerName'
-  | 'originalAmount' | 'discountAmount' | 'surchargeAmount' | 'receivedAmount' | 'outstandingBalance' | 'issuedOn' | 'dueDate' | 'status'>
+  | 'originalAmount' | 'discountAmount' | 'surchargeAmount' | 'receivedAmount' | 'outstandingBalance' | 'issuedOn' | 'dueDate' | 'status'
+  | 'origin' | 'description'> & { installmentCount?: number }
+export type ApprovalStatus = 'NOT_REQUIRED' | 'PENDING' | 'APPROVED'
+export const APPROVAL_LABELS: Record<ApprovalStatus, string> = { NOT_REQUIRED: 'Sem aprovação', PENDING: 'Aguardando aprovação', APPROVED: 'Aprovada' }
+export type LateChargeLine = { installmentNumber: number; dueDate: string; baseAmount: number; interestFrom: string; days: number
+  feeAmount: number; interestAmount: number }
+export type LateChargeSuggestion = { calculatedOn: string; feePercent: number; interestMonthlyPercent: number; feeAmount: number
+  interestAmount: number; total: number; lines: LateChargeLine[] }
+export type LateChargeHistory = { id: string; decision: 'APPLIED' | 'WAIVED'; calculatedOn: string; total: number; reason: string
+  recordedAt: string; counts: boolean }
+export type PaymentMethodFee = { installments: number; feePercent: number; settlementDays: number }
+export type FinanceSettings = { defaultReceivableDueDays: number; lateFeePercent: number; lateInterestMonthlyPercent: number
+  payableApprovalThreshold: number }
+export type FinancialAccountType = 'CASH' | 'BANK' | 'CARD'
+export const ACCOUNT_TYPE_LABELS: Record<FinancialAccountType, string> = { CASH: 'Caixa físico', BANK: 'Conta bancária', CARD: 'Cartão / adquirente' }
+export type FinancialAccount = { id: string; name: string; type: FinancialAccountType; bankName: string | null; branch: string | null
+  accountNumber: string | null; active: boolean }
+export type Reconciliation = { id: string; accountId: string; entryType: 'RECEIPT' | 'PAYMENT'; entryId: string; statementDate: string
+  statementAmount: number; statementReference: string; expectedAmount: number; difference: number; differenceReason: string | null
+  active: boolean }
+export type ReconciliationEntry = { type: 'RECEIPT' | 'PAYMENT'; id: string; ownerId: string; ownerLabel: string; effectiveOn: string
+  paymentMethodName: string; amount: number; netAmount: number; expectedSettlementOn: string | null; accountName: string | null
+  reconciliation: Reconciliation | null }
 export type Payable = {
   id: string; description: string; supplier: string | null; categoryId: string; categoryName: string; amount: number
   paidAmount: number; outstandingBalance: number; dueDate: string; status: FinancialStatus; notes: string | null
   createdAt: string; cancelledAt: string | null; cancellationReason: string | null; payments: Settlement[]
+  supplierId?: string | null; origin?: 'MANUAL' | 'PURCHASE'; groupId?: string | null; installmentNumber?: number | null
+  approvalStatus?: ApprovalStatus; approval?: { approvedAt: string; approvedBy: string; notes: string | null } | null; createdBy?: string
 }
 export type PayableSummary = Pick<Payable, 'id' | 'description' | 'supplier' | 'categoryId' | 'categoryName' | 'amount'
-  | 'paidAmount' | 'outstandingBalance' | 'dueDate' | 'status'>
+  | 'paidAmount' | 'outstandingBalance' | 'dueDate' | 'status' | 'supplierId' | 'groupId' | 'installmentNumber' | 'approvalStatus'>
+export type PayableGroup = { id: string; description: string; supplier: string | null; supplierId: string | null; categoryId: string
+  totalAmount: number; installmentCount: number; notes: string | null; createdAt: string; paidAmount: number; outstandingBalance: number
+  payables: Payable[] }
 export type PaymentMethod = { id: string; code: string; name: string; active: boolean; cashSessionRequired: boolean }
 export type ExpenseCategory = { id: string; name: string; active: boolean }
 export type CashFlowDay = { date: string; inflows: number; outflows: number; net: number }
@@ -61,7 +99,7 @@ export type CashFlowBlock = { inflows: number; outflows: number; net: number; da
 export type CashFlow = { from: string; to: string; categoryId: string | null; realized: CashFlowBlock; forecast: CashFlowBlock }
 export type FinanceDashboard = {
   from: string; to: string
-  revenue: number; received: number; receivableOpen: number; overdue: number
+  revenue: number; discounts?: number; surcharges?: number; netRevenue?: number; cardFees?: number; received: number; receivableOpen: number; overdue: number
   partsCost: number; expensesRegistered: number; expensesPaid: number
   grossProfit: number; operatingResult: number; grossMargin: number; operatingMargin: number
 }
@@ -96,24 +134,42 @@ const query = (params: Record<string, string | number | undefined | null>) => {
 }
 
 export const financeApi = {
-  receivables: (filter: { status?: string; workOrderNumber?: string; page?: number }) =>
+  receivables: (filter: { status?: string; workOrderNumber?: string; origin?: string; page?: number }) =>
     api<Page<ReceivableSummary>>('/api/finance/receivables' + query({ ...filter, size: 20 })),
   receivable: (id: string) => api<Receivable>(`/api/finance/receivables/${id}`),
   workOrderReceivable: (workOrderId: string) => api<Receivable>(`/api/finance/work-orders/${workOrderId}/receivable`),
-  receive: (id: string, body: { amount: number; paymentMethodId: string; receivedOn?: string; notes?: string | null; cashTendered?: number }, key: string) =>
+  receive: (id: string, body: { amount: number; paymentMethodId: string; receivedOn?: string; notes?: string | null; cashTendered?: number
+    installments?: number }, key: string) =>
     idempotent<Settlement>(`/api/finance/receivables/${id}/receipts`, body, key),
   reverseReceipt: (id: string, reason: string, key: string) => idempotent<Settlement>(`/api/finance/receipts/${id}/reversal`, { reason }, key),
   adjust: (id: string, body: { type: 'DISCOUNT' | 'SURCHARGE'; amount: number; reason: string }, key: string) =>
     idempotent<Receivable>(`/api/finance/receivables/${id}/adjustments`, body, key),
-  changeDueDate: (id: string, dueDate: string, reason: string, key: string) =>
-    api<Receivable>(`/api/finance/receivables/${id}/due-date`, { method: 'PUT', body: JSON.stringify({ dueDate, reason }), headers: { 'Idempotency-Key': key } }),
+  changeDueDate: (id: string, dueDate: string, reason: string, key: string, installmentNumber?: number) =>
+    api<Receivable>(`/api/finance/receivables/${id}/due-date`, { method: 'PUT', body: JSON.stringify({ dueDate, reason, installmentNumber }), headers: { 'Idempotency-Key': key } }),
+  replan: (id: string, installments: { amount: number; dueDate: string }[], reason: string, key: string) =>
+    api<Receivable>(`/api/finance/receivables/${id}/installments`, { method: 'PUT', body: JSON.stringify({ installments, reason }), headers: { 'Idempotency-Key': key } }),
+  createManualReceivable: (body: { customerId: string; description: string; revenueCategoryId: string; amount: number; dueDate: string
+    issuedOn?: string; notes: string | null; installments: number }, key: string) => idempotent<Receivable>('/api/finance/receivables', body, key),
+  cancelManualReceivable: (id: string, reason: string) =>
+    api<Receivable>(`/api/finance/receivables/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  lateCharge: (id: string, on?: string) => api<LateChargeSuggestion>(`/api/finance/receivables/${id}/late-charge` + query({ on })),
+  lateChargeHistory: (id: string) => api<LateChargeHistory[]>(`/api/finance/receivables/${id}/late-charges`),
+  decideLateCharge: (id: string, body: { decision: 'APPLIED' | 'WAIVED'; calculatedOn: string; expectedTotal: number; reason?: string | null }, key: string) =>
+    idempotent<Receivable>(`/api/finance/receivables/${id}/late-charge`, body, key),
   reverseAdjustment: (id: string, reason: string, key: string) => idempotent<Receivable>(`/api/finance/adjustments/${id}/reversal`, { reason }, key),
 
-  payables: (filter: { status?: string; categoryId?: string; page?: number }) =>
+  payables: (filter: { status?: string; categoryId?: string; approval?: string; groupId?: string; page?: number }) =>
     api<Page<PayableSummary>>('/api/finance/payables' + query({ ...filter, size: 20 })),
   payable: (id: string) => api<Payable>(`/api/finance/payables/${id}`),
-  createPayable: (body: { description: string; supplier: string | null; categoryId: string; amount: number; dueDate: string; notes: string | null }, key: string) =>
-    idempotent<Payable>('/api/finance/payables', body, key),
+  createPayable: (body: { description: string; supplier: string | null; supplierId?: string | null; categoryId: string; amount: number
+    dueDate: string; notes: string | null }, key: string) => idempotent<Payable>('/api/finance/payables', body, key),
+  createPayableInstallments: (body: { description: string; supplier: string | null; supplierId?: string | null; categoryId: string
+    totalAmount: number; installments: number; firstDueDate: string; notes: string | null }, key: string) =>
+    idempotent<PayableGroup>('/api/finance/payables/installments', body, key),
+  payableGroup: (id: string) => api<PayableGroup>(`/api/finance/payable-groups/${id}`),
+  approvePayable: (id: string, notes?: string | null) => api<Payable>(`/api/finance/payables/${id}/approval`, { method: 'POST', body: JSON.stringify({ notes }) }),
+  approvePayableGroup: (id: string, notes?: string | null) =>
+    api<PayableGroup>(`/api/finance/payable-groups/${id}/approval`, { method: 'POST', body: JSON.stringify({ notes }) }),
   pay: (id: string, body: { amount: number; paymentMethodId: string; paidOn?: string; notes?: string | null }, key: string) =>
     idempotent<Settlement>(`/api/finance/payables/${id}/payments`, body, key),
   reversePayment: (id: string, reason: string, key: string) => idempotent<Settlement>(`/api/finance/payments/${id}/reversal`, { reason }, key),
@@ -143,8 +199,24 @@ export const financeApi = {
   categories: () => api<ExpenseCategory[]>('/api/finance/expense-categories'),
   createCategory: (name: string) => api<ExpenseCategory>('/api/finance/expense-categories', { method: 'POST', body: JSON.stringify({ name }) }),
   updateCategory: (id: string, name: string, active: boolean) => put<ExpenseCategory>(`/api/finance/expense-categories/${id}`, { name, active }),
-  settings: () => api<{ defaultReceivableDueDays: number }>('/api/finance/settings'),
-  changeSettings: (defaultReceivableDueDays: number) => put<{ defaultReceivableDueDays: number }>('/api/finance/settings', { defaultReceivableDueDays }),
+  settings: () => api<FinanceSettings>('/api/finance/settings'),
+  changeSettings: (changes: Partial<FinanceSettings>) => put<FinanceSettings>('/api/finance/settings', changes),
+  revenueCategories: () => api<ExpenseCategory[]>('/api/finance/revenue-categories'),
+  createRevenueCategory: (name: string) => api<ExpenseCategory>('/api/finance/revenue-categories', { method: 'POST', body: JSON.stringify({ name }) }),
+  updateRevenueCategory: (id: string, name: string, active: boolean) => put<ExpenseCategory>(`/api/finance/revenue-categories/${id}`, { name, active }),
+  fees: (methodId: string) => api<PaymentMethodFee[]>(`/api/finance/payment-methods/${methodId}/fees`),
+  replaceFees: (methodId: string, fees: PaymentMethodFee[]) => put<PaymentMethodFee[]>(`/api/finance/payment-methods/${methodId}/fees`, { fees }),
+  accounts: () => api<FinancialAccount[]>('/api/finance/accounts'),
+  createAccount: (body: { name: string; type: FinancialAccountType; bankName?: string | null; branch?: string | null; accountNumber?: string | null }) =>
+    api<FinancialAccount>('/api/finance/accounts', { method: 'POST', body: JSON.stringify(body) }),
+  updateAccount: (id: string, body: { name: string; bankName: string | null; branch: string | null; accountNumber: string | null; active: boolean }) =>
+    put<FinancialAccount>(`/api/finance/accounts/${id}`, body),
+  reconciliationEntries: (filter: { from: string; to: string; type?: string; reconciled?: string; accountId?: string }) =>
+    api<ReconciliationEntry[]>('/api/finance/reconciliation/entries' + query(filter)),
+  reconcile: (body: { accountId: string; entryType: 'RECEIPT' | 'PAYMENT'; entryId: string; statementDate: string; statementAmount: number
+    statementReference: string; differenceReason?: string | null }, key: string) => idempotent<Reconciliation>('/api/finance/reconciliations', body, key),
+  reverseReconciliation: (id: string, reason: string, key: string) =>
+    idempotent<Reconciliation>(`/api/finance/reconciliations/${id}/reversal`, { reason }, key),
 }
 
 export const financeKeys = {
@@ -155,6 +227,13 @@ export const financeKeys = {
   payable: (id: string) => ['finance', 'payables', id] as const,
   methods: ['finance', 'payment-methods'] as const,
   categories: ['finance', 'categories'] as const,
+  revenueCategories: ['finance', 'revenue-categories'] as const,
+  fees: (methodId: string) => ['finance', 'payment-methods', methodId, 'fees'] as const,
+  lateCharge: (id: string, on: string) => ['finance', 'receivables', id, 'late-charge', on] as const,
+  lateChargeHistory: (id: string) => ['finance', 'receivables', id, 'late-charges'] as const,
+  payableGroup: (id: string) => ['finance', 'payable-groups', id] as const,
+  accounts: ['finance', 'accounts'] as const,
+  reconciliation: ['finance', 'reconciliation'] as const,
   settings: ['finance', 'settings'] as const,
   cashSession: ['finance', 'cash-session'] as const,
   cashSuggestedOpening: ['finance', 'cash-session', 'suggested-opening'] as const,

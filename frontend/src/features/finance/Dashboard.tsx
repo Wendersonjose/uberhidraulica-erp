@@ -78,7 +78,9 @@ function DashboardView({ data }: { data: FinanceDashboard }) {
     <section className="card" aria-label="Faturamento e recebimentos">
       <h2>Faturamento e recebimentos</h2>
       <div className="metrics">
-        <div className="metric" data-testid="dashboard-revenue"><span className="muted">Faturamento</span><strong>{formatBrl(data.revenue)}</strong></div>
+        <div className="metric" data-testid="dashboard-revenue"><span className="muted">Faturamento</span><strong>{formatBrl(data.revenue)}</strong>
+          {data.netRevenue !== undefined && data.netRevenue !== data.revenue && <span className="muted" data-testid="dashboard-net-revenue">
+            líquido {formatBrl(data.netRevenue)}</span>}</div>
         <div className="metric" data-testid="dashboard-received"><span className="muted">Recebido</span><strong>{formatBrl(data.received)}</strong></div>
         <div className="metric" data-testid="dashboard-receivable-open"><span className="muted">A receber</span><strong>{formatBrl(data.receivableOpen)}</strong></div>
         <div className="metric" data-testid="dashboard-overdue">
@@ -93,6 +95,8 @@ function DashboardView({ data }: { data: FinanceDashboard }) {
         <div className="metric" data-testid="dashboard-parts-cost"><span className="muted">Custo de peças</span><strong>{formatBrl(data.partsCost)}</strong></div>
         <div className="metric" data-testid="dashboard-expenses-registered"><span className="muted">Despesas registradas</span><strong>{formatBrl(data.expensesRegistered)}</strong></div>
         <div className="metric" data-testid="dashboard-expenses-paid"><span className="muted">Despesas pagas</span><strong>{formatBrl(data.expensesPaid)}</strong></div>
+        {(data.cardFees ?? 0) > 0 && <div className="metric" data-testid="dashboard-card-fees"><span className="muted">Taxas de cartão</span>
+          <strong>{formatBrl(data.cardFees ?? 0)}</strong></div>}
       </div>
     </section>
     <section className="card" aria-label="Margens">

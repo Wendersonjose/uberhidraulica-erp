@@ -180,7 +180,7 @@ test('nova conta a pagar exige vencimento e envia chave de idempotência', async
   await userEvent.type(screen.getByLabelText(/Vencimento/), '2026-09-30')
   await userEvent.click(screen.getByRole('button', { name: 'Lançar conta' }))
   await waitFor(() => expect(lastBody(fetch, 'POST', '/api/finance/payables')).toEqual({
-    description: 'Aluguel de setembro', supplier: null, categoryId: 'cat1', amount: 3000, dueDate: '2026-09-30', notes: null,
+    description: 'Aluguel de setembro', supplier: null, supplierId: null, categoryId: 'cat1', amount: 3000, dueDate: '2026-09-30', notes: null,
   }))
   expect(headerOf(requestsTo(fetch, 'POST', '/api/finance/payables')[0][1], 'Idempotency-Key')).toBeTruthy()
   expect(await screen.findByTestId('payable-balance')).toHaveTextContent('3.000,00')
