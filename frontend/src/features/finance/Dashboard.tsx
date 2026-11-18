@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { financeApi, financeKeys, todayIso, type FinanceDashboard } from '../../api/finance'
+import { reportKeys, reportsApi, type DueSummary, type FinanceOverview } from '../../api/financeReports'
+import { DailyFlowChart } from './reportsCommon'
 import { Badge, PageHeader } from '../../components/ui'
 import { QueryState } from '../../components/QueryState'
 import { formatBrl, formatPercent } from '../../utils/format'
@@ -27,6 +29,8 @@ export function FinanceDashboardPage() {
     queryKey: financeKeys.dashboard(from, to), queryFn: () => financeApi.dashboard(from, to),
     enabled: valid, placeholderData: keepPreviousData,
   })
+  const overview = useQuery({ queryKey: reportKeys.overview(from, to), queryFn: () => reportsApi.overview(from, to), enabled: valid, placeholderData: keepPreviousData })
+  const flow = useQuery({ queryKey: financeKeys.cashFlow(from, to, ''), queryFn: () => financeApi.cashFlow(from, to), enabled: valid, placeholderData: keepPreviousData })
   const setRange = (nextFrom: string, nextTo: string) => { setFrom(nextFrom); setTo(nextTo) }
 
   return <>
@@ -43,9 +47,16 @@ export function FinanceDashboardPage() {
       </div>
       {!valid && <div role="alert" className="notice error">O período final não pode ser anterior ao inicial.</div>}
     </section>
+    <QueryState label="a posição de hoje" loading={overview.isLoading} error={overview.error} retry={overview.refetch}>
+      {overview.data && <TodayView data={overview.data} />}
+    </QueryState>
     <QueryState label="o resumo financeiro" loading={dashboard.isLoading} error={dashboard.error} retry={dashboard.refetch}>
       {dashboard.data && <DashboardView data={dashboard.data} />}
     </QueryState>
+    {flow.data && <section className="card" aria-label="Fluxo de caixa diário">
+      <h2>Fluxo de caixa realizado</h2>
+      <DailyFlowChart label="Entradas e saídas por dia" days={flow.data.realized.days} />
+    </section>}
   </>
 }
 
@@ -91,5 +102,32 @@ function DashboardView({ data }: { data: FinanceDashboard }) {
         <div className="metric" data-testid="dashboard-operating-margin"><span className="muted">Margem operacional</span><strong>{formatPercent(data.operatingMargin)}</strong></div>
       </div>
     </section>
+  </div>
+}
+
+function DueCard({ title, data, testId }: { title: string; data: DueSummary; testId: string }) {
+  return <section className="card" aria-label={title} data-testid={testId}>
+    <h2>{title}</h2>
+    <div className="metrics">
+      <div className="metric"><span className="muted">Em aberto ({data.openCount})</span><strong>{formatBrl(data.openAmount)}</strong></div>
+      <div className="metric" data-testid={`${testId}-overdue`}><span className="muted">Vencido ({data.overdueCount})</span>
+        {data.overdueAmount > 0 ? <Badge tone="warning">{formatBrl(data.overdueAmount)}</Badge> : <strong>{formatBrl(0)}</strong>}</div>
+      <div className="metric" data-testid={`${testId}-7`}><span className="muted">Vence em 7 dias ({data.dueIn7Count})</span><strong>{formatBrl(data.dueIn7Amount)}</strong></div>
+      <div className="metric"><span className="muted">Vence em 30 dias ({data.dueIn30Count})</span><strong>{formatBrl(data.dueIn30Amount)}</strong></div>
+    </div>
+  </section>
+}
+
+/** Posição de hoje, independente do período: caixa aberto e títulos vencidos ou a vencer. */
+function TodayView({ data }: { data: FinanceOverview }) {
+  return <div className="stack">
+    <section className="card" aria-label="Caixa físico" data-testid="overview-cash">
+      <h2>Caixa físico</h2>
+      {data.cash.open
+        ? <div className="metric"><span className="muted">Saldo esperado do caixa aberto</span><strong className="metric-large">{formatBrl(data.cash.expectedBalance ?? 0)}</strong></div>
+        : <p className="muted">Caixa fechado. Abra o caixa em Financeiro → Caixa físico para receber em dinheiro.</p>}
+    </section>
+    <DueCard title="Contas a receber" data={data.receivables} testId="overview-receivables" />
+    <DueCard title="Contas a pagar" data={data.payables} testId="overview-payables" />
   </div>
 }
