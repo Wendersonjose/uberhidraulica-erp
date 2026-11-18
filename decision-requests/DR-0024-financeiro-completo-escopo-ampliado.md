@@ -1,6 +1,6 @@
 # DR-0024 — Financeiro completo: itens que a DR-0015 deixou fora
 
-- Status: `OPEN` (aguarda o proprietário)
+- Status: `DECIDED` (2026-11-18, proprietário: "Aceito as recomendações")
 - Aberta em: 2026-11-18
 - Origem: briefing do proprietário "Desenvolvimento completo do Financeiro" (2026-11-18)
 - Task: `TASK-0024`
@@ -83,4 +83,17 @@ cadastro (como o painel atual), com uma visão alternativa "caixa" (recebido × 
 
 ## Decisão final
 
-_Pendente._
+Decidida pelo proprietário em 2026-11-18, aceitando todas as recomendações:
+
+| Pergunta | Decisão |
+|---|---|
+| Q1 | **B** — recebível da OS dividido em parcelas, definidas no faturamento e alteráveis só sem recebimento; centavos na última |
+| Q2 | **B** — recebível avulso com permissão `FINANCE_RECEIVABLE_MANUAL` |
+| Q3 | **B** — juros e multa sugeridos no recebimento (padrão 2% de multa e 1% a.m. *pro rata die*, configuráveis, podendo ser zero); o operador confirma ou dispensa com motivo; o valor original nunca muda |
+| Q4 | **B** — taxa por forma de pagamento e número de parcelas, com prazo de repasse; taxa vira despesa financeira; sem integração com adquirente |
+| Q5 | Parcelas **B** (grupo de parcelas com visão consolidada) e aprovação **B** (segundo usuário acima de valor configurável; o Dono aprova sozinho) |
+| Q6 | **B** — vínculo opcional com `purchasing.supplier`, mantendo o texto como snapshot |
+| Q7 | **B** — contas financeiras e conciliação manual, sem importar OFX ou CSV |
+| Q8 | Confirmado: demonstrativo **gerencial**, competência pela emissão e pelo cadastro, com visão de caixa. O resultado considera descontos e acréscimos |
+
+Supersede, só nesses pontos, F-03, F-06, F-09 e F-12 da `DR-0015`. O restante da `DR-0015` continua valendo.
