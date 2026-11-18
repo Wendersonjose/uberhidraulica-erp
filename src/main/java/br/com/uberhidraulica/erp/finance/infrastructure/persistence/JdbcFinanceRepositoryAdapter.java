@@ -191,7 +191,7 @@ class JdbcFinanceRepositoryAdapter implements FinanceRepositoryPort {
     }
 
     /** Totais derivados por recebível, calculados a partir dos lançamentos a cada consulta. */
-    private static final String RECEIVABLE_TOTALS = "with totals as (select r.*,"
+    static final String RECEIVABLE_TOTALS = "with totals as (select r.*,"
             + " coalesce((select sum(a.amount) from finance.receivable_adjustment a where a.receivable_id = r.id and a.adjustment_type = 'DISCOUNT'"
             + "   and not exists (select 1 from finance.receivable_adjustment_reversal x where x.adjustment_id = a.id)), 0) as discount_amount,"
             + " coalesce((select sum(a.amount) from finance.receivable_adjustment a where a.receivable_id = r.id and a.adjustment_type = 'SURCHARGE'"
@@ -337,7 +337,7 @@ class JdbcFinanceRepositoryAdapter implements FinanceRepositoryPort {
                 (rs, i) -> new KeyedReversal(uuid(rs, "payment_id"), rs.getString("reason"))).stream().findFirst();
     }
 
-    private static final String PAYABLE_TOTALS = "with totals as (select p.*, c.name as category_name,"
+    static final String PAYABLE_TOTALS = "with totals as (select p.*, c.name as category_name,"
             + " coalesce((select sum(x.amount) from finance.payable_payment x where x.payable_id = p.id"
             + "   and not exists (select 1 from finance.payable_payment_reversal v where v.payment_id = x.id)), 0) as settled_amount"
             + " from finance.payable p join finance.expense_category c on c.id = p.category_id),"

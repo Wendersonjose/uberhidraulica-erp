@@ -17,4 +17,7 @@ public interface InventoryCostQuery {
      * Ordens de Serviço informadas. Zero quando a coleção é vazia ou nenhuma delas tem movimentação.
      */
     BigDecimal partsCostForWorkOrders(Collection<UUID> workOrderIds);
+
+    /** O mesmo custo histórico separado por OS, com 2 casas; OS sem movimentação não aparece no mapa. */
+    java.util.Map<UUID, BigDecimal> partsCostByWorkOrder(Collection<UUID> workOrderIds);
 }
