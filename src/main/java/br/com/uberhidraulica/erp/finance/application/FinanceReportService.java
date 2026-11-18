@@ -117,8 +117,10 @@ public class FinanceReportService {
     // ------------------------------------------------------------------ demonstrativo gerencial (A5)
 
     public record IncomeStatement(LocalDate from, LocalDate to,
-                                  BigDecimal grossRevenue, BigDecimal discounts, BigDecimal surcharges, BigDecimal netRevenue,
+                                  BigDecimal grossRevenue, BigDecimal otherRevenue, BigDecimal discounts, BigDecimal surcharges,
+                                  BigDecimal netRevenue,
                                   BigDecimal partsCost, BigDecimal grossProfit, List<CategoryExpense> expenses, BigDecimal totalExpenses,
+                                  BigDecimal financialExpenses,
                                   BigDecimal operatingResult, BigDecimal operatingMargin,
                                   BigDecimal cashReceived, BigDecimal cashPaid, BigDecimal cashResult) {}
 
@@ -126,19 +128,24 @@ public class FinanceReportService {
     public IncomeStatement incomeStatement(LocalDate from, LocalDate to) {
         validate(from, to);
         List<WorkOrderResult> rows = reports.workOrderResults(from, to, today());
-        BigDecimal gross = Money.sum(rows.stream().map(WorkOrderResult::original).toList());
-        BigDecimal discounts = Money.sum(rows.stream().map(WorkOrderResult::discount).toList());
-        BigDecimal surcharges = Money.sum(rows.stream().map(WorkOrderResult::surcharge).toList());
-        BigDecimal net = gross.subtract(discounts).add(surcharges);
+        // Receita de serviços (OS) e outras receitas (avulsas, DR-0024 Q2); descontos e acréscimos das duas.
+        var revenue = reports.revenueByOrigin(from, to);
+        BigDecimal gross = Money.sum(revenue.stream().filter(r -> r.origin().equals("WORK_ORDER")).map(FinanceReportPort.RevenueTotals::original).toList());
+        BigDecimal other = Money.sum(revenue.stream().filter(r -> r.origin().equals("MANUAL")).map(FinanceReportPort.RevenueTotals::original).toList());
+        BigDecimal discounts = Money.sum(revenue.stream().map(FinanceReportPort.RevenueTotals::discount).toList());
+        BigDecimal surcharges = Money.sum(revenue.stream().map(FinanceReportPort.RevenueTotals::surcharge).toList());
+        BigDecimal net = gross.add(other).subtract(discounts).add(surcharges);
         BigDecimal parts = inventoryCost.partsCostForWorkOrders(rows.stream().map(WorkOrderResult::workOrderId).toList())
                 .setScale(Money.SCALE, RoundingMode.HALF_UP);
         BigDecimal grossProfit = net.subtract(parts);
         List<CategoryExpense> expenses = reports.expensesByCategory(from, to).stream().filter(c -> c.registeredCount() > 0).toList();
         BigDecimal totalExpenses = Money.sum(expenses.stream().map(CategoryExpense::registered).toList());
-        BigDecimal operating = grossProfit.subtract(totalExpenses);
+        // DR-0024, Q4: taxas de cartão dos recebimentos do período, como despesa financeira.
+        BigDecimal financial = finance.cardFees(from, to);
+        BigDecimal operating = grossProfit.subtract(totalExpenses).subtract(financial);
         BigDecimal received = Money.sum(finance.realizedInflows(from, to).stream().map(FinanceRepositoryPort.DailyAmount::amount).toList());
         BigDecimal paid = Money.sum(finance.realizedOutflows(from, to, null).stream().map(FinanceRepositoryPort.DailyAmount::amount).toList());
-        return new IncomeStatement(from, to, gross, discounts, surcharges, net, parts, grossProfit, expenses, totalExpenses,
+        return new IncomeStatement(from, to, gross, other, discounts, surcharges, net, parts, grossProfit, expenses, totalExpenses, financial,
                 operating, percentage(operating, net), received, paid, received.subtract(paid));
     }
 

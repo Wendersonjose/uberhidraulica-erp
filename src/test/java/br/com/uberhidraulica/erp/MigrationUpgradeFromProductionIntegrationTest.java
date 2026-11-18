@@ -192,14 +192,19 @@ class MigrationUpgradeFromProductionIntegrationTest {
     @Order(3)
     void theMigrationsStayInsideTheirOwnTerritory() {
         Set<String> created = relations().stream().filter(r -> !relationsAtV21.contains(r)).collect(Collectors.toSet());
-        Set<String> outsidePurchasing = created.stream().filter(r -> !r.startsWith("purchasing.")).collect(Collectors.toSet());
+        // V28 a V32 (TASK-0024 etapa B) moram só no schema do próprio Financeiro.
+        Set<String> outsidePurchasing = created.stream().filter(r -> !r.startsWith("purchasing.") && !r.startsWith("finance."))
+                .collect(Collectors.toSet());
 
-        // Tudo o que é novo mora em `purchasing`, exceto 3 índices em tabelas de outros módulos (GTIN do produto e a
-        // chave de idempotência da entrada de estoque por compra). Nada em `public` nem em `erp_meta`.
+        // Tudo o que é novo mora em `purchasing` ou `finance`, exceto 3 índices em tabelas de outros módulos (GTIN do produto
+        // e a chave de idempotência da entrada de estoque por compra). Nada em `public` nem em `erp_meta`.
         assertThat(outsidePurchasing).containsExactlyInAnyOrder(
                 "productcatalog.uq_product_gtin:i", "inventory.uq_stock_movement_purchase_entry:i",
                 "inventory.ix_stock_movement_purchase_receipt:i");
         assertThat(created.stream().filter(r -> r.startsWith("purchasing.")).count()).isGreaterThan(20);
+        if (latestVersion() >= 28)
+            assertThat(created).as("tabelas da etapa B do Financeiro").contains("finance.receivable_installment:r",
+                    "finance.receivable_late_charge:r", "finance.payment_method_fee:r", "finance.payable_group:r", "finance.reconciliation:r");
         assertThat(created.stream().noneMatch(r -> r.startsWith("public."))).isTrue();
         assertThat(jdbc().queryForObject("select count(*) from public.outro_modulo_salario", Long.class)).isEqualTo(2L);
     }
@@ -278,6 +283,7 @@ class MigrationUpgradeFromProductionIntegrationTest {
     @Order(7)
     void theDeliveredRollbackScriptRefusesWhenPurchasesTouchedStockAndOtherwiseRestoresV21ThenReApplies() throws IOException {
         String rollback = Files.readString(Path.of("scripts/ops/rollback-v22-v25.sql"));
+        String financeRollback = Files.readString(Path.of("scripts/ops/rollback-v28-v32.sql"));
         UUID product = jdbc().queryForObject("select id from productcatalog.product where internal_code = 'FO-001'", UUID.class);
 
         // Trava: se uma compra já deu entrada em estoque, o rollback recusa e NADA muda (a transação inteira volta).
@@ -290,8 +296,21 @@ class MigrationUpgradeFromProductionIntegrationTest {
         assertThat(jdbc().queryForObject("select max(version::int) from erp_meta.flyway_schema_history where success", Integer.class)).isEqualTo(latestVersion());
         jdbc().update("delete from inventory.stock_movement where id = ?", purchaseMovement);
 
-        // Sem uso real de Compras, o script devolve o banco ao formato da V21 sem tocar nos dados de negócio.
+        // O rollback é do mais novo para o mais antigo. A etapa B do Financeiro recusa se já foi usada...
+        jdbc().update("insert into finance.revenue_category (id, name, active, created_at, updated_at) values (?, 'Uso real', true, now(), now())",
+                UUID.randomUUID());
+        assertThatThrownBy(() -> jdbc().execute(financeRollback)).hasMessageContaining("Rollback recusado");
+        assertThat(jdbc().queryForObject("select max(version::int) from erp_meta.flyway_schema_history where success", Integer.class)).isEqualTo(latestVersion());
+        jdbc().update("delete from finance.revenue_category");
+        // ...e, sem uso, volta à V27 sem tocar nos dados de negócio.
         String businessBefore = businessData();
+        jdbc().execute(financeRollback);
+        assertThat(businessData()).as("dados de negócio intactos pelo rollback do Financeiro").isEqualTo(businessBefore);
+        assertThat(jdbc().queryForObject("select max(version::int) from erp_meta.flyway_schema_history where success", Integer.class)).isEqualTo(27);
+        assertThat(jdbc().queryForObject("select count(*) from iam.permission where code in ('FINANCE_RECEIVABLE_MANUAL', 'FINANCE_RECONCILE')",
+                Long.class)).isZero();
+
+        // Sem uso real de Compras, o script devolve o banco ao formato da V21 sem tocar nos dados de negócio.
         jdbc().execute(rollback);
 
         assertThat(businessData()).as("dados de negócio intactos pelo rollback").isEqualTo(businessBefore);

@@ -43,9 +43,10 @@ class PurchasePayableRegistrar implements PurchasePayables {
                     ? request.description()
                     : request.description() + " — parcela " + installment.number() + "/" + request.installments().size();
             try {
-                Recorded<Payable> recorded = payables.create(description, request.supplierName(),
-                        request.expenseCategoryId(), installment.amount(), installment.dueDate(), request.notes(),
-                        key(request.idempotencyPrefix(), installment.number()));
+                // Origem PURCHASE: a compra já passou pela aprovação do pedido (V25); não pede uma segunda (DR-0024, Q5).
+                Recorded<Payable> recorded = payables.create(new PayableService.Draft(description, request.supplierName(),
+                        request.supplierId(), request.expenseCategoryId(), installment.amount(), installment.dueDate(), request.notes()),
+                        Payable.Origin.PURCHASE, key(request.idempotencyPrefix(), installment.number()));
                 result.add(new Registered(recorded.value().id(), installment.number(), installment.dueDate(),
                         installment.amount(), installment.reference(), recorded.replayed()));
             } catch (FinanceException internal) {

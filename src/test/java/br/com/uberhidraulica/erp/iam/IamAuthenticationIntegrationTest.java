@@ -54,7 +54,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ExtendWith(OutputCaptureExtension.class)
 class IamAuthenticationIntegrationTest {
     private static final java.util.List<String> FINANCE = java.util.List.of("FINANCE_VIEW", "FINANCE_RECEIVE", "FINANCE_REVERSE",
-            "FINANCE_ADJUST", "FINANCE_PAYABLE", "FINANCE_CONFIG", "FINANCE_BILL");
+            "FINANCE_ADJUST", "FINANCE_PAYABLE", "FINANCE_CONFIG", "FINANCE_BILL",
+            // V28, V31 e V32 (TASK-0024 etapa B / DR-0024): DONO e GERENTE_FINANCEIRO.
+            "FINANCE_RECEIVABLE_MANUAL", "FINANCE_PAYABLE_APPROVE", "FINANCE_RECONCILE");
     private static final java.util.List<String> CASH = java.util.List.of("CASH_SESSION_OPEN", "CASH_SESSION_CLOSE",
             "CASH_SUPPLY", "CASH_WITHDRAWAL", "CASH_REVERSAL");
     // V20: rotina de módulo vai para DONO + GERENTE_ADMINISTRATIVO; sensível vai para DONO + GERENTE_FINANCEIRO.
@@ -116,7 +118,9 @@ class IamAuthenticationIntegrationTest {
         assertThat(authorizations.profilePermissions(ProfileCode.DONO)).containsExactlyInAnyOrderElementsOf(
                 Stream.of(br.com.uberhidraulica.erp.iam.domain.IamPermissions.ALL.stream(),
                         Stream.of("QUOTE_PRESENT", "QUOTE_DISCOUNT"), FINANCE.stream(), CASH.stream(), MODULE_ROUTINE.stream(), MODULE_SENSITIVE.stream(),
-                        PURCHASING.stream(), PURCHASING_OWNER_ONLY.stream())
+                        PURCHASING.stream(), PURCHASING_OWNER_ONLY.stream(),
+                        // V31: exceção da segregação na aprovação de conta a pagar, só do Dono.
+                        Stream.of("FINANCE_PAYABLE_APPROVE_OWN"))
                         .flatMap(s -> s).toList());
         assertThat(authorizations.profilePermissions(ProfileCode.GERENTE_ADMINISTRATIVO)).containsExactlyInAnyOrderElementsOf(
                 Stream.of(Stream.of("QUOTE_PRESENT", "QUOTE_DISCOUNT", "FINANCE_VIEW", "FINANCE_RECEIVE", "FINANCE_BILL"),

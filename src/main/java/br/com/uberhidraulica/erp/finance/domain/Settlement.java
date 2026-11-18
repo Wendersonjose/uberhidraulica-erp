@@ -13,7 +13,22 @@ import java.util.UUID;
  */
 public record Settlement(UUID id, UUID ownerId, BigDecimal amount, UUID paymentMethodId, String paymentMethodName,
                          LocalDate effectiveOn, String notes, Instant recordedAt, UUID recordedBy, String idempotencyKey,
-                         Reversal reversal) {
+                         Reversal reversal, CardFee cardFee) {
+
+    /** Liquidação sem taxa de cartão: pagamento de conta, ou recebimento em forma sem tabela de taxas. */
+    public Settlement(UUID id, UUID ownerId, BigDecimal amount, UUID paymentMethodId, String paymentMethodName,
+                      LocalDate effectiveOn, String notes, Instant recordedAt, UUID recordedBy, String idempotencyKey, Reversal reversal) {
+        this(id, ownerId, amount, paymentMethodId, paymentMethodName, effectiveOn, notes, recordedAt, recordedBy, idempotencyKey, reversal, null);
+    }
+
+    /**
+     * Parcelas e taxa do recebimento em cartão (DR-0024, Q4), congeladas no lançamento: mudar a tabela depois não
+     * reescreve o que foi recebido.
+     */
+    public record CardFee(int installments, BigDecimal feePercent, BigDecimal feeAmount, LocalDate expectedSettlementOn) {}
+
+    /** Valor que a oficina efetivamente recebe: o bruto menos a taxa, quando houver. */
+    public BigDecimal netAmount() { return cardFee == null ? amount : amount.subtract(cardFee.feeAmount()); }
 
     public Settlement {
         if (id == null || ownerId == null || paymentMethodId == null || effectiveOn == null || recordedAt == null

@@ -82,7 +82,7 @@ class FinanceReportController {
         return reports.incomeStatement(from, to);
     }
 
-    record ReceivableRowResponse(UUID id, long workOrderNumber, UUID customerId, String customerName, LocalDate issuedOn, LocalDate dueDate,
+    record ReceivableRowResponse(UUID id, Long workOrderNumber, String description, UUID customerId, String customerName, LocalDate issuedOn, LocalDate dueDate,
                                  String status, BigDecimal original, BigDecimal discount, BigDecimal surcharge, BigDecimal received,
                                  BigDecimal outstanding) {}
 
@@ -90,7 +90,8 @@ class FinanceReportController {
     @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'FINANCE_VIEW')")
     List<ReceivableRowResponse> receivables(@RequestParam LocalDate from, @RequestParam LocalDate to) {
         Map<UUID, String> names = new HashMap<>();
-        return reports.receivablesDue(from, to).stream().map(r -> new ReceivableRowResponse(r.id(), r.workOrderNumber(), r.customerId(),
+        return reports.receivablesDue(from, to).stream().map(r -> new ReceivableRowResponse(r.id(), r.workOrderNumber(), r.description(),
+                r.customerId(),
                 name(names, r.customerId()), r.issuedOn(), r.dueDate(), r.status(), r.original(), r.discount(), r.surcharge(),
                 r.received(), r.outstanding())).toList();
     }

@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static br.com.uberhidraulica.erp.finance.infrastructure.persistence.JdbcFinanceRepositoryAdapter.PAYABLE_TOTALS;
+import static br.com.uberhidraulica.erp.finance.infrastructure.persistence.JdbcFinanceRepositoryAdapter.RECEIVABLE_OPEN_ITEMS;
 import static br.com.uberhidraulica.erp.finance.infrastructure.persistence.JdbcFinanceRepositoryAdapter.RECEIVABLE_TOTALS;
 
 /** Relatórios financeiros: só SELECT sobre as tabelas do próprio módulo {@code finance}. */
@@ -30,11 +31,12 @@ class JdbcFinanceReportAdapter implements FinanceReportPort {
 
     @Override
     public List<AgingBucket> receivableAging(LocalDate today) {
-        return jdbc.query(RECEIVABLE_TOTALS + ", open as (select outstanding, (cast(:today as date) - due_date) as late from classified"
-                        + "   where cancelled_at is null and outstanding > 0),"
-                        + " bucketed as (select outstanding, case when late <= 0 then 'A_VENCER' when late <= 30 then 'ATE_30'"
+        // Cada parcela cai na faixa do seu próprio vencimento; o acréscimo não pago, na do vencimento corrente.
+        return jdbc.query(RECEIVABLE_OPEN_ITEMS + ", open as (select receivable_id, amount as outstanding,"
+                        + "   (cast(:today as date) - due_date) as late from open_items),"
+                        + " bucketed as (select receivable_id, outstanding, case when late <= 0 then 'A_VENCER' when late <= 30 then 'ATE_30'"
                         + "   when late <= 60 then 'DE_31_A_60' when late <= 90 then 'DE_61_A_90' else 'ACIMA_90' end as bucket from open)"
-                        + " select b.bucket, count(o.bucket) as n, coalesce(sum(o.outstanding), 0) as amount"
+                        + " select b.bucket, count(distinct o.receivable_id) as n, coalesce(sum(o.outstanding), 0) as amount"
                         + " from (values ('A_VENCER'), ('ATE_30'), ('DE_31_A_60'), ('DE_61_A_90'), ('ACIMA_90')) as b(bucket)"
                         + " left join bucketed o on o.bucket = b.bucket group by b.bucket order by " + AGING_ORDER.replace("bucket", "b.bucket"),
                 today(today), (rs, i) -> new AgingBucket(rs.getString("bucket"), rs.getLong("n"), money(rs, "amount")));
@@ -60,9 +62,19 @@ class JdbcFinanceReportAdapter implements FinanceReportPort {
             + " count(*) as open_n, coalesce(sum(outstanding), 0) as open"
             + " from classified where cancelled_at is null and outstanding > 0";
 
+    /** Recebíveis por parcela: a conta é contada uma vez por faixa, e o valor é o das parcelas daquela faixa. */
+    private static final String RECEIVABLE_DUE_SUMMARY = " select"
+            + " count(distinct receivable_id) filter (where due_date < :today) as overdue_n,"
+            + " coalesce(sum(amount) filter (where due_date < :today), 0) as overdue,"
+            + " count(distinct receivable_id) filter (where due_date between :today and cast(:today as date) + 7) as d7_n,"
+            + " coalesce(sum(amount) filter (where due_date between :today and cast(:today as date) + 7), 0) as d7,"
+            + " count(distinct receivable_id) filter (where due_date between :today and cast(:today as date) + 30) as d30_n,"
+            + " coalesce(sum(amount) filter (where due_date between :today and cast(:today as date) + 30), 0) as d30,"
+            + " count(distinct receivable_id) as open_n, coalesce(sum(amount), 0) as open from open_items";
+
     @Override
     public DueSummary receivableDue(LocalDate today) {
-        return jdbc.queryForObject(RECEIVABLE_TOTALS + DUE_SUMMARY, today(today), JdbcFinanceReportAdapter::dueSummary);
+        return jdbc.queryForObject(RECEIVABLE_OPEN_ITEMS + RECEIVABLE_DUE_SUMMARY, today(today), JdbcFinanceReportAdapter::dueSummary);
     }
 
     @Override
@@ -90,8 +102,9 @@ class JdbcFinanceReportAdapter implements FinanceReportPort {
 
     @Override
     public List<WorkOrderResult> workOrderResults(LocalDate from, LocalDate to, LocalDate today) {
-        return jdbc.query(RECEIVABLE_TOTALS + " select * from classified where cancelled_at is null and issued_on between :from and :to"
-                        + " order by issued_on, work_order_number", period(from, to).addValue("today", Date.valueOf(today)),
+        return jdbc.query(RECEIVABLE_TOTALS + " select * from classified where cancelled_at is null and origin = 'WORK_ORDER'"
+                        + " and issued_on between :from and :to order by issued_on, work_order_number",
+                period(from, to).addValue("today", Date.valueOf(today)),
                 (rs, i) -> new WorkOrderResult(rs.getObject("id", UUID.class), rs.getObject("work_order_id", UUID.class),
                         rs.getLong("work_order_number"), rs.getObject("customer_id", UUID.class), rs.getDate("issued_on").toLocalDate(),
                         rs.getDate("due_date").toLocalDate(), rs.getString("status"), money(rs, "original_amount"),
@@ -101,11 +114,22 @@ class JdbcFinanceReportAdapter implements FinanceReportPort {
     @Override
     public List<ReceivableRow> receivablesDueBetween(LocalDate from, LocalDate to, LocalDate today) {
         return jdbc.query(RECEIVABLE_TOTALS + " select * from classified where due_date between :from and :to"
-                        + " order by due_date, work_order_number", period(from, to).addValue("today", Date.valueOf(today)),
-                (rs, i) -> new ReceivableRow(rs.getObject("id", UUID.class), rs.getLong("work_order_number"),
+                        + " order by due_date, work_order_number nulls last, created_at", period(from, to).addValue("today", Date.valueOf(today)),
+                (rs, i) -> new ReceivableRow(rs.getObject("id", UUID.class), (Long) rs.getObject("work_order_number"),
+                        rs.getString("description"),
                         rs.getObject("customer_id", UUID.class), rs.getDate("issued_on").toLocalDate(), rs.getDate("due_date").toLocalDate(),
                         rs.getString("status"), money(rs, "original_amount"), money(rs, "discount_amount"), money(rs, "surcharge_amount"),
                         money(rs, "settled_amount"), money(rs, "outstanding")));
+    }
+
+    @Override
+    public List<RevenueTotals> revenueByOrigin(LocalDate from, LocalDate to) {
+        return jdbc.query(RECEIVABLE_TOTALS + " select origin, count(*) as n, coalesce(sum(original_amount), 0) as original,"
+                        + " coalesce(sum(discount_amount), 0) as discount, coalesce(sum(surcharge_amount), 0) as surcharge"
+                        + " from classified where cancelled_at is null and issued_on between :from and :to group by origin order by origin",
+                period(from, to).addValue("today", Date.valueOf(from)),
+                (rs, i) -> new RevenueTotals(rs.getString("origin"), rs.getLong("n"), money(rs, "original"), money(rs, "discount"),
+                        money(rs, "surcharge")));
     }
 
     @Override

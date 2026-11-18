@@ -28,11 +28,17 @@ public interface FinanceReportPort {
                            LocalDate dueDate, String status, BigDecimal original, BigDecimal discount, BigDecimal surcharge,
                            BigDecimal received, BigDecimal outstanding) {}
 
-    record ReceivableRow(UUID id, long workOrderNumber, UUID customerId, LocalDate issuedOn, LocalDate dueDate, String status,
+    /** {@code workOrderNumber} é nulo e {@code description} preenchida no recebível avulso. */
+    record ReceivableRow(UUID id, Long workOrderNumber, String description, UUID customerId, LocalDate issuedOn, LocalDate dueDate, String status,
                          BigDecimal original, BigDecimal discount, BigDecimal surcharge, BigDecimal received, BigDecimal outstanding) {}
 
     record PayableRow(UUID id, String description, String supplier, String categoryName, LocalDate registeredOn,
                       LocalDate dueDate, String status, BigDecimal amount, BigDecimal paid, BigDecimal outstanding) {}
+
+    /** Receita emitida no período por origem ({@code WORK_ORDER} ou {@code MANUAL}), sem cancelados. */
+    record RevenueTotals(String origin, long count, BigDecimal original, BigDecimal discount, BigDecimal surcharge) {}
+
+    List<RevenueTotals> revenueByOrigin(LocalDate from, LocalDate to);
 
     List<AgingBucket> receivableAging(LocalDate today);
 

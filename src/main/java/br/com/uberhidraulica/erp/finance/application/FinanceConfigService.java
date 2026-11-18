@@ -2,6 +2,8 @@ package br.com.uberhidraulica.erp.finance.application;
 
 import br.com.uberhidraulica.erp.finance.domain.ExpenseCategory;
 import br.com.uberhidraulica.erp.finance.domain.FinanceException;
+import br.com.uberhidraulica.erp.finance.domain.LateCharge;
+import br.com.uberhidraulica.erp.finance.domain.PaymentMethodFee;
 import br.com.uberhidraulica.erp.finance.domain.Money;
 import br.com.uberhidraulica.erp.finance.domain.PaymentMethod;
 import br.com.uberhidraulica.erp.finance.port.FinanceRepositoryPort;
@@ -79,6 +81,24 @@ public class FinanceConfigService {
     }
 
     @Transactional(readOnly = true)
+    public List<ExpenseCategory> revenueCategories() { return repository.revenueCategories(); }
+
+    @Transactional
+    public ExpenseCategory createRevenueCategory(String name) {
+        Instant now = clock.instant();
+        ExpenseCategory category = new ExpenseCategory(UUID.randomUUID(), name, true, now, now);
+        return save(() -> repository.saveRevenueCategory(category, true), category, "REVENUE_CATEGORY_ALREADY_EXISTS");
+    }
+
+    @Transactional
+    public ExpenseCategory updateRevenueCategory(UUID id, String name, boolean active) {
+        ExpenseCategory current = repository.revenueCategory(id)
+                .orElseThrow(() -> new FinanceException("REVENUE_CATEGORY_NOT_FOUND", "Categoria de receita não encontrada"));
+        ExpenseCategory updated = new ExpenseCategory(id, name, active, current.createdAt(), clock.instant());
+        return save(() -> repository.saveRevenueCategory(updated, false), updated, "REVENUE_CATEGORY_ALREADY_EXISTS");
+    }
+
+    @Transactional(readOnly = true)
     public int defaultReceivableDueDays() { return repository.defaultReceivableDueDays(); }
 
     @Transactional
@@ -87,6 +107,63 @@ public class FinanceConfigService {
             throw new FinanceException("INVALID_FINANCE_SETTING", "Prazo padrão deve estar entre 0 e " + MAX_DUE_DAYS + " dias");
         repository.saveDefaultReceivableDueDays(days, clock.instant(), currentUser.requireId());
         return days;
+    }
+
+    // ------------------------------------------------------------------ configurações da etapa B (DR-0024)
+
+    /** Prazo padrão, juros e multa por atraso (Q3) e limite de aprovação de contas a pagar (Q5; zero desliga). */
+    public record Settings(int defaultReceivableDueDays, java.math.BigDecimal lateFeePercent, java.math.BigDecimal lateInterestMonthlyPercent,
+                           java.math.BigDecimal payableApprovalThreshold) {}
+
+    @Transactional(readOnly = true)
+    public Settings settings() {
+        return new Settings(repository.defaultReceivableDueDays(), new java.math.BigDecimal(repository.setting(LateChargeService.FEE_KEY)),
+                new java.math.BigDecimal(repository.setting(LateChargeService.INTEREST_KEY)),
+                new java.math.BigDecimal(repository.setting(PayableService.APPROVAL_THRESHOLD_KEY)));
+    }
+
+    /** Altera só o que vier preenchido; cada valor é validado antes de qualquer gravação. */
+    @Transactional
+    public Settings changeSettings(Integer dueDays, java.math.BigDecimal lateFee, java.math.BigDecimal lateInterest,
+                                   java.math.BigDecimal approvalThreshold) {
+        if (dueDays != null && (dueDays < 0 || dueDays > MAX_DUE_DAYS))
+            throw new FinanceException("INVALID_FINANCE_SETTING", "Prazo padrão deve estar entre 0 e " + MAX_DUE_DAYS + " dias");
+        java.math.BigDecimal fee = lateFee == null ? null : LateCharge.percent(lateFee, LateCharge.MAX_FEE_PERCENT, "Multa");
+        java.math.BigDecimal interest = lateInterest == null ? null
+                : LateCharge.percent(lateInterest, LateCharge.MAX_INTEREST_PERCENT, "Juros mensais");
+        if (approvalThreshold != null && (approvalThreshold.signum() < 0 || approvalThreshold.stripTrailingZeros().scale() > 2
+                || approvalThreshold.compareTo(new java.math.BigDecimal("999999999.99")) > 0))
+            throw new FinanceException("INVALID_FINANCE_SETTING", "Limite de aprovação deve ser zero ou positivo, com até duas casas");
+        Instant now = clock.instant();
+        UUID author = currentUser.requireId();
+        if (dueDays != null) repository.saveDefaultReceivableDueDays(dueDays, now, author);
+        if (fee != null) repository.saveSetting(LateChargeService.FEE_KEY, fee.toPlainString(), now, author);
+        if (interest != null) repository.saveSetting(LateChargeService.INTEREST_KEY, interest.toPlainString(), now, author);
+        if (approvalThreshold != null)
+            repository.saveSetting(PayableService.APPROVAL_THRESHOLD_KEY, approvalThreshold.setScale(2).toPlainString(), now, author);
+        return settings();
+    }
+
+    @Transactional(readOnly = true)
+    public List<PaymentMethodFee> fees(UUID paymentMethodId) {
+        repository.paymentMethod(paymentMethodId)
+                .orElseThrow(() -> new FinanceException("PAYMENT_METHOD_NOT_FOUND", "Forma de pagamento não encontrada"));
+        return repository.currentFees(paymentMethodId);
+    }
+
+    /**
+     * Nova tabela de taxas da forma (Q4); a anterior fica como histórico e os recebimentos já gravados mantêm a taxa
+     * congelada. Forma de dinheiro físico não tem taxa nem parcelas. Lista vazia remove a taxa.
+     */
+    @Transactional
+    public List<PaymentMethodFee> replaceFees(UUID paymentMethodId, List<PaymentMethodFee> fees) {
+        PaymentMethod method = repository.paymentMethod(paymentMethodId)
+                .orElseThrow(() -> new FinanceException("PAYMENT_METHOD_NOT_FOUND", "Forma de pagamento não encontrada"));
+        if (method.cashSessionRequired() && fees != null && !fees.isEmpty())
+            throw new FinanceException("INVALID_PAYMENT_METHOD_FEE", "Forma de dinheiro físico não tem taxa nem parcelamento");
+        List<PaymentMethodFee> checked = PaymentMethodFee.checkSchedule(fees);
+        repository.insertFeeSchedule(paymentMethodId, checked, clock.instant(), currentUser.requireId());
+        return repository.currentFees(paymentMethodId);
     }
 
     private static <T> T save(Runnable write, T value, String duplicateCode) {
