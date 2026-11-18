@@ -3,6 +3,8 @@
 #
 #   bash scripts/dev/demo-financeiro.sh up      # PostgreSQL local (porta 55432) + backend (8080), espera o health
 #   bash scripts/dev/demo-financeiro.sh seed    # cria pela API: OS faturadas, recebimentos, ajuste, despesas, caixa
+#   bash scripts/dev/demo-financeiro.sh seed-b  # etapa B: parcelas, avulso, juros e multa, cartão, aprovação, conciliação
+#   bash scripts/dev/demo-financeiro.sh check-b # confere pela API os valores da etapa B (sai com erro se algo divergir)
 #   bash scripts/dev/demo-financeiro.sh down    # apaga o container e o banco local
 # Depois: cd frontend && npm run dev  (http://localhost:5173) e entre com as credenciais LOCAIS abaixo.
 #
@@ -81,6 +83,62 @@ seed() {
   echo "dados de demonstração criados (somente no banco local)"
 }
 
+
+get() { curl -s -b $J "$API$1"; }
+py() { python -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
+
+# Etapa B (DR-0024), tudo pela API, no banco local descartável.
+seed_b() {
+  [ "$(login "$PASS")" = 200 ] || { echo "rode antes: seed"; exit 1; }
+  local pix card rc mc os r rec p1 g acc admin
+  pix=$(get /api/finance/payment-methods | py "[m['id'] for m in d if m['code']=='PIX'][0]")
+  card=$(get /api/finance/payment-methods | py "[m['id'] for m in d if m['code']=='CARTAO_CREDITO'][0]")
+  call PUT /api/finance/settings '{"payableApprovalThreshold":"1000.00"}' >/dev/null
+  # B4: cartão de crédito com 1x a 3,50% e 3x a 5,99%, repasse em 30 dias.
+  call PUT /api/finance/payment-methods/$card/fees '{"fees":[{"installments":1,"feePercent":"3.50","settlementDays":30},{"installments":3,"feePercent":"5.99","settlementDays":30}]}' >/dev/null
+  # B1: OS de R$ 1.200,00 em 3 parcelas; a primeira recebida no cartão em 3x.
+  r=$(billed "Oficina Parceira" DEM4D44 "Retífica de bomba" 1200.00)
+  call PUT /api/finance/receivables/$r/installments "{\"reason\":\"Negociado em 3x\",\"installments\":[{\"amount\":\"400.00\",\"dueDate\":\"$(date +%F)\"},{\"amount\":\"400.00\",\"dueDate\":\"$(date -d '+30 day' +%F)\"},{\"amount\":\"400.00\",\"dueDate\":\"$(date -d '+60 day' +%F)\"}]}" >/dev/null
+  rec=$(call POST /api/finance/receivables/$r/receipts "{\"amount\":\"400.00\",\"paymentMethodId\":\"$card\",\"installments\":3}" | id)
+  # B3: recebível vencido há 15 dias para a sugestão de juros e multa.
+  os=$(billed "Cliente Atrasado" DEM5E55 "Troca de válvula" 600.00)
+  docker exec $PG psql -U postgres -d erp -qc "update finance.receivable set due_date = current_date - 15 where id = '$os'"
+  # B2: venda de balcão avulsa em 2x.
+  rc=$(call POST /api/finance/revenue-categories '{"name":"Venda de balcão"}' | id)
+  mc=$(call POST /api/customers '{"personType":"PF","name":"Cliente Balcão","phone":"34999990000"}' | id)
+  call POST /api/finance/receivables "{\"customerId\":\"$mc\",\"description\":\"Venda de mangueiras\",\"revenueCategoryId\":\"$rc\",\"amount\":\"250.01\",\"dueDate\":\"$(date +%F)\",\"installments\":2}" >/dev/null
+  # B5 e B6: fornecedor do cadastro, despesa parcelada (aprovação pelo total) e conta acima do limite.
+  local sup cat
+  sup=$(call POST /api/purchasing/suppliers '{"personType":"PJ","legalName":"Máquinas Sul Ltda","tradeName":"Máquinas Sul","document":"11222333000181"}' | id)
+  cat=$(call POST /api/finance/expense-categories '{"name":"Equipamentos"}' | id)
+  g=$(call POST /api/finance/payables/installments "{\"description\":\"Elevador hidráulico\",\"supplierId\":\"$sup\",\"categoryId\":\"$cat\",\"totalAmount\":\"3000.00\",\"installments\":3,\"firstDueDate\":\"$(date +%F)\"}" | id)
+  echo "$g" > target/demo-group.id
+  # B7: conta bancária e conciliação do PIX do seed (R$ 1.000,00).
+  acc=$(call POST /api/finance/accounts '{"name":"Banco PJ","type":"BANK","bankName":"Banco da oficina"}' | id)
+  local pixReceipt
+  pixReceipt=$(get "/api/finance/reconciliation/entries?from=$(date +%F)&to=$(date +%F)&type=RECEIPT" | py "[e['id'] for e in d if e['paymentMethodName']=='PIX'][0]")
+  call POST /api/finance/reconciliations "{\"accountId\":\"$acc\",\"entryType\":\"RECEIPT\",\"entryId\":\"$pixReceipt\",\"statementDate\":\"$(date +%F)\",\"statementAmount\":\"1000.00\",\"statementReference\":\"EXT-0001\"}" >/dev/null
+  echo "$os" > target/demo-late.id
+  echo "etapa B criada (somente no banco local)"
+}
+
+# Confere pela API os números da etapa B; cada linha é "OK" ou "DIVERGE".
+check_b() {
+  [ "$(login "$PASS")" = 200 ] || { echo "login falhou"; exit 1; }
+  local fail=0 late g today; late=$(cat target/demo-late.id); g=$(cat target/demo-group.id); today=$(date +%F)
+  expect() { if [ "$2" = "$3" ]; then echo "OK      $1 = $2"; else echo "DIVERGE $1: esperado $3, veio $2"; fail=1; fi; }
+  expect "juros+multa sugeridos (600 x 2% + 600 x 1%/30 x 15)" "$(get /api/finance/receivables/$late/late-charge | py "d['total']")" "15.0"
+  expect "grupo de 3 parcelas pendente de aprovação" "$(get /api/finance/payable-groups/$g | py "sum(1 for p in d['payables'] if p['approvalStatus']=='PENDING')")" "3"
+  expect "taxas de cartão no demonstrativo (400 x 5,99%)" "$(get "/api/finance/reports/income-statement?from=$today&to=$today" | py "d['financialExpenses']")" "23.96"
+  expect "outras receitas (avulsa)" "$(get "/api/finance/reports/income-statement?from=$today&to=$today" | py "d['otherRevenue']")" "250.01"
+  local dash ist
+  dash=$(get "/api/finance/dashboard?from=$today&to=$today" | py "d['operatingResult']")
+  ist=$(get "/api/finance/reports/income-statement?from=$today&to=$today" | py "d['operatingResult']")
+  expect "painel e demonstrativo com o mesmo resultado operacional" "$dash" "$ist"
+  expect "conciliação do PIX" "$(get "/api/finance/reconciliation/entries?from=$today&to=$today&reconciled=true" | py "len(d)")" "1"
+  return $fail
+}
+
 down() { [ -f target/demo-backend.pid ] && kill "$(cat target/demo-backend.pid)" 2>/dev/null || true; docker rm -f -v $PG >/dev/null 2>&1 || true; echo "demo removida"; }
 
-"${1:-up}"
+case "${1:-up}" in seed-b) seed_b ;; check-b) check_b ;; *) "${1:-up}" ;; esac
