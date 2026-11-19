@@ -50,4 +50,7 @@ public interface StockRepositoryPort {
 
     /** Custo histórico (baixas menos devoluções) das Ordens de Serviço informadas, pelo `unit_cost` gravado na movimentação. */
     BigDecimal partsCostForWorkOrders(Collection<UUID> workOrderIds);
+
+    /** Mesmo custo histórico, separado por OS (OS sem movimentação não aparece). */
+    java.util.Map<UUID, BigDecimal> partsCostByWorkOrder(Collection<UUID> workOrderIds);
 }

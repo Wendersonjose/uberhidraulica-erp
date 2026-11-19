@@ -17,6 +17,9 @@ import java.time.temporal.ChronoUnit;
  * Resumo financeiro gerencial do piloto (MVP): faturamento, recebido, a receber, vencido, custo de peças,
  * despesas, lucro bruto, resultado operacional e margens de um período.
  *
+ * <p>DR-0024, Q8: lucro, resultado e margens são calculados sobre a receita líquida (faturamento menos descontos
+ * mais acréscimos), a mesma base do demonstrativo gerencial.</p>
+ *
  * <p>Não é DRE contábil. O único custo direto confiavelmente disponível é o de peças (custo histórico da
  * movimentação de estoque vinculada à OS, nunca o custo atual do catálogo); mão de obra não é custeada
  * neste MVP. Faturamento, a receber e vencido são todos restritos aos recebíveis emitidos no período, para
@@ -35,8 +38,10 @@ public class FinanceDashboardService {
         this.inventoryCost = inventoryCost;
     }
 
-    public record Dashboard(LocalDate from, LocalDate to, BigDecimal revenue, BigDecimal received, BigDecimal receivableOpen,
+    public record Dashboard(LocalDate from, LocalDate to, BigDecimal revenue, BigDecimal discounts, BigDecimal surcharges,
+                            BigDecimal netRevenue, BigDecimal received, BigDecimal receivableOpen,
                             BigDecimal overdue, BigDecimal partsCost, BigDecimal expensesRegistered, BigDecimal expensesPaid,
+                            BigDecimal cardFees,
                             BigDecimal grossProfit, BigDecimal operatingResult, BigDecimal grossMargin, BigDecimal operatingMargin) {}
 
     @Transactional(readOnly = true)
@@ -53,13 +58,16 @@ public class FinanceDashboardService {
         BigDecimal partsCost = inventoryCost.partsCostForWorkOrders(receivableTotals.workOrderIds());
 
         BigDecimal revenue = receivableTotals.revenue();
-        BigDecimal grossProfit = revenue.subtract(partsCost);
-        BigDecimal operatingResult = grossProfit.subtract(expensesRegistered);
-        BigDecimal grossMargin = percentage(grossProfit, revenue);
-        BigDecimal operatingMargin = percentage(operatingResult, revenue);
+        BigDecimal netRevenue = revenue.subtract(receivableTotals.discounts()).add(receivableTotals.surcharges());
+        BigDecimal grossProfit = netRevenue.subtract(partsCost);
+        // DR-0024, Q4: a taxa de cartão dos recebimentos do período é despesa financeira.
+        BigDecimal cardFees = repository.cardFees(from, to);
+        BigDecimal operatingResult = grossProfit.subtract(expensesRegistered).subtract(cardFees);
+        BigDecimal grossMargin = percentage(grossProfit, netRevenue);
+        BigDecimal operatingMargin = percentage(operatingResult, netRevenue);
 
-        return new Dashboard(from, to, revenue, received, receivableTotals.receivableOpen(), receivableTotals.overdue(),
-                partsCost, expensesRegistered, expensesPaid, grossProfit, operatingResult, grossMargin, operatingMargin);
+        return new Dashboard(from, to, revenue, receivableTotals.discounts(), receivableTotals.surcharges(), netRevenue, received, receivableTotals.receivableOpen(), receivableTotals.overdue(),
+                partsCost, expensesRegistered, expensesPaid, cardFees, grossProfit, operatingResult, grossMargin, operatingMargin);
     }
 
     /** Sem faturamento no período, a margem é zero — nunca `NaN` nem divisão por zero. */

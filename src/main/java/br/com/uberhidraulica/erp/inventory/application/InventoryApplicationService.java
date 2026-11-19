@@ -284,6 +284,14 @@ public class InventoryApplicationService implements InventoryCostQuery, Purchase
         return repository.partsCostForWorkOrders(workOrderIds).setScale(2, RoundingMode.HALF_UP);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.Map<UUID, BigDecimal> partsCostByWorkOrder(Collection<UUID> workOrderIds) {
+        java.util.Map<UUID, BigDecimal> result = new java.util.HashMap<>();
+        repository.partsCostByWorkOrder(workOrderIds).forEach((id, cost) -> result.put(id, cost.setScale(2, RoundingMode.HALF_UP)));
+        return result;
+    }
+
     public record Page<T>(List<T> items, long totalItems, int page, int size) {
         public int totalPages() { return (int) ((totalItems + size - 1) / size); }
     }

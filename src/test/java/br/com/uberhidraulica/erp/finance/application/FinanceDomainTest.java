@@ -88,10 +88,10 @@ class FinanceDomainTest {
     @Test
     void dueDateChangeOnlyWhileOpenAndToADifferentDate() {
         Receivable open = receivable("100.00", TODAY, List.of(), List.of());
-        open.checkDueDateChange(TODAY.plusDays(10));
-        assertThatThrownBy(() -> open.checkDueDateChange(TODAY)).extracting("code").isEqualTo("INVALID_FINANCE_ENTRY");
+        open.checkDueDateChange(null, TODAY.plusDays(10));
+        assertThatThrownBy(() -> open.checkDueDateChange(null, TODAY)).extracting("code").isEqualTo("INVALID_FINANCE_ENTRY");
         Receivable paid = receivable("100.00", TODAY, List.of(), List.of(receipt("100.00", false)));
-        assertThatThrownBy(() -> paid.checkDueDateChange(TODAY.plusDays(1))).extracting("code").isEqualTo("RECEIVABLE_NOT_OPEN");
+        assertThatThrownBy(() -> paid.checkDueDateChange(null, TODAY.plusDays(1))).extracting("code").isEqualTo("RECEIVABLE_NOT_OPEN");
     }
 
     @Test

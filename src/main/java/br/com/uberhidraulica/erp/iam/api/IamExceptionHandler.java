@@ -15,7 +15,7 @@ public class IamExceptionHandler {
         HttpStatus status = switch (exception.code()) {
             case "USER_NOT_FOUND", "PROFILE_NOT_FOUND", "PERMISSION_NOT_FOUND" -> HttpStatus.NOT_FOUND;
             case "DUPLICATE_USER_EMAIL" -> HttpStatus.CONFLICT;
-            case "ACCESS_DENIED" -> HttpStatus.FORBIDDEN;
+            case "ACCESS_DENIED", "OWNER_ONLY_OPERATION" -> HttpStatus.FORBIDDEN;
             case "CURRENT_PASSWORD_INVALID" -> HttpStatus.BAD_REQUEST;
             case "LAST_ACTIVE_OWNER_REQUIRED" -> HttpStatus.CONFLICT;
             default -> HttpStatus.BAD_REQUEST;

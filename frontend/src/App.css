@@ -11,3 +11,15 @@
 @media (max-width:760px){.app-layout{grid-template-columns:minmax(0,1fr)}.sidebar{padding:16px}.detail-grid{grid-template-columns:1fr}}
 /* Tabela em cartões no celular: na página pública do orçamento o cliente precisa ver e usar "Sua decisão". */
 @media(max-width:640px){.table-cards thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}.table-cards,.table-cards tbody,.table-cards tr,.table-cards td{display:block;width:100%}.table-cards tr{border:1px solid #edf0f4;border-radius:10px;padding:8px 12px;margin-bottom:12px}.table-cards td{border:0;padding:6px 0;display:flex;justify-content:space-between;align-items:center;gap:14px;text-align:right}.table-cards td::before{content:attr(data-label);color:var(--text-muted);font-size:11px;font-weight:600;text-transform:uppercase;text-align:left;flex:0 0 38%}.table-cards td[data-label="Item"]{font-size:15px}.table-cards td[data-label="Sua decisão"] .select{max-width:62%}}
+
+/* TASK-0024 — relatórios financeiros */
+.tabs{display:flex;flex-wrap:wrap;gap:8px;padding:12px;margin-bottom:16px}
+.table .num,.table th.num{text-align:right;white-space:nowrap}
+.table tfoot th{color:#13171f;font-size:13px;text-transform:none;border-top:2px solid var(--border)}
+.chart{margin:0}
+.chart svg{display:block}
+.chart .bar{fill:var(--primary)}
+.chart .bar.negative{fill:#d9822b}
+.chart .axis{stroke:var(--border);stroke-width:.5}
+.chart-legend{list-style:none;padding:0;margin:12px 0 0;display:grid;gap:6px}
+.chart-legend li{display:flex;justify-content:space-between;gap:12px;font-size:13px}

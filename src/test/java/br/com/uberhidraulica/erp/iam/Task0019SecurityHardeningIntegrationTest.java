@@ -53,6 +53,7 @@ class Task0019SecurityHardeningIntegrationTest {
     }
 
     @Autowired MockMvc mvc;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     private ApiSessions api;
     private Session owner;
@@ -109,13 +110,13 @@ class Task0019SecurityHardeningIntegrationTest {
 
     @Test
     void passwordChangeAcceptsTheBoundaryLengthsAndTheOldSecretStopsWorking() throws Exception {
-        String seventyTwo = "b".repeat(72);
+        String seventyTwo = "bq".repeat(36);
         api.send(owner, post("/api/iam/password/change"), "{\"currentPassword\":\"" + PASSWORD + "\",\"newPassword\":\"" + seventyTwo + "\"}")
                 .andExpect(status().isNoContent());
         assertThat(api.login(OWNER_EMAIL, PASSWORD, true)).as("a senha antiga deixou de valer").isNull();
         Session renewed = api.login(OWNER_EMAIL, seventyTwo, false);
 
-        String eight = "c".repeat(8);
+        String eight = "c7#Kp2mq";
         api.send(renewed, post("/api/iam/password/change"), "{\"currentPassword\":\"" + seventyTwo + "\",\"newPassword\":\"" + eight + "\"}")
                 .andExpect(status().isNoContent());
         assertThat(api.login(OWNER_EMAIL, eight, true)).isNotNull();
@@ -124,6 +125,93 @@ class Task0019SecurityHardeningIntegrationTest {
         Session current = api.login(OWNER_EMAIL, eight, false);
         api.send(current, post("/api/iam/password/change"), "{\"currentPassword\":\"" + eight + "\",\"newPassword\":\"" + PASSWORD + "\"}")
                 .andExpect(status().isNoContent());
+    }
+
+    // ================================================================ DR-0020 (decidida em 2026-11-12)
+
+    /** Item 2, opção B: senha comum é recusada pelo backend, sem ecoar a senha e sem trocar a credencial. */
+    @Test
+    void passwordChangeRefusesCommonPasswords() throws Exception {
+        for (String common : new String[] {"12345678", "Password123", "senha@123", "aaaaaaaa", "qwertyuiop"}) {
+            MvcResult refused = api.send(owner, post("/api/iam/password/change"),
+                            "{\"currentPassword\":\"" + PASSWORD + "\",\"newPassword\":\"" + common + "\"}")
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("PASSWORD_POLICY_VIOLATION"))
+                    .andReturn();
+            assertThat(refused.getResponse().getContentAsString(StandardCharsets.UTF_8)).doesNotContain(common);
+        }
+        assertThat(api.login(OWNER_EMAIL, PASSWORD, true)).as("a senha operacional continua valendo").isNotNull();
+    }
+
+    /**
+     * Item 3, opção A: quem recebe permissões IAM por delegação administra gerentes, mas não cria nem inativa um Dono,
+     * não mexe no perfil Dono e não concede IAM a ninguém — nem a si mesmo.
+     */
+    @Test
+    void aManagerWithDelegatedIamPermissionsCannotReachTheOwnerProfileNorGrantIam() throws Exception {
+        Session manager = api.user(owner, "delegado-hardening@example.test", "GERENTE_ADMINISTRATIVO");
+        Session other = api.user(owner, "financeiro-hardening@example.test", "GERENTE_FINANCEIRO");
+        assertThat(other).isNotNull();
+        String managerId = userId("delegado-hardening@example.test");
+        String otherId = userId("financeiro-hardening@example.test");
+        String ownerId = userId(OWNER_EMAIL);
+
+        // O Dono pode delegar IAM: a decisão não tirou esse poder dele.
+        for (String code : new String[] {"IAM_USERS_MANAGE", "IAM_PROFILE_PERMISSIONS_MANAGE", "IAM_USER_EXCEPTIONS_MANAGE"})
+            exception(owner, managerId, code, "ALLOW").andExpect(status().isNoContent());
+        manager = api.login("delegado-hardening@example.test", PASSWORD, false);
+        long deniedBefore = denied();
+
+        // Usuários: gerente sim, Dono não.
+        api.send(manager, post("/api/iam/users"), "{\"name\":\"Novo gerente\",\"email\":\"novo-gerente-hardening@example.test\","
+                + "\"profileCode\":\"GERENTE_FINANCEIRO\"}").andExpect(status().isCreated());
+        api.send(manager, post("/api/iam/users"), "{\"name\":\"Dono forjado\",\"email\":\"dono-forjado-hardening@example.test\","
+                + "\"profileCode\":\"DONO\"}").andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("OWNER_ONLY_OPERATION"));
+        api.send(manager, org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/iam/users/" + ownerId),
+                "{\"state\":\"INACTIVE\"}").andExpect(status().isForbidden());
+        assertThat(jdbc.queryForObject("select count(*) from iam.app_user where normalized_email = 'dono-forjado-hardening@example.test'",
+                Long.class)).isZero();
+
+        // Perfis: o perfil Dono e qualquer IAM_* ficam fora do alcance; o resto continua delegado.
+        permission(manager, "DONO", "FINANCE_VIEW", true).andExpect(status().isForbidden());
+        permission(manager, "DONO", "FINANCE_VIEW", false).andExpect(status().isForbidden());
+        permission(manager, "GERENTE_ADMINISTRATIVO", "IAM_PASSWORD_RESET", true).andExpect(status().isForbidden());
+        permission(manager, "GERENTE_FINANCEIRO", "WORKORDER_MANAGE", true).andExpect(status().isNoContent());
+        permission(manager, "GERENTE_FINANCEIRO", "WORKORDER_MANAGE", false).andExpect(status().isNoContent());
+
+        // Exceções: não se dá IAM a si mesmo nem a outro, e não se mexe nas exceções de um Dono.
+        exception(manager, managerId, "IAM_PASSWORD_RESET", "ALLOW").andExpect(status().isForbidden());
+        exception(manager, otherId, "IAM_USERS_READ", "ALLOW").andExpect(status().isForbidden());
+        exception(manager, ownerId, "FINANCE_VIEW", "DENY").andExpect(status().isForbidden());
+        exception(manager, otherId, "WORKORDER_MANAGE", "ALLOW").andExpect(status().isNoContent());
+        exception(manager, otherId, "WORKORDER_MANAGE", "INHERIT").andExpect(status().isNoContent());
+
+        // Toda recusa ficou na auditoria, mesmo com a transação desfeita.
+        assertThat(denied() - deniedBefore).isEqualTo(8);
+
+        for (String code : new String[] {"IAM_USERS_MANAGE", "IAM_PROFILE_PERMISSIONS_MANAGE", "IAM_USER_EXCEPTIONS_MANAGE"})
+            exception(owner, managerId, code, "INHERIT").andExpect(status().isNoContent());
+    }
+
+    private String userId(String email) {
+        return jdbc.queryForObject("select id::text from iam.app_user where normalized_email = ?", String.class, email);
+    }
+
+    private long denied() {
+        return jdbc.queryForObject("select count(*) from iam.audit_event where result = 'DENIED'", Long.class);
+    }
+
+    private org.springframework.test.web.servlet.ResultActions exception(Session as, String userId, String code, String resolution)
+            throws Exception {
+        return api.send(as, org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(
+                "/api/iam/users/" + userId + "/permission-exceptions/" + code), "{\"resolution\":\"" + resolution + "\"}");
+    }
+
+    private org.springframework.test.web.servlet.ResultActions permission(Session as, String profile, String code, boolean grant)
+            throws Exception {
+        String path = "/api/iam/profiles/" + profile + "/permissions/" + code;
+        return api.send(as, grant ? org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(path)
+                : org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete(path), "");
     }
 
     @Test

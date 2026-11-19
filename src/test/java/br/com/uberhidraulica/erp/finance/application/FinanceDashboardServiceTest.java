@@ -36,10 +36,11 @@ class FinanceDashboardServiceTest {
     @Test
     void computesGrossAndOperatingResultWithMargins() {
         when(repository.dashboardReceivableTotals(eq(FROM), eq(TO), any()))
-                .thenReturn(new DashboardReceivableTotals(bd("1000.00"), bd("400.00"), bd("100.00"), List.of(WORK_ORDER)));
+                .thenReturn(new DashboardReceivableTotals(bd("1000.00"), bd("0.00"), bd("0.00"), bd("400.00"), bd("100.00"), List.of(WORK_ORDER)));
         when(repository.realizedInflows(FROM, TO)).thenReturn(List.of(new DailyAmount(FROM, bd("600.00"))));
         when(repository.realizedOutflows(eq(FROM), eq(TO), isNull())).thenReturn(List.of(new DailyAmount(FROM, bd("150.00"))));
         when(repository.dashboardExpensesRegistered(FROM, TO)).thenReturn(bd("200.00"));
+        when(repository.cardFees(FROM, TO)).thenReturn(bd("0.00"));
         when(inventoryCost.partsCostForWorkOrders(List.of(WORK_ORDER))).thenReturn(bd("300.00"));
 
         FinanceDashboardService.Dashboard dashboard = service.dashboard(FROM, TO);
@@ -64,10 +65,11 @@ class FinanceDashboardServiceTest {
     @Test
     void zeroRevenueNeverDividesByZeroOrProducesNaN() {
         when(repository.dashboardReceivableTotals(eq(FROM), eq(TO), any()))
-                .thenReturn(new DashboardReceivableTotals(bd("0.00"), bd("0.00"), bd("0.00"), List.of()));
+                .thenReturn(new DashboardReceivableTotals(bd("0.00"), bd("0.00"), bd("0.00"), bd("0.00"), bd("0.00"), List.of()));
         when(repository.realizedInflows(FROM, TO)).thenReturn(List.of());
         when(repository.realizedOutflows(eq(FROM), eq(TO), isNull())).thenReturn(List.of());
         when(repository.dashboardExpensesRegistered(FROM, TO)).thenReturn(bd("50.00"));
+        when(repository.cardFees(FROM, TO)).thenReturn(bd("0.00"));
         when(inventoryCost.partsCostForWorkOrders(List.of())).thenReturn(bd("0.00"));
 
         FinanceDashboardService.Dashboard dashboard = service.dashboard(FROM, TO);

@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 import static br.com.uberhidraulica.erp.finance.api.ReceivableController.IDEMPOTENCY_HEADER;
@@ -39,9 +40,12 @@ class PayableController {
                                                             @RequestParam(required = false) UUID categoryId,
                                                             @RequestParam(required = false) LocalDate dueFrom,
                                                             @RequestParam(required = false) LocalDate dueTo,
+                                                            @RequestParam(required = false) Payable.ApprovalStatus approval,
+                                                            @RequestParam(required = false) UUID groupId,
                                                             @RequestParam(defaultValue = "0") int page,
                                                             @RequestParam(defaultValue = "20") int size) {
-        var result = payables.list(new FinanceRepositoryPort.PayableFilter(status, categoryId, dueFrom, dueTo), page, size);
+        var result = payables.list(new FinanceRepositoryPort.PayableFilter(status, categoryId, dueFrom, dueTo, approval, groupId),
+                page, size);
         return new PageResponse<>(result.items(), result.totalItems(), result.page(), result.size(), result.totalPages());
     }
 
@@ -53,10 +57,48 @@ class PayableController {
     @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'FINANCE_PAYABLE')")
     ResponseEntity<PayableResponse> create(@RequestHeader(value = IDEMPOTENCY_HEADER, required = false) String key,
                                            @Valid @RequestBody PayableRequest request) {
-        Recorded<Payable> result = payables.create(request.description(), request.supplier(), request.categoryId(), request.amount(),
-                request.dueDate(), request.notes(), key);
+        Recorded<Payable> result = payables.create(new PayableService.Draft(request.description(), request.supplier(), request.supplierId(),
+                request.categoryId(), request.amount(), request.dueDate(), request.notes()), Payable.Origin.MANUAL, key);
         return ResponseEntity.status(result.replayed() ? HttpStatus.OK : HttpStatus.CREATED)
                 .header(REPLAY_HEADER, String.valueOf(result.replayed())).body(respond(payables.get(result.value().id())));
+    }
+
+    /** DR-0024, Q5: despesa parcelada, com N contas ligadas a um grupo. */
+    @PostMapping("/payables/installments")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'FINANCE_PAYABLE')")
+    ResponseEntity<GroupResponse> createInstallments(@RequestHeader(value = IDEMPOTENCY_HEADER, required = false) String key,
+                                                     @Valid @RequestBody GroupRequest request) {
+        Recorded<PayableService.Group> result = payables.createInstallments(new PayableService.GroupDraft(request.description(),
+                request.supplier(), request.supplierId(), request.categoryId(), request.totalAmount(), request.installments(),
+                request.firstDueDate(), request.notes()), key);
+        return ResponseEntity.status(result.replayed() ? HttpStatus.OK : HttpStatus.CREATED)
+                .header(REPLAY_HEADER, String.valueOf(result.replayed())).body(group(result.value()));
+    }
+
+    @GetMapping("/payable-groups/{id}")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'FINANCE_VIEW')")
+    GroupResponse getGroup(@PathVariable UUID id) { return group(payables.group(id)); }
+
+    @PostMapping("/payables/{id}/approval")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'FINANCE_PAYABLE_APPROVE')")
+    PayableResponse approve(@PathVariable UUID id, @Valid @RequestBody(required = false) ApprovalRequest request) {
+        return respond(payables.approve(id, request == null ? null : request.notes()));
+    }
+
+    @PostMapping("/payable-groups/{id}/approval")
+    @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'FINANCE_PAYABLE_APPROVE')")
+    GroupResponse approveGroup(@PathVariable UUID id, @Valid @RequestBody(required = false) ApprovalRequest request) {
+        return group(payables.approveGroup(id, request == null ? null : request.notes()));
+    }
+
+    private GroupResponse group(PayableService.Group group) {
+        var header = group.header();
+        List<PayableResponse> items = group.payables().stream().map(this::respond).toList();
+        java.util.function.Function<java.util.function.Function<PayableResponse, BigDecimal>, BigDecimal> total = f -> items.stream()
+                .filter(p -> p.status() != FinancialStatus.CANCELADO).map(f).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return new GroupResponse(header.id(), header.description(), header.supplier(), header.supplierId(), header.categoryId(),
+                header.totalAmount(), header.installmentCount(), header.notes(), header.createdAt(), total.apply(PayableResponse::paidAmount),
+                total.apply(PayableResponse::outstandingBalance), items);
     }
 
     @PostMapping("/payables/{id}/payments")
@@ -79,7 +121,7 @@ class PayableController {
         return respond(payables.cancel(id, request.reason()));
     }
 
-    private PayableResponse respond(Payable payable) {
+    PayableResponse respond(Payable payable) {
         return PayableResponse.from(payable, java.time.LocalDate.now(java.time.Clock.systemUTC().withZone(
                 br.com.uberhidraulica.erp.finance.domain.Money.WORKSHOP_ZONE)));
     }
@@ -89,8 +131,19 @@ class PayableController {
                 .header(REPLAY_HEADER, String.valueOf(result.replayed())).body(SettlementResponse.from(result.value()));
     }
 
-    record PayableRequest(@NotBlank @Size(max = 200) String description, @Size(max = 200) String supplier, @NotNull UUID categoryId,
-                          @NotNull BigDecimal amount, @NotNull LocalDate dueDate, @Size(max = 500) String notes) {}
+    record PayableRequest(@NotBlank @Size(max = 200) String description, @Size(max = 200) String supplier, UUID supplierId,
+                          @NotNull UUID categoryId, @NotNull BigDecimal amount, @NotNull LocalDate dueDate, @Size(max = 500) String notes) {}
+
+    record GroupRequest(@NotBlank @Size(max = 180) String description, @Size(max = 200) String supplier, UUID supplierId,
+                        @NotNull UUID categoryId, @NotNull BigDecimal totalAmount, @NotNull Integer installments,
+                        @NotNull LocalDate firstDueDate, @Size(max = 500) String notes) {}
+
+    record ApprovalRequest(@Size(max = 500) String notes) {}
+
+    /** Visão consolidada do grupo; pago e em aberto ignoram parcelas canceladas. */
+    record GroupResponse(UUID id, String description, String supplier, UUID supplierId, UUID categoryId, BigDecimal totalAmount,
+                         int installmentCount, String notes, java.time.Instant createdAt, BigDecimal paidAmount, BigDecimal outstandingBalance,
+                         List<PayableResponse> payables) {}
 
     record PaymentRequest(@NotNull BigDecimal amount, @NotNull UUID paymentMethodId, LocalDate paidOn, @Size(max = 500) String notes) {}
 

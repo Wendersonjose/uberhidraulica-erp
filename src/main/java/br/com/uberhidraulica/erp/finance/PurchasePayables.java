@@ -36,12 +36,18 @@ public interface PurchasePayables {
      * @param expenseCategoryId  categoria de despesa, obrigatória e ativa
      * @param notes              observação livre
      * @param installments       parcelas; a soma é conferida por quem chama, antes de chegar aqui
+     * @param supplierId         fornecedor do cadastro de Compras (DR-0024, Q6), ou nulo
      * @param idempotencyPrefix  prefixo estável do pedido (na importação: a chave de acesso da NF-e). A chave
      *                           de cada conta é {@code prefixo:número}, de modo que reimportar a mesma nota
      *                           não crie conta nova — é a proteção contra duplicar contas a pagar
      */
     record Request(String description, String supplierName, UUID expenseCategoryId, String notes,
-                   List<Installment> installments, String idempotencyPrefix) {}
+                   List<Installment> installments, String idempotencyPrefix, UUID supplierId) {
+        public Request(String description, String supplierName, UUID expenseCategoryId, String notes,
+                       List<Installment> installments, String idempotencyPrefix) {
+            this(description, supplierName, expenseCategoryId, notes, installments, idempotencyPrefix, null);
+        }
+    }
 
     /**
      * Conta registrada.

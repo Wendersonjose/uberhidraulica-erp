@@ -133,6 +133,8 @@ Regras complementares adotadas na implementação (consequência direta da C1-A,
   para o mesmo produto;
 - a trilha (`ORDER_LINKED_TO_INVOICE`, `ORDER_LINK_RELEASED`) é gravada no pedido e na compra da nota.
 
-**O que continua em aberto depois desta decisão:** compra **sem NF-e** (balcão, recibo, cupom) segue sem dar entrada pelo
-módulo Compras e sem gerar conta a pagar; o contorno é a entrada manual do Estoque e o lançamento manual em Contas a pagar.
-Tratar esse caso é decisão nova do proprietário, fora da C1–C4.
+**Compra sem NF-e — decidida em 2026-11-12: manter manual.** Perguntado sobre como tratar a compra de balcão, recibo ou cupom
+(inclusive material de uso e consumo), o proprietário respondeu "Manter manual". Portanto a compra direta **não** passa a gerar
+conta a pagar nem a dar entrada em estoque: o registro é a entrada manual do Estoque e o lançamento manual em Contas a pagar.
+A proteção contra a mesma mercadoria entrar de novo por uma nota importada depois continua sendo a disciplina do operador,
+como já descrito em "Estado atual". O assunto só volta por pedido do proprietário.
