@@ -1,40 +1,67 @@
 import { screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { expect, test } from 'vitest'
 import { mockApi, page, renderAt, session } from './harness'
 
-// Regressão (produção, 2026-11-19): os títulos de seção do menu ("Visão geral", "Financeiro", "Compras",
-// "Configurações") eram <span> com o mesmo recuo dos links e 50% de opacidade, e pareciam módulos desabilitados.
+// Os títulos de seção do menu são links: cada um abre uma página que já existe, sem rota nova.
 const DONO = ['FINANCE_VIEW', 'PURCHASE_VIEW', 'IAM_USERS_READ']
+const asDono = () => ({ ...session, permissions: DONO })
+const nav = () => screen.findByRole('navigation', { name: 'Principal' })
 
-test('o Dono vê todos os módulos como links clicáveis e os títulos de seção não parecem itens', async () => {
-  mockApi({ 'GET /api/customers': page([]) }, { ...session, permissions: DONO })
+test.each([
+  ['Oficina', '/ordens-servico', 'Ordens de serviço'],
+  ['Financeiro', '/financeiro/dashboard', 'Resumo financeiro'],
+  ['Compras', '/compras/notas', 'Compras'],
+  ['Configurações', '/configuracoes/usuarios', 'Usuários'],
+])('o título %s é um link para %s e o clique abre a página', async (title, href, heading) => {
+  mockApi({ 'GET /api/customers': page([]) }, asDono())
   renderAt('/clientes')
 
-  const nav = await screen.findByRole('navigation', { name: 'Principal' })
-  const expected: [string, string][] = [
-    ['Clientes', '/clientes'], ['Estoque', '/estoque'],
-    ['Resumo financeiro', '/financeiro/dashboard'], ['Contas a pagar', '/financeiro/contas-a-pagar'],
-    ['Configurações financeiras', '/financeiro/configuracoes'],
-    ['Fornecedores', '/compras/fornecedores'], ['Compras e NF-e', '/compras/notas'],
-    ['Configurações de Compras', '/compras/configuracoes'], ['Usuários', '/configuracoes/usuarios'],
-  ]
-  for (const [name, href] of expected) expect(within(nav).getByRole('link', { name })).toHaveAttribute('href', href)
-
-  for (const title of ['Oficina', 'Financeiro', 'Compras', 'Configurações']) {
-    const element = within(nav).getByText(title, { selector: '.nav-section' })
-    expect(element.tagName).not.toBe('A')
-    expect(element.closest('a')).toBeNull()
-  }
-  expect(within(nav).queryByText('Visão geral')).not.toBeInTheDocument()
-  expect(nav.querySelectorAll('span')).toHaveLength(0)
+  const link = within(await nav()).getByRole('link', { name: title })
+  expect(link).toHaveAttribute('href', href)
+  await userEvent.click(link)
+  expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeInTheDocument()
 })
 
-test('sem FINANCE_VIEW e PURCHASE_VIEW as seções inteiras somem, em vez de aparecer bloqueadas', async () => {
+test('pelo teclado: Tab chega ao título e Enter abre a página', async () => {
+  mockApi({ 'GET /api/customers': page([]) }, asDono())
+  renderAt('/clientes')
+  const finance = within(await nav()).getByRole('link', { name: 'Financeiro' })
+
+  for (let i = 0; i < 40 && document.activeElement !== finance; i++) await userEvent.tab()
+  expect(finance).toHaveFocus()
+  await userEvent.keyboard('{Enter}')
+  expect(await screen.findByRole('heading', { level: 1, name: 'Resumo financeiro' })).toBeInTheDocument()
+})
+
+test('o título da seção atual fica ativo e o item da página atual continua marcado', async () => {
+  mockApi({}, asDono())
+  renderAt('/financeiro/contas-a-pagar')
+  const menu = await nav()
+
+  expect(within(menu).getByRole('link', { name: 'Financeiro' })).toHaveAttribute('aria-current', 'true')
+  expect(within(menu).getByRole('link', { name: 'Contas a pagar' })).toHaveAttribute('aria-current', 'page')
+  for (const other of ['Oficina', 'Compras', 'Configurações'])
+    expect(within(menu).getByRole('link', { name: other })).not.toHaveAttribute('aria-current')
+  // Os submenus continuam no grupo da seção.
+  const group = within(menu).getByRole('group', { name: 'Financeiro' })
+  expect(within(group).getAllByRole('link')).toHaveLength(7)
+})
+
+test('subpáginas ativam o título da seção certa (Compras), não o de outra que comece igual', async () => {
+  mockApi({}, asDono())
+  renderAt('/compras/fornecedores')
+  const menu = await nav()
+  expect(within(menu).getByRole('link', { name: 'Compras' })).toHaveAttribute('aria-current', 'true')
+  expect(within(menu).getByRole('link', { name: 'Oficina' })).not.toHaveAttribute('aria-current')
+})
+
+test('sem FINANCE_VIEW, PURCHASE_VIEW e IAM_USERS_READ as seções somem com título e submenu; Oficina continua', async () => {
   mockApi({ 'GET /api/customers': page([]) }, { ...session, permissions: [] })
   renderAt('/clientes')
+  const menu = await nav()
 
-  const nav = await screen.findByRole('navigation', { name: 'Principal' })
-  expect(within(nav).queryByText('Financeiro')).not.toBeInTheDocument()
-  expect(within(nav).queryByText('Compras')).not.toBeInTheDocument()
-  expect(within(nav).queryByRole('link', { name: 'Contas a pagar' })).not.toBeInTheDocument()
+  expect(within(menu).getByRole('link', { name: 'Oficina' })).toHaveAttribute('href', '/ordens-servico')
+  for (const hidden of ['Financeiro', 'Compras', 'Configurações', 'Contas a pagar', 'Compras e NF-e', 'Usuários'])
+    expect(within(menu).queryByRole('link', { name: hidden })).not.toBeInTheDocument()
 })
