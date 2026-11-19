@@ -13,7 +13,7 @@ import { PRODUCT_TYPE_LABELS, PRODUCT_UNIT_LABELS, type Product, type ProductTyp
 import { Badge, PageHeader } from '../../components/ui'
 import { useCan } from '../finance/hooks'
 import { useDebouncedValue } from '../../utils/useDebouncedValue'
-import { formatBrl, formatDate } from '../../utils/format'
+import { formatBrl, formatCivilDate } from '../../utils/format'
 import { formatTaxId } from '../../utils/taxId'
 import { suggestCatalogUnit } from './nfeUnits'
 
@@ -257,7 +257,7 @@ export function NfeImportPage() {
         <h2>Nota</h2>
         <dl className="detail-grid">
           <div><dt>Número / série</dt><dd>{preview.invoiceNumber ?? '—'} / {preview.invoiceSeries ?? '—'}</dd></div>
-          <div><dt>Emissão</dt><dd>{preview.issuedOn ? formatDate(preview.issuedOn) : '—'}</dd></div>
+          <div><dt>Emissão</dt><dd>{preview.issuedOn ? formatCivilDate(preview.issuedOn) : '—'}</dd></div>
           <div><dt>Emitente</dt><dd>{preview.issuerName ?? '—'}<br />{preview.issuerDocument ? formatTaxId(preview.issuerDocument) : ''}</dd></div>
           <div><dt>Destinatário</dt><dd>{preview.recipientDocument ? formatTaxId(preview.recipientDocument) : '—'}</dd></div>
           <div><dt>Total da nota</dt><dd>{formatBrl(preview.totals.invoice)}</dd></div>
@@ -379,7 +379,7 @@ export function NfeImportPage() {
                 <thead><tr><th>Parcela</th><th>Duplicata</th><th>Vencimento</th><th>Valor</th></tr></thead>
                 <tbody>{preview.installments.map(installment => <tr key={installment.number}>
                   <td>{installment.number}</td><td>{installment.reference ?? '—'}</td>
-                  <td>{formatDate(installment.dueDate)}</td><td>{formatBrl(installment.amount)}</td>
+                  <td>{formatCivilDate(installment.dueDate)}</td><td>{formatBrl(installment.amount)}</td>
                 </tr>)}</tbody>
                 <tfoot><tr><th colSpan={3}>Soma</th>
                   <th>{formatBrl(preview.installments.reduce((total, i) => total + i.amount, 0))}</th></tr></tfoot>

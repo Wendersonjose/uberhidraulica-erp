@@ -281,6 +281,11 @@ class RealNfe21AcceptanceTest {
                 select count(*) from finance.payable p join purchasing.purchase_payable pp on pp.payable_id = p.id
                 where pp.purchase_id = ? and exists (select 1 from finance.payable_payment s where s.payable_id = p.id)
                 """, Long.class, purchaseId)).isZero();
+        // O vencimento gravado é o dia civil do dVenc, sem deslocamento por fuso (regressão da NF-e nº 28).
+        assertThat(jdbc.queryForList("""
+                select p.due_date::text from finance.payable p join purchasing.purchase_payable pp on pp.payable_id = p.id
+                where pp.purchase_id = ? order by p.due_date
+                """, String.class, purchaseId)).containsExactly("2026-10-23", "2026-10-30", "2026-11-06");
 
         // D1 na nota do Simples: sem IPI, sem ICMS-ST e sem frete, o custo é o valor do produto. A soma dos
         // custos de aquisição dos 12 itens fecha com o total da nota.
