@@ -80,6 +80,37 @@ test('sem PURCHASE_IMPORT_XML a rota nega o acesso, não oferece leitura de arqu
   expect(requestsTo(fetch, 'POST', '/api/purchasing/nfe/preview')).toHaveLength(0)
 })
 
+test('sem categoria de despesa ativa a tela explica o bloqueio e, depois de cadastrar, atualiza a lista sem perder a nota', async () => {
+  let list: unknown[] = []
+  const fetch = mockApi(routes(preview(), undefined, { 'GET /api/finance/expense-categories': () => json(list) }),
+    as([...IMPORT, 'FINANCE_CONFIG']))
+  renderAt('/compras/notas/importar')
+  await upload()
+
+  const notice = await screen.findByText(/Nenhuma categoria de despesa ativa/)
+  expect(within(notice).getByRole('link', { name: 'Financeiro › Configurações' })).toHaveAttribute('target', '_blank')
+  expect(screen.getByRole('button', { name: 'Confirmar importação' })).toBeDisabled()
+
+  list = categories
+  await userEvent.click(screen.getByRole('button', { name: 'Atualizar lista' }))
+  await userEvent.selectOptions(await screen.findByLabelText('Categoria de despesa'), 'cat1')
+  expect(screen.queryByText(/Nenhuma categoria de despesa ativa/)).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Confirmar importação' })).toBeEnabled()
+  // A nota não foi lida de novo: a mesma prévia continua na tela.
+  expect(requestsTo(fetch, 'POST', '/api/purchasing/nfe/preview')).toHaveLength(1)
+})
+
+test('sem permissão para ver categorias a tela diz que é permissão, e não lista vazia', async () => {
+  mockApi(routes(preview(), undefined, {
+    'GET /api/finance/expense-categories': () => json({ code: 'ACCESS_DENIED', message: 'Acesso negado', details: [] }, 403),
+  }), as(IMPORT))
+  renderAt('/compras/notas/importar')
+  await upload()
+
+  expect(await screen.findByText(/não pode consultar as categorias de despesa/)).toBeInTheDocument()
+  expect(screen.queryByText(/Nenhuma categoria de despesa ativa/)).not.toBeInTheDocument()
+})
+
 test('a prévia mostra a nota, o fornecedor, o destinatário autorizado e que a consulta oficial não foi feita', async () => {
   const fetch = mockApi(routes(preview()), as(IMPORT))
   renderAt('/compras/notas/importar')
