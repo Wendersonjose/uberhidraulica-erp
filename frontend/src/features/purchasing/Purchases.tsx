@@ -11,7 +11,7 @@ import { QueryState } from '../../components/QueryState'
 import { ConfirmAction, Pagination } from '../../components/controls'
 import { useCan } from '../finance/hooks'
 import { useDebouncedValue } from '../../utils/useDebouncedValue'
-import { formatBrl, formatDate } from '../../utils/format'
+import { formatBrl, formatCivilDate, formatDate } from '../../utils/format'
 import { formatTaxId } from '../../utils/taxId'
 import { ReceivingSection } from './Receiving'
 import { RECEIPT_STATUS_LABEL, receiptTone } from './receivingRules'
@@ -93,7 +93,7 @@ export function PurchasesPage() {
           <td>{purchase.supplierName}</td>
           <td>{ORIGIN_LABEL[purchase.origin]}</td>
           <td>{purchase.invoiceNumber ?? '—'}</td>
-          <td>{purchase.issuedOn ? formatDate(purchase.issuedOn) : '—'}</td>
+          <td>{purchase.issuedOn ? formatCivilDate(purchase.issuedOn) : '—'}</td>
           <td>{purchase.installmentCount}</td>
           <td>{formatBrl(purchase.payableTotal)}</td>
           <td><Badge tone={statusTone(purchase.status)}>{STATUS_LABEL[purchase.status]}</Badge></td>
@@ -232,7 +232,7 @@ function PurchaseView({ purchase }: { purchase: PurchaseDetail }) {
             <tbody>{purchase.installments.map(installment => <tr key={installment.payableId}>
               <td>{installment.installmentNo}</td>
               <td>{installment.invoiceReference ?? '—'}</td>
-              <td>{formatDate(installment.dueDate)}</td>
+              <td>{formatCivilDate(installment.dueDate)}</td>
               <td>{formatBrl(installment.amount)}</td>
               <td><Link to={`/financeiro/contas-a-pagar/${installment.payableId}`}>Abrir no Financeiro</Link></td>
             </tr>)}</tbody>

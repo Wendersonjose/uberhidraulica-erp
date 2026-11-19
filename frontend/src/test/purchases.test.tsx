@@ -68,6 +68,7 @@ test('a lista mostra a compra com o total e o número da nota', async () => {
   expect(within(row).getByText('UBERHIDRAULICA PECAS LTDA')).toBeInTheDocument()
   expect(within(row).getByText('NF-e importada')).toBeInTheDocument()
   expect(within(row).getByText('21')).toBeInTheDocument()
+  expect(within(row).getByText('09/10/2026')).toBeInTheDocument()
   expect(within(row).getByText('R$ 1.943,10')).toBeInTheDocument()
   expect(within(row).getByText('Aprovada')).toBeInTheDocument()
 })
@@ -106,6 +107,9 @@ test('o detalhe mostra a composição do custo, as parcelas e que a consulta ofi
   expect(within(installments).getByText('R$ 1.943,10')).toBeInTheDocument()
   expect(within(installments).getAllByRole('link', { name: 'Abrir no Financeiro' })).toHaveLength(3)
   expect(within(installments).getByText(/nunca marca nada como pago/)).toBeInTheDocument()
+  // Vencimento é dia civil: em America/Sao_Paulo não pode voltar para o dia anterior às 21h.
+  for (const day of ['23/10/2026', '30/10/2026', '06/11/2026']) expect(within(installments).getByText(day)).toBeInTheDocument()
+  expect(within(installments).queryByText(/21:00/)).not.toBeInTheDocument()
 
   // D12: a tela não pode sugerir que a nota foi conferida na SEFAZ.
   expect(screen.getByText(/declarada no XML/)).toBeInTheDocument()

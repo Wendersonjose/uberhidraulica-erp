@@ -100,6 +100,26 @@ test('a prévia mostra a nota, o fornecedor, o destinatário autorizado e que a 
   expect(requestsTo(fetch, 'POST', '/api/purchasing/nfe/confirm')).toHaveLength(0)
 })
 
+test('vencimentos e emissão mostram o dia civil do XML, sem voltar para o dia anterior às 21h (NF-e nº 28)', async () => {
+  expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe('America/Sao_Paulo')
+  mockApi(routes(preview({
+    invoiceNumber: 28, issuedOn: '2026-11-12',
+    totals: { goods: 1595.22, discount: 0, freight: 0, insurance: 0, other: 0, taxAdded: 0, invoice: 1595.22, itemsSum: 1595.22, closes: true },
+    installments: [
+      { number: 1, dueDate: '2026-11-19', amount: 398.8, reference: '001' },
+      { number: 2, dueDate: '2026-11-26', amount: 398.8, reference: '002' },
+      { number: 3, dueDate: '2026-12-03', amount: 398.8, reference: '003' },
+      { number: 4, dueDate: '2026-12-10', amount: 398.82, reference: '004' },
+    ],
+  })), as(IMPORT))
+  renderAt('/compras/notas/importar')
+  await upload()
+
+  expect(await screen.findByText('12/11/2026')).toBeInTheDocument()
+  for (const day of ['19/11/2026', '26/11/2026', '03/12/2026', '10/12/2026']) expect(screen.getByText(day)).toBeInTheDocument()
+  for (const wrong of [/18\/11\/2026/, /25\/11\/2026/, /02\/12\/2026/, /09\/12\/2026/, /21:00/]) expect(screen.queryByText(wrong)).not.toBeInTheDocument()
+})
+
 test('nota destinada a outro CNPJ bloqueia a confirmação mesmo com tudo preenchido (D9)', async () => {
   mockApi(routes(preview({ recipientCheck: 'RECIPIENT_MISMATCH', recipientDocument: '01637003000290',
     blockers: ['Nota destinada a outro CNPJ'] })), as(IMPORT))
