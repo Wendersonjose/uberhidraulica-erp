@@ -6,7 +6,8 @@ import {
   type ItemDecision, type NfePreview, type PreviewItem, type PreviewSelection,
   type OrderDifferenceKind,
 } from '../../api/purchasing'
-import { financeApi, financeKeys, newIdempotencyKey } from '../../api/finance'
+import { FINANCE_CONFIG, financeApi, financeKeys, newIdempotencyKey } from '../../api/finance'
+import { ApiError } from '../../api/http'
 import { productsApi, workOrdersApi } from '../../api/resources'
 import { queryKeys } from '../../api/queryKeys'
 import { PRODUCT_TYPE_LABELS, PRODUCT_UNIT_LABELS, type Product, type ProductType, type ProductUnit } from '../../api/types'
@@ -77,6 +78,7 @@ export function NfeImportPage() {
   const navigate = useNavigate()
   const client = useQueryClient()
   const canImport = useCan(PURCHASE_IMPORT_XML)
+  const canConfigureFinance = useCan(FINANCE_CONFIG)
   // "Comprar para esta OS" chega com ?os=<id>: a compra já nasce ligada à OS.
   const [params] = useSearchParams()
 
@@ -410,6 +412,19 @@ export function NfeImportPage() {
           <label className="field"><span>Observação</span>
             <input className="input" maxLength={1000} value={notes} onChange={e => setNotes(e.target.value)} /></label>
         </div>
+        {categories.isError && <div role="alert" className="notice error">
+          {categories.error instanceof ApiError && categories.error.status === 403
+            ? 'Seu perfil não pode consultar as categorias de despesa (permissão FINANCE_VIEW). Peça ao Dono para liberar.'
+            : 'Não foi possível carregar as categorias de despesa. Recarregue a página e tente novamente.'}
+        </div>}
+        {categories.isSuccess && activeCategories.length === 0 && <div role="status" className="notice">
+          Nenhuma categoria de despesa ativa: as contas a pagar da nota precisam de uma.{' '}
+          {canConfigureFinance
+            ? <>Cadastre uma em <Link to="/financeiro/configuracoes" target="_blank" rel="noopener">Financeiro › Configurações</Link> (abre
+              em outra aba, esta nota e as escolhas feitas continuam aqui) e depois atualize a lista.</>
+            : 'Peça ao Dono ou ao gerente financeiro para cadastrar uma em Financeiro › Configurações e depois atualize a lista.'}
+          {' '}<button type="button" className="btn secondary" onClick={() => categories.refetch()}>Atualizar lista</button>
+        </div>}
         {serverBlockers.length > 0 && <ul className="error" role="alert">
           {serverBlockers.map(blocker => <li key={blocker}>{blocker}</li>)}
         </ul>}
