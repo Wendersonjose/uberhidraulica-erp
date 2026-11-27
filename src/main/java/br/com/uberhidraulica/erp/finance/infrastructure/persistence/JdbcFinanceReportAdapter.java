@@ -87,17 +87,33 @@ class JdbcFinanceReportAdapter implements FinanceReportPort {
         return jdbc.query("""
                 select c.id, c.name,
                   (select count(*) from finance.payable p where p.category_id = c.id and p.cancelled_at is null
+                     and p.origin <> 'PURCHASE'
                      and (p.created_at at time zone 'America/Sao_Paulo')::date between :from and :to) as registered_n,
                   (select coalesce(sum(p.amount), 0) from finance.payable p where p.category_id = c.id and p.cancelled_at is null
+                     and p.origin <> 'PURCHASE'
                      and (p.created_at at time zone 'America/Sao_Paulo')::date between :from and :to) as registered,
                   (select coalesce(sum(x.amount), 0) from finance.payable_payment x join finance.payable p on p.id = x.payable_id
-                     where p.category_id = c.id and x.paid_on between :from and :to
+                     where p.category_id = c.id and p.origin <> 'PURCHASE' and x.paid_on between :from and :to
                      and not exists (select 1 from finance.payable_payment_reversal v where v.payment_id = x.id)) as paid
                 from finance.expense_category c
                 order by registered desc, paid desc, c.name""", period(from, to),
                 (rs, i) -> new CategoryExpense(rs.getObject("id", UUID.class), rs.getString("name"), rs.getLong("registered_n"),
                         money(rs, "registered"), money(rs, "paid")))
                 .stream().filter(c -> c.registeredCount() > 0 || c.paid().signum() != 0).toList();
+    }
+
+    @Override
+    public StockPurchases stockPurchases(LocalDate from, LocalDate to) {
+        return jdbc.queryForObject("""
+                select
+                  (select count(*) from finance.payable p where p.origin = 'PURCHASE' and p.cancelled_at is null
+                     and (p.created_at at time zone 'America/Sao_Paulo')::date between :from and :to) as registered_n,
+                  (select coalesce(sum(p.amount), 0) from finance.payable p where p.origin = 'PURCHASE' and p.cancelled_at is null
+                     and (p.created_at at time zone 'America/Sao_Paulo')::date between :from and :to) as registered,
+                  (select coalesce(sum(x.amount), 0) from finance.payable_payment x join finance.payable p on p.id = x.payable_id
+                     where p.origin = 'PURCHASE' and x.paid_on between :from and :to
+                     and not exists (select 1 from finance.payable_payment_reversal v where v.payment_id = x.id)) as paid""",
+                period(from, to), (rs, i) -> new StockPurchases(rs.getLong("registered_n"), money(rs, "registered"), money(rs, "paid")));
     }
 
     @Override

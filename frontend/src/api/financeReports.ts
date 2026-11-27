@@ -23,6 +23,8 @@ export type Aging = {
 export type ExpensesByCategory = {
   from: string; to: string; registered: number; paid: number
   categories: { categoryId: string; categoryName: string; registeredCount: number; registered: number; paid: number }[]
+  /** Compras de mercadoria para estoque (NF-e): fora dos totais de despesa. */
+  stockPurchasesRegistered?: number; stockPurchasesPaid?: number
 }
 export type WorkOrderResultLine = {
   receivableId: string; workOrderId: string; workOrderNumber: number; customerId: string; customerName: string | null
@@ -35,6 +37,8 @@ export type IncomeStatement = {
   financialExpenses?: number
   partsCost: number; grossProfit: number; expenses: ExpensesByCategory['categories']; totalExpenses: number
   operatingResult: number; operatingMargin: number; cashReceived: number; cashPaid: number; cashResult: number
+  /** Compras de mercadoria para estoque (NF-e) no período: informativo, fora do resultado. */
+  stockPurchasesRegistered?: number
 }
 export type ReceivableReportRow = {
   id: string; workOrderNumber: number; customerId: string; customerName: string | null; issuedOn: string; dueDate: string

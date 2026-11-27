@@ -58,11 +58,15 @@ function IncomeStatementReport({ from, to }: { from: string; to: string }) {
           <Row label="(−) Custo de peças" value={formatBrl(q.data.partsCost)} />
           <Row label="Lucro bruto" value={formatBrl(q.data.grossProfit)} strong testId="is-gross-profit" />
           {q.data.expenses.map(e => <Row key={e.categoryId} label={`(−) ${e.categoryName}`} value={formatBrl(e.registered)} />)}
-          <Row label="Total de despesas" value={formatBrl(q.data.totalExpenses)} />
+          <Row label="Total de despesas operacionais" value={formatBrl(q.data.totalExpenses)} testId="is-total-expenses" />
           {(q.data.financialExpenses ?? 0) > 0 && <Row label="(−) Despesas financeiras (taxas de cartão)" value={formatBrl(q.data.financialExpenses ?? 0)} testId="is-financial" />}
           <Row label="Resultado operacional" value={formatBrl(q.data.operatingResult)} strong testId="is-operating" />
           <Row label="Margem operacional" value={formatPercent(q.data.operatingMargin)} />
         </tbody></table>
+        {q.data.stockPurchasesRegistered !== undefined && <p className="muted" data-testid="is-stock-purchases">
+          Compras para estoque no período (NF-e): {formatBrl(q.data.stockPurchasesRegistered)}. Não entram no resultado: a peça
+          entra no custo de peças quando é usada na OS. O pagamento aparece na visão de caixa.
+        </p>}
       </section>
       <section className="card table-wrap" aria-label="Demonstrativo por caixa">
         <h2>Caixa (recebido × pago no período)</h2>
@@ -114,7 +118,9 @@ function ExpensesReport({ from, to }: { from: string; to: string }) {
         <thead><tr><th>Categoria</th><th className="num">Contas</th><th className="num">Cadastrado</th><th className="num">Pago</th></tr></thead>
         <tbody>{q.data.categories.map(c => <tr key={c.categoryId}><td>{c.categoryName}</td><td className="num">{c.registeredCount}</td>
           <td className="num">{formatBrl(c.registered)}</td><td className="num">{formatBrl(c.paid)}</td></tr>)}</tbody>
-        <tfoot><tr data-testid="expenses-total"><th>Total</th><th /><th className="num">{formatBrl(q.data.registered)}</th><th className="num">{formatBrl(q.data.paid)}</th></tr></tfoot>
+        <tfoot><tr data-testid="expenses-total"><th>Total</th><th /><th className="num">{formatBrl(q.data.registered)}</th><th className="num">{formatBrl(q.data.paid)}</th></tr>
+          {q.data.stockPurchasesRegistered !== undefined && <tr data-testid="expenses-stock-purchases"><td>Compras para estoque (NF-e), fora das despesas</td><td />
+            <td className="num">{formatBrl(q.data.stockPurchasesRegistered)}</td><td className="num">{formatBrl(q.data.stockPurchasesPaid ?? 0)}</td></tr>}</tfoot>
       </table></section>
     </div>}
   </QueryState>
