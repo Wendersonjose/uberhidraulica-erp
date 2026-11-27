@@ -52,6 +52,31 @@ test('relatórios abrem no demonstrativo gerencial com competência e caixa', as
   expect(screen.getByRole('link', { name: 'Relatórios' })).toHaveAttribute('href', '/financeiro/relatorios')
 })
 
+test('demonstrativo mostra as compras para estoque à parte, fora do resultado', async () => {
+  mockApi({ 'GET /api/finance/reports/income-statement': () => json({ ...incomeStatement, stockPurchasesRegistered: 1943.1 }) }, finance)
+  renderAt('/financeiro/relatorios')
+  expect(await screen.findByTestId('is-stock-purchases')).toHaveTextContent('1.943,10')
+  expect(screen.getByTestId('is-stock-purchases')).toHaveTextContent('Não entram no resultado')
+  expect(screen.getByTestId('is-total-expenses')).toHaveTextContent('Total de despesas operacionais')
+  expect(screen.getByTestId('is-operating')).toHaveTextContent('345,00')
+})
+
+test('despesas por categoria listam as compras para estoque fora do total', async () => {
+  mockApi({
+    'GET /api/finance/reports/income-statement': () => json(incomeStatement),
+    'GET /api/finance/reports/expenses-by-category': () => json({ from: '2026-11-01', to: '2026-11-18', registered: 80, paid: 80,
+      categories: [{ categoryId: 'c1', categoryName: 'Aluguel', registeredCount: 1, registered: 80, paid: 80 }],
+      stockPurchasesRegistered: 1943.1, stockPurchasesPaid: 647.7 }),
+  }, finance)
+  renderAt('/financeiro/relatorios')
+  await screen.findByTestId('is-net')
+  await userEvent.click(screen.getByRole('tab', { name: 'Despesas por categoria' }))
+  expect(await screen.findByTestId('expenses-total')).toHaveTextContent('80,00')
+  const stock = screen.getByTestId('expenses-stock-purchases')
+  expect(stock).toHaveTextContent('1.943,10')
+  expect(stock).toHaveTextContent('647,70')
+})
+
 test('inadimplência mostra as faixas, destaca o vencido e lista os clientes', async () => {
   mockApi({ 'GET /api/finance/reports/income-statement': () => json(incomeStatement), 'GET /api/finance/reports/aging': () => json({
     asOf: '2026-11-18', totalOutstanding: 345,

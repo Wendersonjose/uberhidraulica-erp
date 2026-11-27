@@ -24,6 +24,9 @@ public interface FinanceReportPort {
 
     record CategoryExpense(UUID categoryId, String categoryName, long registeredCount, BigDecimal registered, BigDecimal paid) {}
 
+    /** Contas de compra de mercadoria para estoque ({@code origin = 'PURCHASE'}): cadastrado e pago no período. */
+    record StockPurchases(long registeredCount, BigDecimal registered, BigDecimal paid) {}
+
     record WorkOrderResult(UUID receivableId, UUID workOrderId, long workOrderNumber, UUID customerId, LocalDate issuedOn,
                            LocalDate dueDate, String status, BigDecimal original, BigDecimal discount, BigDecimal surcharge,
                            BigDecimal received, BigDecimal outstanding) {}
@@ -48,8 +51,15 @@ public interface FinanceReportPort {
 
     DueSummary payableDue(LocalDate today);
 
-    /** Cadastrado = contas não canceladas criadas no período (data da oficina); pago = pagamentos não estornados no período. */
+    /**
+     * Despesas operacionais por categoria. Cadastrado = contas não canceladas criadas no período (data da oficina);
+     * pago = pagamentos não estornados no período. Exclui as contas de compra de mercadoria para estoque
+     * ({@code origin = 'PURCHASE'}): a peça entra no resultado como custo de peças quando é consumida na OS.
+     */
     List<CategoryExpense> expensesByCategory(LocalDate from, LocalDate to);
+
+    /** Compras de mercadoria para estoque no período, com o mesmo recorte de {@link #expensesByCategory}. */
+    StockPurchases stockPurchases(LocalDate from, LocalDate to);
 
     /** Recebíveis não cancelados emitidos no período — o mesmo recorte do painel gerencial. */
     List<WorkOrderResult> workOrderResults(LocalDate from, LocalDate to, LocalDate today);

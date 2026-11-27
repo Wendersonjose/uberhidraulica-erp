@@ -81,14 +81,20 @@ public class FinanceReportService {
 
     // ------------------------------------------------------------------ despesas por categoria (A3)
 
-    public record ExpensesByCategory(LocalDate from, LocalDate to, BigDecimal registered, BigDecimal paid, List<CategoryExpense> categories) {}
+    /**
+     * Despesas operacionais por categoria. As compras de mercadoria para estoque vêm à parte
+     * ({@code stockPurchasesRegistered}/{@code stockPurchasesPaid}), fora dos totais: não são despesa do período.
+     */
+    public record ExpensesByCategory(LocalDate from, LocalDate to, BigDecimal registered, BigDecimal paid, List<CategoryExpense> categories,
+                                     BigDecimal stockPurchasesRegistered, BigDecimal stockPurchasesPaid) {}
 
     @Transactional(readOnly = true)
     public ExpensesByCategory expensesByCategory(LocalDate from, LocalDate to) {
         validate(from, to);
         List<CategoryExpense> rows = reports.expensesByCategory(from, to);
+        FinanceReportPort.StockPurchases stock = reports.stockPurchases(from, to);
         return new ExpensesByCategory(from, to, Money.sum(rows.stream().map(CategoryExpense::registered).toList()),
-                Money.sum(rows.stream().map(CategoryExpense::paid).toList()), rows);
+                Money.sum(rows.stream().map(CategoryExpense::paid).toList()), rows, stock.registered(), stock.paid());
     }
 
     // ------------------------------------------------------------------ resultado por OS (A4)
@@ -122,7 +128,8 @@ public class FinanceReportService {
                                   BigDecimal partsCost, BigDecimal grossProfit, List<CategoryExpense> expenses, BigDecimal totalExpenses,
                                   BigDecimal financialExpenses,
                                   BigDecimal operatingResult, BigDecimal operatingMargin,
-                                  BigDecimal cashReceived, BigDecimal cashPaid, BigDecimal cashResult) {}
+                                  BigDecimal cashReceived, BigDecimal cashPaid, BigDecimal cashResult,
+                                  BigDecimal stockPurchasesRegistered) {}
 
     @Transactional(readOnly = true)
     public IncomeStatement incomeStatement(LocalDate from, LocalDate to) {
@@ -138,6 +145,7 @@ public class FinanceReportService {
         BigDecimal parts = inventoryCost.partsCostForWorkOrders(rows.stream().map(WorkOrderResult::workOrderId).toList())
                 .setScale(Money.SCALE, RoundingMode.HALF_UP);
         BigDecimal grossProfit = net.subtract(parts);
+        // Despesas operacionais: sem as compras de mercadoria para estoque, que entram como custo de peças ao serem usadas.
         List<CategoryExpense> expenses = reports.expensesByCategory(from, to).stream().filter(c -> c.registeredCount() > 0).toList();
         BigDecimal totalExpenses = Money.sum(expenses.stream().map(CategoryExpense::registered).toList());
         // DR-0024, Q4: taxas de cartão dos recebimentos do período, como despesa financeira.
@@ -146,7 +154,7 @@ public class FinanceReportService {
         BigDecimal received = Money.sum(finance.realizedInflows(from, to).stream().map(FinanceRepositoryPort.DailyAmount::amount).toList());
         BigDecimal paid = Money.sum(finance.realizedOutflows(from, to, null).stream().map(FinanceRepositoryPort.DailyAmount::amount).toList());
         return new IncomeStatement(from, to, gross, other, discounts, surcharges, net, parts, grossProfit, expenses, totalExpenses, financial,
-                operating, percentage(operating, net), received, paid, received.subtract(paid));
+                operating, percentage(operating, net), received, paid, received.subtract(paid), reports.stockPurchases(from, to).registered());
     }
 
     // ------------------------------------------------------------------ listas do relatório (A6)

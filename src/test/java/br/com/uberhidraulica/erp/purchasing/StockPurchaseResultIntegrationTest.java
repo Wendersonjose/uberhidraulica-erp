@@ -87,6 +87,8 @@ class StockPurchaseResultIntegrationTest {
     @Test
     void aStockPurchaseIsAnObligationAndACashOutflowButOnlyTheConsumedPartIsACost() throws Exception {
         String before = dashboard();
+        String statementBefore = report("income-statement");
+        String byCategoryBefore = report("expenses-by-category");
 
         // 1. NF-e de 10 unidades a R$ 100,00, recebida inteira: estoque sobe, conta a pagar de R$ 1.000,00 em aberto.
         UUID merchandise = category("Mercadoria NF-e");
@@ -126,6 +128,22 @@ class StockPurchaseResultIntegrationTest {
         assertThat(delta(before, after, "$.operatingResult")).isEqualByComparingTo("450.00");
         assertThat(delta(before, after, "$.expensesPaid")).isEqualByComparingTo("0.00");
 
+        // O demonstrativo gerencial (TASK-0024) segue a mesma regra: 950 − 300 − 200 = 450.
+        String statement = report("income-statement");
+        assertThat(delta(statementBefore, statement, "$.partsCost")).isEqualByComparingTo("300.00");
+        assertThat(delta(statementBefore, statement, "$.totalExpenses")).isEqualByComparingTo("200.00");
+        assertThat(delta(statementBefore, statement, "$.operatingResult")).isEqualByComparingTo("450.00");
+        assertThat(delta(statementBefore, statement, "$.stockPurchasesRegistered")).isEqualByComparingTo("1000.00");
+        List<String> statementCategories = JsonPath.read(statement, "$.expenses[*].categoryId");
+        assertThat(statementCategories).doesNotContain(merchandise.toString()).contains(rent.toString());
+
+        // Despesas por categoria: a categoria da NF-e não aparece; a compra vem à parte.
+        String byCategory = report("expenses-by-category");
+        assertThat(delta(byCategoryBefore, byCategory, "$.registered")).isEqualByComparingTo("200.00");
+        assertThat(delta(byCategoryBefore, byCategory, "$.stockPurchasesRegistered")).isEqualByComparingTo("1000.00");
+        List<String> listedCategories = JsonPath.read(byCategory, "$.categories[*].categoryId");
+        assertThat(listedCategories).doesNotContain(merchandise.toString());
+
         // 4. A obrigação da NF-e continua em Contas a pagar, em aberto, com o valor da nota.
         api.read(owner, "/api/finance/payables/" + purchasePayable).andExpect(status().isOk())
                 .andExpect(jsonPath("$.amount").value(1000.00));
@@ -145,6 +163,14 @@ class StockPurchaseResultIntegrationTest {
         assertThat(delta(after, paid, "$.operatingResult")).isEqualByComparingTo("0.00");
         assertThat(delta(after, paid, "$.expensesRegistered")).isEqualByComparingTo("0.00");
         assertThat(delta(after, paid, "$.stockPurchasesRegistered")).isEqualByComparingTo("0.00");
+
+        // No demonstrativo, o pagamento entra só na visão de caixa.
+        String statementPaid = report("income-statement");
+        assertThat(delta(statement, statementPaid, "$.cashPaid")).isEqualByComparingTo("1000.00");
+        assertThat(delta(statement, statementPaid, "$.operatingResult")).isEqualByComparingTo("0.00");
+        String byCategoryPaid = report("expenses-by-category");
+        assertThat(delta(byCategory, byCategoryPaid, "$.paid")).isEqualByComparingTo("0.00");
+        assertThat(delta(byCategory, byCategoryPaid, "$.stockPurchasesPaid")).isEqualByComparingTo("1000.00");
     }
 
     @Test
@@ -175,6 +201,11 @@ class StockPurchaseResultIntegrationTest {
 
     private String dashboard() throws Exception {
         return api.read(owner, "/api/finance/dashboard?from=" + today() + "&to=" + today()).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+    }
+
+    private String report(String name) throws Exception {
+        return api.read(owner, "/api/finance/reports/" + name + "?from=" + today() + "&to=" + today()).andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
     }
 
