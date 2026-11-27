@@ -129,8 +129,15 @@ public interface FinanceRepositoryPort {
     /** Totais de recebíveis não cancelados emitidos no período, para o resumo financeiro gerencial. */
     DashboardReceivableTotals dashboardReceivableTotals(LocalDate from, LocalDate to, LocalDate today);
 
-    /** Despesas registradas (não canceladas) no período, pela data de criação da conta a pagar. */
+    /**
+     * Despesas operacionais registradas (não canceladas) no período, pela data de criação da conta a pagar.
+     * Exclui as contas de compra de mercadoria para estoque (chave {@code PURCHASE:...}): a mercadoria vira custo
+     * quando é consumida na OS, e contá-la aqui também seria contar a mesma peça duas vezes.
+     */
     BigDecimal dashboardExpensesRegistered(LocalDate from, LocalDate to);
+
+    /** Contas a pagar de compra de mercadoria para estoque (chave {@code PURCHASE:...}) registradas no período. */
+    BigDecimal dashboardStockPurchasesRegistered(LocalDate from, LocalDate to);
 
     // ---------------------------------------------------------------- tipos de consulta
 

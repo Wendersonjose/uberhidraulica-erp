@@ -917,6 +917,7 @@ class Task0015FinanceIntegrationTest {
                 .andExpect(jsonPath("$.overdue").value(0))
                 .andExpect(jsonPath("$.partsCost").value(40.00))
                 .andExpect(jsonPath("$.expensesRegistered").value(80.00))
+                .andExpect(jsonPath("$.stockPurchasesRegistered").value(0))
                 .andExpect(jsonPath("$.expensesPaid").value(80.00))
                 .andExpect(jsonPath("$.grossProfit").value(260.00))
                 .andExpect(jsonPath("$.operatingResult").value(180.00))

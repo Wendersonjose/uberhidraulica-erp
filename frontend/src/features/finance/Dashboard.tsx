@@ -78,11 +78,17 @@ function DashboardView({ data }: { data: FinanceDashboard }) {
     </section>
     <section className="card" aria-label="Custos e despesas">
       <h2>Custos e despesas</h2>
-      <div className="metrics metrics-3">
-        <div className="metric" data-testid="dashboard-parts-cost"><span className="muted">Custo de peças</span><strong>{formatBrl(data.partsCost)}</strong></div>
-        <div className="metric" data-testid="dashboard-expenses-registered"><span className="muted">Despesas registradas</span><strong>{formatBrl(data.expensesRegistered)}</strong></div>
-        <div className="metric" data-testid="dashboard-expenses-paid"><span className="muted">Despesas pagas</span><strong>{formatBrl(data.expensesPaid)}</strong></div>
+      <div className="metrics">
+        <div className="metric" data-testid="dashboard-parts-cost"><span className="muted">Custo de peças usadas nas OS</span><strong>{formatBrl(data.partsCost)}</strong></div>
+        <div className="metric" data-testid="dashboard-expenses-registered"><span className="muted">Despesas operacionais</span><strong>{formatBrl(data.expensesRegistered)}</strong></div>
+        <div className="metric" data-testid="dashboard-stock-purchases"><span className="muted">Compras para estoque</span>
+          <strong>{data.stockPurchasesRegistered === undefined ? '—' : formatBrl(data.stockPurchasesRegistered)}</strong></div>
+        <div className="metric" data-testid="dashboard-expenses-paid"><span className="muted">Saídas pagas</span><strong>{formatBrl(data.expensesPaid)}</strong></div>
       </div>
+      <p className="muted" data-testid="dashboard-stock-note">
+        Compras para estoque (contas das NF-e) não entram no resultado: a peça vira custo quando é usada na OS.
+        As contas continuam em Contas a pagar, e o pagamento entra em Saídas pagas e no fluxo de caixa.
+      </p>
     </section>
     <section className="card" aria-label="Margens">
       <h2>Margens</h2>

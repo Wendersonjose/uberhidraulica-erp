@@ -10,7 +10,26 @@ const dashboard = {
   revenue: 1000, received: 800, receivableOpen: 200, overdue: 50,
   partsCost: 300, expensesRegistered: 120, expensesPaid: 100,
   grossProfit: 700, operatingResult: 580, grossMargin: 70, operatingMargin: 58,
+  stockPurchasesRegistered: 1943.1,
 }
+
+test('compras para estoque aparecem à parte, fora das despesas operacionais', async () => {
+  mockApi({ 'GET /api/finance/dashboard': () => json(dashboard) }, admin)
+  renderAt('/financeiro/dashboard')
+
+  expect(await screen.findByTestId('dashboard-stock-purchases')).toHaveTextContent('1.943,10')
+  expect(screen.getByTestId('dashboard-expenses-registered')).toHaveTextContent('Despesas operacionais')
+  expect(screen.getByTestId('dashboard-expenses-registered')).toHaveTextContent('120,00')
+  expect(screen.getByTestId('dashboard-stock-note')).toHaveTextContent('não entram no resultado')
+})
+
+test('backend sem o campo novo mostra traço, não R$ 0,00', async () => {
+  const { stockPurchasesRegistered: _omitted, ...older } = dashboard
+  mockApi({ 'GET /api/finance/dashboard': () => json(older) }, admin)
+  renderAt('/financeiro/dashboard')
+
+  expect(await screen.findByTestId('dashboard-stock-purchases')).toHaveTextContent('—')
+})
 
 test('resumo financeiro exibe os indicadores formatados', async () => {
   mockApi({ 'GET /api/finance/dashboard': () => json(dashboard) }, admin)

@@ -64,6 +64,8 @@ export type FinanceDashboard = {
   revenue: number; received: number; receivableOpen: number; overdue: number
   partsCost: number; expensesRegistered: number; expensesPaid: number
   grossProfit: number; operatingResult: number; grossMargin: number; operatingMargin: number
+  /** Contas das NF-e de compra de mercadoria para estoque: fora das despesas. Ausente em backend anterior. */
+  stockPurchasesRegistered?: number
 }
 export type CashSessionStatus = 'OPEN' | 'CLOSED' | 'AUTO_CLOSED'
 export type CashConferenceStatus = 'CHECKED' | 'NOT_CHECKED'

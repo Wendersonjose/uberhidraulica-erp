@@ -21,6 +21,11 @@ import java.time.temporal.ChronoUnit;
  * movimentação de estoque vinculada à OS, nunca o custo atual do catálogo); mão de obra não é custeada
  * neste MVP. Faturamento, a receber e vencido são todos restritos aos recebíveis emitidos no período, para
  * que o painel inteiro fale do mesmo recorte de Ordens de Serviço.</p>
+ *
+ * <p>Compra de mercadoria para estoque (contas geradas pela importação da NF-e) <b>não</b> é despesa
+ * operacional: a peça entra no resultado como custo de peças quando é consumida na OS. Somá-la também às
+ * despesas contava a mesma peça duas vezes. Ela aparece à parte em {@code stockPurchasesRegistered}, e o
+ * pagamento continua em {@code expensesPaid} (saídas de caixa), como qualquer outra obrigação.</p>
  */
 @Service
 public class FinanceDashboardService {
@@ -37,7 +42,8 @@ public class FinanceDashboardService {
 
     public record Dashboard(LocalDate from, LocalDate to, BigDecimal revenue, BigDecimal received, BigDecimal receivableOpen,
                             BigDecimal overdue, BigDecimal partsCost, BigDecimal expensesRegistered, BigDecimal expensesPaid,
-                            BigDecimal grossProfit, BigDecimal operatingResult, BigDecimal grossMargin, BigDecimal operatingMargin) {}
+                            BigDecimal grossProfit, BigDecimal operatingResult, BigDecimal grossMargin, BigDecimal operatingMargin,
+                            BigDecimal stockPurchasesRegistered) {}
 
     @Transactional(readOnly = true)
     public Dashboard dashboard(LocalDate from, LocalDate to) {
@@ -50,6 +56,7 @@ public class FinanceDashboardService {
         BigDecimal received = Money.sum(repository.realizedInflows(from, to).stream().map(FinanceRepositoryPort.DailyAmount::amount).toList());
         BigDecimal expensesPaid = Money.sum(repository.realizedOutflows(from, to, null).stream().map(FinanceRepositoryPort.DailyAmount::amount).toList());
         BigDecimal expensesRegistered = repository.dashboardExpensesRegistered(from, to).setScale(Money.SCALE, RoundingMode.UNNECESSARY);
+        BigDecimal stockPurchases = repository.dashboardStockPurchasesRegistered(from, to).setScale(Money.SCALE, RoundingMode.UNNECESSARY);
         BigDecimal partsCost = inventoryCost.partsCostForWorkOrders(receivableTotals.workOrderIds());
 
         BigDecimal revenue = receivableTotals.revenue();
@@ -59,7 +66,8 @@ public class FinanceDashboardService {
         BigDecimal operatingMargin = percentage(operatingResult, revenue);
 
         return new Dashboard(from, to, revenue, received, receivableTotals.receivableOpen(), receivableTotals.overdue(),
-                partsCost, expensesRegistered, expensesPaid, grossProfit, operatingResult, grossMargin, operatingMargin);
+                partsCost, expensesRegistered, expensesPaid, grossProfit, operatingResult, grossMargin, operatingMargin,
+                stockPurchases);
     }
 
     /** Sem faturamento no período, a margem é zero — nunca `NaN` nem divisão por zero. */
