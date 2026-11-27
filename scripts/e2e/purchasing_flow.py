@@ -20,6 +20,7 @@ import os
 import secrets
 import sys
 import uuid
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
@@ -185,6 +186,8 @@ def main():
     check("confirmar sem Idempotency-Key é recusado", no_key.status == 400 and no_key.code == "PURCHASE_IDEMPOTENCY_KEY_REQUIRED",
           f"{no_key.status} {no_key.raw}")
 
+    today_window = f"from={date.today().isoformat()}&to={date.today().isoformat()}"
+    dash_before = owner.get(f"/api/finance/dashboard?{today_window}").json or {}
     key = str(uuid.uuid4())
     confirmed = owner.post("/api/purchasing/nfe/confirm", body, headers={"Idempotency-Key": key})
     check("confirma a importação", confirmed.status == 200, f"{confirmed.status} {confirmed.raw[:300]}")
@@ -331,6 +334,11 @@ def main():
     section("Financeiro depois das compras")
     dashboard = owner.get("/api/finance/dashboard?from=2026-01-01&to=2026-12-31")
     check("painel financeiro responde", dashboard.status == 200, f"{dashboard.status} {dashboard.raw[:200]}")
+    dash_after = owner.get(f"/api/finance/dashboard?{today_window}").json or {}
+    moved = lambda k: dec(dash_after.get(k, 0)) - dec(dash_before.get(k, 0))  # noqa: E731
+    check("compra da NF-e 21 aparece em Compras para estoque (1.943,10), fora das despesas operacionais",
+          moved("stockPurchasesRegistered") == TOTAL and moved("expensesRegistered") == 0,
+          f"compras {moved('stockPurchasesRegistered')} despesas {moved('expensesRegistered')}")
     listing = owner.get("/api/finance/payables?size=100")
     check("as contas da NF-e 21 aparecem em Contas a pagar",
           listing.status == 200 and all(i["payableId"] in listing.raw for i in installments), listing.raw[:200])

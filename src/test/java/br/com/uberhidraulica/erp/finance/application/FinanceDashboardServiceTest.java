@@ -41,6 +41,7 @@ class FinanceDashboardServiceTest {
         when(repository.realizedOutflows(eq(FROM), eq(TO), isNull())).thenReturn(List.of(new DailyAmount(FROM, bd("150.00"))));
         when(repository.dashboardExpensesRegistered(FROM, TO)).thenReturn(bd("200.00"));
         when(repository.cardFees(FROM, TO)).thenReturn(bd("0.00"));
+        when(repository.dashboardStockPurchasesRegistered(FROM, TO)).thenReturn(bd("0.00"));
         when(inventoryCost.partsCostForWorkOrders(List.of(WORK_ORDER))).thenReturn(bd("300.00"));
 
         FinanceDashboardService.Dashboard dashboard = service.dashboard(FROM, TO);
@@ -70,6 +71,7 @@ class FinanceDashboardServiceTest {
         when(repository.realizedOutflows(eq(FROM), eq(TO), isNull())).thenReturn(List.of());
         when(repository.dashboardExpensesRegistered(FROM, TO)).thenReturn(bd("50.00"));
         when(repository.cardFees(FROM, TO)).thenReturn(bd("0.00"));
+        when(repository.dashboardStockPurchasesRegistered(FROM, TO)).thenReturn(bd("0.00"));
         when(inventoryCost.partsCostForWorkOrders(List.of())).thenReturn(bd("0.00"));
 
         FinanceDashboardService.Dashboard dashboard = service.dashboard(FROM, TO);
@@ -80,6 +82,33 @@ class FinanceDashboardServiceTest {
         assertThat(dashboard.operatingResult()).isEqualByComparingTo("-50.00");
         assertThat(dashboard.grossMargin()).isEqualByComparingTo("0.00");
         assertThat(dashboard.operatingMargin()).isEqualByComparingTo("0.00");
+    }
+
+    /**
+     * Compra de mercadoria para estoque não é despesa operacional: R$ 1.000,00 de NF-e no período não muda o
+     * resultado; só as peças consumidas (R$ 300,00) entram, como custo de peças.
+     */
+    @Test
+    void stockPurchasesAreReportedApartAndNeverReduceTheOperatingResult() {
+        when(repository.dashboardReceivableTotals(eq(FROM), eq(TO), any()))
+                .thenReturn(new DashboardReceivableTotals(bd("950.00"), bd("0.00"), bd("0.00"), bd("950.00"), bd("0.00"), List.of(WORK_ORDER)));
+        when(repository.realizedInflows(FROM, TO)).thenReturn(List.of());
+        // O pagamento da NF-e é saída de caixa: aparece em despesas pagas, não no resultado.
+        when(repository.realizedOutflows(eq(FROM), eq(TO), isNull())).thenReturn(List.of(new DailyAmount(FROM, bd("1000.00"))));
+        when(repository.dashboardExpensesRegistered(FROM, TO)).thenReturn(bd("200.00"));
+        when(repository.dashboardStockPurchasesRegistered(FROM, TO)).thenReturn(bd("1000.00"));
+        when(repository.cardFees(FROM, TO)).thenReturn(bd("0.00"));
+        when(inventoryCost.partsCostForWorkOrders(List.of(WORK_ORDER))).thenReturn(bd("300.00"));
+
+        FinanceDashboardService.Dashboard dashboard = service.dashboard(FROM, TO);
+
+        assertThat(dashboard.stockPurchasesRegistered()).isEqualByComparingTo("1000.00");
+        assertThat(dashboard.expensesRegistered()).isEqualByComparingTo("200.00");
+        assertThat(dashboard.expensesPaid()).isEqualByComparingTo("1000.00");
+        // 950 - 300 = 650; 650 - 200 = 450. Com a dupla contagem seria 650 - 1200 = -550.
+        assertThat(dashboard.grossProfit()).isEqualByComparingTo("650.00");
+        assertThat(dashboard.operatingResult()).isEqualByComparingTo("450.00");
+        assertThat(dashboard.operatingMargin()).isEqualByComparingTo("47.37");
     }
 
     @Test

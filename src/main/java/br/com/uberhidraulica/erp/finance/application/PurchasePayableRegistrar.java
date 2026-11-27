@@ -37,6 +37,12 @@ class PurchasePayableRegistrar implements PurchasePayables {
             throw new PurchasePayableException("PURCHASE_PAYABLES_KEY_REQUIRED",
                     "Prefixo de idempotência é obrigatório para não duplicar conta a pagar");
         }
+        // O início da chave classifica a conta como compra de mercadoria no resumo gerencial: sem ele a
+        // compra voltaria a ser somada como despesa operacional.
+        if (!request.idempotencyPrefix().startsWith(IDEMPOTENCY_PREFIX)) {
+            throw new PurchasePayableException("PURCHASE_PAYABLES_KEY_REQUIRED",
+                    "Prefixo de idempotência das contas de compra deve começar por " + IDEMPOTENCY_PREFIX);
+        }
         List<Registered> result = new ArrayList<>(request.installments().size());
         for (Installment installment : request.installments()) {
             String description = request.installments().size() == 1

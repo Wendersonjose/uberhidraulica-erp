@@ -19,6 +19,14 @@ import java.util.UUID;
 public interface PurchasePayables {
 
     /**
+     * Início obrigatório do prefixo de idempotência das contas registradas por Compras. É o que distingue, no
+     * Financeiro, a obrigação de uma compra de mercadoria para estoque de uma despesa lançada à mão: o resumo
+     * gerencial tira essas contas das despesas, porque a mercadoria só vira custo quando é consumida na OS.
+     * Por isso uma conta manual não pode usar uma chave com este início.
+     */
+    String IDEMPOTENCY_PREFIX = "PURCHASE:";
+
+    /**
      * Uma parcela a registrar.
      *
      * @param number    número da parcela, a partir de 1
@@ -37,7 +45,8 @@ public interface PurchasePayables {
      * @param notes              observação livre
      * @param installments       parcelas; a soma é conferida por quem chama, antes de chegar aqui
      * @param supplierId         fornecedor do cadastro de Compras (DR-0024, Q6), ou nulo
-     * @param idempotencyPrefix  prefixo estável do pedido (na importação: a chave de acesso da NF-e). A chave
+     * @param idempotencyPrefix  prefixo estável do pedido, começando por {@link #IDEMPOTENCY_PREFIX} (na
+     *                           importação: {@code PURCHASE:<id da compra>}). A chave
      *                           de cada conta é {@code prefixo:número}, de modo que reimportar a mesma nota
      *                           não crie conta nova — é a proteção contra duplicar contas a pagar
      */

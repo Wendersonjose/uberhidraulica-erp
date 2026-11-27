@@ -470,7 +470,7 @@ public class NfeImportService {
                     purchase.expenseCategoryId(), purchase.notes(), request,
                     // Prefixo por compra, não por chave de acesso: nota anulada e reimportada é uma compra
                     // nova e precisa de contas novas, não de reencontro das contas canceladas da anterior.
-                    "PURCHASE:" + purchase.id(), supplier.id()));
+                    PurchasePayables.IDEMPOTENCY_PREFIX + purchase.id(), supplier.id()));
         } catch (PurchasePayableException financeFailure) {
             // Traduz o erro do Financeiro para o código estável de Compras: o controller é de Compras, e sem
             // isso o cliente receberia 500 em vez do erro que o caso realmente é.

@@ -3,8 +3,10 @@ package br.com.uberhidraulica.erp.finance.api;
 import br.com.uberhidraulica.erp.finance.api.FinanceResponses.PageResponse;
 import br.com.uberhidraulica.erp.finance.api.FinanceResponses.PayableResponse;
 import br.com.uberhidraulica.erp.finance.api.FinanceResponses.SettlementResponse;
+import br.com.uberhidraulica.erp.finance.PurchasePayables;
 import br.com.uberhidraulica.erp.finance.application.PayableService;
 import br.com.uberhidraulica.erp.finance.application.Recorded;
+import br.com.uberhidraulica.erp.finance.domain.FinanceException;
 import br.com.uberhidraulica.erp.finance.domain.FinancialStatus;
 import br.com.uberhidraulica.erp.finance.domain.Payable;
 import br.com.uberhidraulica.erp.finance.domain.Settlement;
@@ -57,6 +59,11 @@ class PayableController {
     @PreAuthorize("@iamAuthorization.hasPermission(authentication, 'FINANCE_PAYABLE')")
     ResponseEntity<PayableResponse> create(@RequestHeader(value = IDEMPOTENCY_HEADER, required = false) String key,
                                            @Valid @RequestBody PayableRequest request) {
+        // A chave "PURCHASE:..." é de Compras e classifica a conta como compra de mercadoria no resumo
+        // gerencial; uma conta manual com ela sairia das despesas sem ser compra.
+        if (key != null && key.startsWith(PurchasePayables.IDEMPOTENCY_PREFIX))
+            throw new FinanceException("IDEMPOTENCY_KEY_RESERVED",
+                    "Chave de idempotência iniciada por " + PurchasePayables.IDEMPOTENCY_PREFIX + " é reservada às contas de Compras");
         Recorded<Payable> result = payables.create(new PayableService.Draft(request.description(), request.supplier(), request.supplierId(),
                 request.categoryId(), request.amount(), request.dueDate(), request.notes()), Payable.Origin.MANUAL, key);
         return ResponseEntity.status(result.replayed() ? HttpStatus.OK : HttpStatus.CREATED)
