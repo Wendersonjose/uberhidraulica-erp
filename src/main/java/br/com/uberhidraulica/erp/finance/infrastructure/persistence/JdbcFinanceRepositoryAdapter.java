@@ -1,5 +1,6 @@
 package br.com.uberhidraulica.erp.finance.infrastructure.persistence;
 
+import br.com.uberhidraulica.erp.finance.PurchasePayables;
 import br.com.uberhidraulica.erp.finance.domain.ExpenseCategory;
 import br.com.uberhidraulica.erp.finance.domain.FinancialStatus;
 import br.com.uberhidraulica.erp.finance.domain.Payable;
@@ -486,9 +487,26 @@ class JdbcFinanceRepositoryAdapter implements FinanceRepositoryPort {
     public BigDecimal dashboardExpensesRegistered(LocalDate from, LocalDate to) {
         // created_at é TIMESTAMPTZ: a data-calendário é a da oficina (America/Sao_Paulo), não a do fuso
         // da sessão do banco — mesma convenção de Money.WORKSHOP_ZONE usada no restante do Financeiro.
+        return registeredPayables(from, to, false);
+    }
+
+    @Override
+    public BigDecimal dashboardStockPurchasesRegistered(LocalDate from, LocalDate to) {
+        return registeredPayables(from, to, true);
+    }
+
+    /**
+     * Soma das contas não canceladas criadas no período, separando as de compra de mercadoria para estoque (chave
+     * {@code PURCHASE:...}, gravada só por {@link PurchasePayables}) das demais.
+     */
+    private BigDecimal registeredPayables(LocalDate from, LocalDate to, boolean stockPurchases) {
+        // created_at é TIMESTAMPTZ: a data-calendário é a da oficina (America/Sao_Paulo), não a do fuso
+        // da sessão do banco — mesma convenção de Money.WORKSHOP_ZONE usada no restante do Financeiro.
         return money(jdbc.queryForObject("select coalesce(sum(amount), 0) from finance.payable"
-                + " where cancelled_at is null and (created_at at time zone 'America/Sao_Paulo')::date between :from and :to",
-                period(from, to), BigDecimal.class));
+                + " where cancelled_at is null and (created_at at time zone 'America/Sao_Paulo')::date between :from and :to"
+                + " and (idempotency_key like :purchasePrefix) = :stockPurchases",
+                period(from, to).addValue("purchasePrefix", PurchasePayables.IDEMPOTENCY_PREFIX + "%")
+                        .addValue("stockPurchases", stockPurchases), BigDecimal.class));
     }
 
     /** `coalesce(sum(numeric), 0)` some vezes volta com escala menor que a monetária (0 sem linhas). */
